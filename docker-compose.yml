@@ -1,0 +1,33 @@
+name: hf-medusa-store
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: hf_medusa_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hfmedusa
+      POSTGRES_PASSWORD: hfmedusa      
+      POSTGRES_DB: hfmedusa            
+    ports:
+      - "5433:5432"
+    volumes:
+      - hf_medusa_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hfmedusa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: hf_medusa_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - hf_medusa_redisdata:/data
+
+volumes:
+  hf_medusa_pgdata:
+  hf_medusa_redisdata:
