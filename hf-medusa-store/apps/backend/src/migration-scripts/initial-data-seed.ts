@@ -20,6 +20,7 @@ import {
   linkSalesChannelsToStockLocationWorkflow,
 } from "@medusajs/medusa/core-flows";
 import { S3_IMAGES } from "../data/product-images.generated";
+import seedSuggestiveSelling from "../scripts/seed-suggestive-selling";
 
 /**
  * Badminton catalog seed (VND).
@@ -147,24 +148,6 @@ const PRODUCTS: ProductSeed[] = [
     "Vợt phòng thủ - tốc độ, đầu nhẹ vụt nhanh.",
     83,
   ),
-  single(
-    "Yonex Astrox 88D Pro",
-    "yonex-astrox-88d-pro",
-    "RKT-AX88DPRO",
-    "Rackets",
-    4_300_000,
-    "Vợt đôi công đầu nặng, kiểm soát tốt.",
-    89,
-  ),
-  single(
-    "Victor Auraspeed 90K",
-    "victor-auraspeed-90k",
-    "RKT-AS90K",
-    "Rackets",
-    3_600_000,
-    "Vợt tốc độ khung mỏng, ra đòn nhanh.",
-    86,
-  ),
 
   // ── Dây cước (Strings) ──
   single(
@@ -193,33 +176,6 @@ const PRODUCTS: ProductSeed[] = [
     130_000,
     "Dây cước cân bằng lực và độ bền.",
     20,
-  ),
-  single(
-    "Victor VBS-63",
-    "victor-vbs-63",
-    "STR-VBS63",
-    "Strings",
-    140_000,
-    "Dây cước êm, kiểm soát tốt.",
-    20,
-  ),
-  single(
-    "Yonex Aerobite",
-    "yonex-aerobite",
-    "STR-AEROBITE",
-    "Strings",
-    190_000,
-    "Dây lai hybrid tăng độ xoáy.",
-    20,
-  ),
-  single(
-    "Yonex BG65 combo 3 cuộn",
-    "yonex-bg65-3pack",
-    "STR-BG65X3",
-    "Strings",
-    330_000,
-    "Combo 3 cuộn dây BG65, giá tốt hơn/cuộn.",
-    60,
   ),
 
   // ── Quấn cán (Grips) ──
@@ -250,24 +206,6 @@ const PRODUCTS: ProductSeed[] = [
     "Quấn cán cơ bản, giá tốt.",
     30,
   ),
-  single(
-    "Yonex AC105 Grip",
-    "yonex-ac105-grip",
-    "GRP-AC105",
-    "Grips",
-    100_000,
-    "Quấn cán bám, thấm hút.",
-    30,
-  ),
-  single(
-    "Victor GR262 combo 3 cuộn",
-    "victor-gr262-3pack",
-    "GRP-GR262X3",
-    "Grips",
-    190_000,
-    "Combo 3 cuộn quấn cán GR262.",
-    90,
-  ),
 
   // ── Bao/Túi (Bags) ──
   single(
@@ -286,15 +224,6 @@ const PRODUCTS: ProductSeed[] = [
     "Bags",
     1_200_000,
     "Túi vợt 2 ngăn tiện dụng.",
-    1300,
-  ),
-  single(
-    "Victor BR9111 Bag",
-    "victor-br9111-bag",
-    "BAG-BR9111",
-    "Bags",
-    1_100_000,
-    "Túi vợt Victor 2 ngăn.",
     1300,
   ),
 
@@ -377,15 +306,6 @@ const PRODUCTS: ProductSeed[] = [
     "Cầu lông vũ thi đấu, hộp 12 quả.",
     130,
   ),
-  single(
-    "Yonex Mavis 350 combo 3 hộp",
-    "yonex-mavis-350-3box",
-    "SHU-MAVIS350X3",
-    "Shuttlecocks",
-    950_000,
-    "Combo 3 hộp cầu Mavis 350, giá tốt hơn/hộp.",
-    360,
-  ),
 
   // ── Ống cầu bulk (Tubes) ──
   single(
@@ -396,6 +316,98 @@ const PRODUCTS: ProductSeed[] = [
     2_300_000,
     "Combo 3 ống cầu Aerosensa 30, giá tốt hơn/ống.",
     380,
+  ),
+
+  // ── Bổ sung để demo đầy đủ kịch bản gợi ý (Tier-1, CR-03 same-brand, CR-04 bulk) ──
+  // Vợt thêm — có Tier-1 rule riêng + phục vụ CR-03 (giỏ toàn Yonex / toàn Victor).
+  single(
+    "Yonex Astrox 88D Pro",
+    "yonex-astrox-88d-pro",
+    "RKT-AX88DPRO",
+    "Rackets",
+    4_300_000,
+    "Vợt đôi công đầu nặng, kiểm soát tốt.",
+    89,
+  ),
+  single(
+    "Victor Auraspeed 90K",
+    "victor-auraspeed-90k",
+    "RKT-AS90K",
+    "Rackets",
+    3_600_000,
+    "Vợt tốc độ khung mỏng, ra đòn nhanh.",
+    86,
+  ),
+
+  // Dây cước thêm (một Yonex, một Victor) — mở rộng Tier-2 & CR-01.
+  single(
+    "Yonex Aerobite",
+    "yonex-aerobite",
+    "STR-AEROBITE",
+    "Strings",
+    190_000,
+    "Dây lai hybrid tăng độ xoáy.",
+    20,
+  ),
+  single(
+    "Victor VBS-63",
+    "victor-vbs-63",
+    "STR-VBS63",
+    "Strings",
+    140_000,
+    "Dây cước êm, kiểm soát tốt.",
+    20,
+  ),
+
+  // Quấn cán Yonex thêm — CR-03 same-brand Yonex.
+  single(
+    "Yonex AC105 Grip",
+    "yonex-ac105-grip",
+    "GRP-AC105",
+    "Grips",
+    100_000,
+    "Quấn cán bám, thấm hút.",
+    30,
+  ),
+
+  // Túi Victor — để giỏ toàn Victor có đủ vợt/dây/cán/túi cho CR-03.
+  single(
+    "Victor BR9111 Bag",
+    "victor-br9111-bag",
+    "BAG-BR9111",
+    "Bags",
+    1_100_000,
+    "Túi vợt Victor 2 ngăn.",
+    1300,
+  ),
+
+  // Bulk/multipack — nguồn gợi ý cho CR-04 (single qty=1 → bulk cùng loại).
+  single(
+    "Yonex BG65 combo 3 cuộn",
+    "yonex-bg65-3pack",
+    "STR-BG65X3",
+    "Strings",
+    330_000,
+    "Combo 3 cuộn dây BG65, giá tốt hơn/cuộn.",
+    60,
+  ),
+  single(
+    "Victor GR262 combo 3 cuộn",
+    "victor-gr262-3pack",
+    "GRP-GR262X3",
+    "Grips",
+    190_000,
+    "Combo 3 cuộn quấn cán GR262.",
+    90,
+  ),
+  single(
+    "Yonex Mavis 350 combo 3 hộp",
+    "yonex-mavis-350-3box",
+    "SHU-MAVIS350X3",
+    "Shuttlecocks",
+    950_000,
+    "Combo 3 hộp cầu Mavis 350, giá tốt hơn/hộp.",
+    360,
   ),
 ];
 
@@ -637,7 +649,11 @@ export default async function initial_data_seed({
   });
 
   logger.info(
-    `[seed] Done. ${CATEGORY_NAMES.length} categories, ${PRODUCTS.length} products (VND). ` +
-      `Next: npx medusa exec ./src/scripts/seed-suggestive-selling.ts`,
+    `[seed] Catalog done. ${CATEGORY_NAMES.length} categories, ${PRODUCTS.length} products (VND).`,
   );
+
+  // Chain the SuggestiveSelling seed so a single `db:migrate` leaves BOTH the
+  // catalog AND the suggestion data (rules / complements / bulk mappings) ready.
+  // Runs after the catalog exists so it can resolve products/categories by handle.
+  await seedSuggestiveSelling({ container });
 }
