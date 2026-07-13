@@ -18,7 +18,9 @@ hf-medusa-store/            <- git root (docker-compose.yml here)
 
 Install the official Medusa Claude Code plugin for framework guidance:
 `/plugin marketplace add medusajs/medusa-agent-skills` then `/plugin install medusa-dev@medusa`.
-Project-specific conventions live in `.claude/rules/project-conventions.md`.
+Project-specific conventions live in `.claude/rules/` — the hub `project-conventions.md` plus
+topical rules: `coding.md`, `testing.md`, `security.md`, `medusa.md`. Team process docs
+(workflow, contributing, ownership, Redis usage) live under `docs/team/`.
 
 ## Tech stack
 
@@ -63,6 +65,7 @@ Backend tests (from `apps/backend/`):
 - **Branches:** `<type>/<kebab-description>` — e.g. `feat/suggestive-selling-foundation`
 - Secrets live in `.env` (gitignored); commit only `.env.template`
 - TypeScript throughout; respect existing ESLint/Prettier config
+- Full branch/PR/evidence rules: `docs/team/CONTRIBUTING.md`. File ownership (4-dev): `docs/team/OWNERSHIP.md`. Redis usage: `docs/team/REDIS_USAGE.md`. Dev workflow: `docs/team/CLAUDE_WORKFLOW.md`.
 
 ## Current work
 
