@@ -7,6 +7,16 @@ description: Project-specific conventions for hf-medusa-store the official Medus
 Generic Medusa/Next.js patterns come from the official **medusa-dev** plugin. This file only
 captures decisions unique to THIS repository.
 
+## Rule index
+Topical rules split out of this hub — read the one matching your task:
+- [coding.md](./coding.md) — TypeScript style, integer money (`Math.floor`, 1 = 1 VND), spec traceability, storefront.
+- [testing.md](./testing.md) — test types/naming, StackingEngine SRS fixtures, evidence capture.
+- [security.md](./security.md) — server-side pricing, rate limiting, audit immutability, secrets.
+- [medusa.md](./medusa.md) — module shape, Link Module (no DB FKs), models, subscribers, workflows.
+
+Team-facing decision docs live under `docs/team/`: `CLAUDE_WORKFLOW.md`, `CONTRIBUTING.md`,
+`OWNERSHIP.md`, `REDIS_USAGE.md`.
+
 ## Repo layout & tooling
 - Two nested `hf-medusa-store/` folders; the pnpm workspace root is the INNER one — run every pnpm/turbo command there.
 - Packages are scoped `@dtc/*` (not `@medusajs`). Root shortcuts use Turbo filters: `pnpm backend:dev`, `pnpm storefront:dev`, `pnpm backend:seed`.

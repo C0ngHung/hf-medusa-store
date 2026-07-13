@@ -1,0 +1,36 @@
+---
+description: Testing rules for hf-medusa-store — test types, naming, StackingEngine fixtures, evidence
+---
+
+# Testing rules
+
+Backend testing only (storefront E2E via Playwright is a stretch goal). See the hub
+[project-conventions.md](./project-conventions.md) and the workflow doc
+`docs/team/CLAUDE_WORKFLOW.md`.
+
+## Test types & scripts (run from `apps/backend/`)
+- Set `TEST_TYPE` via the provided scripts — never invoke jest directly:
+  - `pnpm test:unit` — pure services (StackingEngine, validators).
+  - `pnpm test:integration:modules` — module service + migrations against a real DB/Redis.
+  - `pnpm test:integration:http` — API endpoints end-to-end.
+
+## Naming & location
+- Unit: `*.unit.spec.ts` inside a `__tests__/` folder next to the code.
+- Module integration: `src/modules/<name>/__tests__/`.
+- HTTP integration: `integration-tests/http/*.spec.ts`.
+
+## StackingEngine — exact-fixture compliance (VOUCH-003)
+- The `StackingEngine` unit tests MUST match the SRS fixtures **to the VND**:
+  - item promo 20% + voucher 10% → **under cap** (no capping).
+  - item promo 40% + voucher 20% → voucher **reduced by cap**, expected total `3,420,000` VND.
+  - suggested item promo + voucher → cap prevents negative total, expected `2,350,000` VND.
+- Assert integer math (no floats) and that `discount_capped` / `cap_explanation` are set correctly.
+
+## Acceptance coverage
+- Target ≥ 20/22 acceptance tests (`T-SUGG-01..10`, `T-VOUCH-01..12`).
+- Integration must exercise real Redis (docker) for cache invalidation, rate-limit cooldown, and
+  atomic usage_count — not mocks.
+
+## Evidence (ties to Day-6/7 "Tổng hợp evidence")
+- Every test task attaches proof to its PR: test runner output, the asserted numbers, and for
+  HTTP tests the request/response body. See `docs/team/CONTRIBUTING.md` §Evidence.
