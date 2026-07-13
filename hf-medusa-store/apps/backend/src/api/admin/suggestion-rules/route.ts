@@ -16,7 +16,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   if (is_active !== undefined) filters.is_active = is_active === 'true'
 
   const [suggestion_rules, count] = await service.listAndCountSuggestionRules(filters, {
-    relations: ['items', 'conditions'],
+    relations: ['items', 'conditions', 'sources'],
     take: Number(limit),
     skip: Number(offset),
     order: { priority: 'ASC' },
@@ -33,12 +33,16 @@ export const POST = async (
   res: MedusaResponse
 ) => {
   const service: any = req.scope.resolve(SUGGESTIVE_SELLING_MODULE)
-  const { items, conditions, ...ruleData } = req.validatedBody
+  const { items, conditions, source_product_ids, ...ruleData } = req.validatedBody
 
   const suggestion_rule = await service.createSuggestionRules({
     ...ruleData,
     items,
     conditions,
+    // Fan the source product ids into pivot rows (SuggestionRuleSource).
+    sources: (source_product_ids ?? []).map((source_product_id) => ({
+      source_product_id,
+    })),
   })
 
   await invalidateSuggestionCache(req.scope, suggestion_rule.id)

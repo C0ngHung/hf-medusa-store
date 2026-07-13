@@ -9,7 +9,7 @@ import { invalidateSuggestionCache } from '../helpers'
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   const service: any = req.scope.resolve(SUGGESTIVE_SELLING_MODULE)
   const suggestion_rule = await service.retrieveSuggestionRule(req.params.id, {
-    relations: ['items', 'conditions'],
+    relations: ['items', 'conditions', 'sources'],
   })
   res.json({ suggestion_rule })
 }
@@ -24,10 +24,22 @@ export const PUT = async (
 ) => {
   const service: any = req.scope.resolve(SUGGESTIVE_SELLING_MODULE)
   const { id } = req.params
-  const { items, conditions, ...ruleData } = req.validatedBody
+  const { items, conditions, source_product_ids, ...ruleData } = req.validatedBody
 
   if (Object.keys(ruleData).length) {
     await service.updateSuggestionRules({ id, ...ruleData })
+  }
+
+  if (source_product_ids) {
+    const existing = await service.listSuggestionRuleSources({ rule_id: id }, { select: ['id'] })
+    if (existing.length) {
+      await service.deleteSuggestionRuleSources(existing.map((s: any) => s.id))
+    }
+    if (source_product_ids.length) {
+      await service.createSuggestionRuleSources(
+        source_product_ids.map((source_product_id: string) => ({ source_product_id, rule_id: id }))
+      )
+    }
   }
 
   if (items) {
@@ -53,7 +65,7 @@ export const PUT = async (
   }
 
   const suggestion_rule = await service.retrieveSuggestionRule(id, {
-    relations: ['items', 'conditions'],
+    relations: ['items', 'conditions', 'sources'],
   })
   await invalidateSuggestionCache(req.scope, id)
   res.json({ suggestion_rule })

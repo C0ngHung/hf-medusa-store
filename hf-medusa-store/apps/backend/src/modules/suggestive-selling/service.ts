@@ -1,9 +1,11 @@
 import { MedusaService } from '@medusajs/framework/utils'
 import SuggestionRule from './models/suggestion-rule'
 import SuggestionRuleItem from './models/suggestion-rule-item'
+import SuggestionRuleSource from './models/suggestion-rule-source'
 import CartSuggestionCondition from './models/cart-suggestion-condition'
 import SuggestionEvent from './models/suggestion-event'
 import CategoryComplementMapping from './models/category-complement-mapping'
+import ProductBulkMapping from './models/product-bulk-mapping'
 
 /**
  * SuggestiveSellingService — SRS §2.1.
@@ -14,9 +16,11 @@ import CategoryComplementMapping from './models/category-complement-mapping'
 class SuggestiveSellingService extends MedusaService({
   SuggestionRule,
   SuggestionRuleItem,
+  SuggestionRuleSource,
   CartSuggestionCondition,
   SuggestionEvent,
   CategoryComplementMapping,
+  ProductBulkMapping,
 }) {}
 
 export default SuggestiveSellingService
