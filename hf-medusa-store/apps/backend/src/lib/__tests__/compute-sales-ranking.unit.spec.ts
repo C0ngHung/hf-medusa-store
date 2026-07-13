@@ -1,4 +1,4 @@
-import { computeSalesRanking } from "../lib/compute-sales-ranking";
+import { computeSalesRanking } from "../compute-sales-ranking";
 
 describe("computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6)", () => {
   const productCategories = new Map<string, string[]>([

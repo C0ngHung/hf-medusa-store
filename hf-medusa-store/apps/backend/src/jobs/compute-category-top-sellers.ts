@@ -1,7 +1,7 @@
 import { MedusaContainer } from "@medusajs/framework/types";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { SUGGESTIVE_SELLING_MODULE } from "../modules/suggestive-selling";
-import { computeSalesRanking } from "./lib/compute-sales-ranking";
+import { computeSalesRanking } from "../lib/compute-sales-ranking";
 
 const WINDOW_DAYS = 30;
 
