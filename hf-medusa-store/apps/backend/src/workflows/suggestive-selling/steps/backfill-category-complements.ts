@@ -11,8 +11,9 @@ import type { SuggestionCandidate } from "../types";
  * lives here; the assembly decision is delegated to lib/evaluate (pure).
  * Read-only → no compensation.
  *
- * NOTE (SPEC A.6): "top-seller (30d)" needs Order aggregation; Phase-1 falls back
- * to newest-first. TODO: rank by 30-day sales once the Order aggregate is wired.
+ * Ranking source (SPEC A.6): precomputed top-seller snapshot (plan B, filled by
+ * the compute-category-top-sellers job). When the snapshot is empty (cold start /
+ * no orders) it falls back to newest-first (plan C), so suggestions never block.
  */
 export const backfillCategoryComplementsStep = createStep(
   "backfill-category-complements",
@@ -54,11 +55,16 @@ export const backfillCategoryComplementsStep = createStep(
     }
     if (!complementCatIds.length) return new StepResponse(candidates);
 
-    // Phase-1 top-seller fallback: newest-first per SPEC A.6.
-    const products = await productService.listProducts(
-      { categories: { id: complementCatIds }, status: "published" },
-      { order: { created_at: "DESC" }, take: limit + candidates.length + 5 },
-    );
+    // Plan B: precomputed top-seller ranking. Plan C fallback: newest-first.
+    const take = limit + candidates.length + 5;
+    const topSellers =
+      await suggestive.listTopSellersByCategories(complementCatIds);
+    const products = topSellers.length
+      ? topSellers.slice(0, take).map((r: any) => ({ id: r.product_id }))
+      : await productService.listProducts(
+          { categories: { id: complementCatIds }, status: "published" },
+          { order: { created_at: "DESC" }, take },
+        );
 
     return new StepResponse(
       applyCategoryBackfill(candidates, products, {
