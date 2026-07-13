@@ -6,6 +6,7 @@ import CartSuggestionCondition from "./models/cart-suggestion-condition";
 import SuggestionEvent from "./models/suggestion-event";
 import CategoryComplementMapping from "./models/category-complement-mapping";
 import ProductBulkMapping from "./models/product-bulk-mapping";
+import CategoryTopSeller from "./models/category-top-seller";
 
 /**
  * SuggestiveSellingService — SRS §2.1.
@@ -28,6 +29,7 @@ class SuggestiveSellingService extends MedusaService({
   SuggestionEvent,
   CategoryComplementMapping,
   ProductBulkMapping,
+  CategoryTopSeller,
 }) {
   /**
    * SPEC A.3 — active product-level rules targeting `sourceProductId`.
@@ -69,6 +71,30 @@ class SuggestiveSellingService extends MedusaService({
     return this.listCategoryComplementMappings(
       { source_category_id: sourceCategoryId, is_active: true },
       { order: { display_order: "ASC" } },
+    );
+  }
+
+  /**
+   * Tier-2 ranking (SPEC A.6, plan B) — precomputed top sellers across the given
+   * categories, highest sales first. Empty ⇒ the backfill step falls back to
+   * newest-first (plan C). Deduped by product (a product may sit in several
+   * complement categories), keeping its highest sales_count.
+   */
+  async listTopSellersByCategories(categoryIds: string[]) {
+    if (!categoryIds?.length) return [];
+    const rows = await this.listCategoryTopSellers(
+      { category_id: categoryIds },
+      { order: { sales_count: "DESC" } },
+    );
+    const bestByProduct = new Map<string, any>();
+    for (const r of rows) {
+      const prev = bestByProduct.get(r.product_id);
+      if (!prev || r.sales_count > prev.sales_count) {
+        bestByProduct.set(r.product_id, r);
+      }
+    }
+    return [...bestByProduct.values()].sort(
+      (a, b) => b.sales_count - a.sales_count,
     );
   }
 }
