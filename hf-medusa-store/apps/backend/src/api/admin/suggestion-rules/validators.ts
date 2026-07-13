@@ -26,8 +26,10 @@ export const CreateSuggestionRuleSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['product', 'cart']),
   tier: z.enum(['manual', 'category', 'behavioral']).default('manual'),
-  // Source product for Tier-1 manual product-level rules (null for cart/category).
-  source_product_id: z.string().nullish(),
+  // Source product(s) for Tier-1 manual product-level rules. Usually one, but a
+  // rule may target many products that share the same suggested-item set.
+  // Empty for cart/category rules. Stored via the SuggestionRuleSource pivot.
+  source_product_ids: z.array(z.string().min(1)).default([]),
   priority: z.number().int().default(0),
   is_active: z.boolean().default(true),
   valid_from: z.coerce.date().nullish(),

@@ -6,10 +6,12 @@ import { SUGGESTIVE_SELLING_MODULE } from '../modules/suggestive-selling'
  * Seed for the SuggestiveSelling module — run with:
  *   npx medusa exec ./src/scripts/seed-suggestive-selling.ts
  *
- * Seeds two things (SRS SUGG-001), resolving catalog by name/handle so it must
- * run AFTER the catalog seed. Idempotent: clears its own data before inserting.
+ * Seeds three things (SRS SUGG-001 / SUGG-004 CR-04), resolving catalog by
+ * name/handle so it must run AFTER the catalog seed. Idempotent: clears its own
+ * data before inserting.
  *   1. Tier-2 category complement mapping (category → complementary categories).
- *   2. Tier-1 manual product rules (source product → specific suggested products).
+ *   2. Tier-1 manual product rules (source product(s) → specific suggested products).
+ *   3. CR-04 product bulk mapping (single consumable → its designated multipack).
  */
 
 // Tier-2: source category → complementary categories (by name).
@@ -17,6 +19,11 @@ const COMPLEMENT_MAP: Record<string, string[]> = {
   Rackets: ['Strings', 'Grips', 'Bags'],
   Shoes: ['Socks', 'Insoles'],
   Shuttlecocks: ['Tubes'],
+}
+
+// CR-04: single consumable handle → designated bulk/multipack handle + unit count.
+const BULK_MAP: Record<string, { handle: string; multiplier: number }> = {
+  'yonex-as30': { handle: 'yonex-as30-3tube', multiplier: 3 },
 }
 
 // Tier-1: source product handle → suggested product handles ("Complete Your Setup").
@@ -135,7 +142,9 @@ export default async function seedSuggestiveSelling({ container }: ExecArgs) {
       name: `Complete your setup: ${sourceHandle}`,
       type: 'product',
       tier: 'manual',
-      source_product_id: sourceId,
+      // One rule → one source product here (N=1); the pivot allows sharing a rule
+      // across many source products when curation is identical.
+      sources: [{ source_product_id: sourceId }],
       priority: 10,
       is_active: true,
       items,
@@ -143,4 +152,39 @@ export default async function seedSuggestiveSelling({ container }: ExecArgs) {
     created++
   }
   logger.info(`[seed:suggestive] created ${created} Tier-1 manual product rules.`)
+
+  // ── CR-04: product bulk mappings (single consumable → designated multipack) ──
+  const bulkRows: Array<{
+    single_product_id: string
+    bulk_product_id: string
+    unit_multiplier: number
+    is_active: boolean
+  }> = []
+  for (const [singleHandle, bulk] of Object.entries(BULK_MAP)) {
+    const singleId = idByHandle.get(singleHandle)
+    const bulkId = idByHandle.get(bulk.handle)
+    if (!singleId || !bulkId) {
+      logger.warn(
+        `[seed:suggestive] bulk mapping "${singleHandle}" → "${bulk.handle}" — product missing, skip`
+      )
+      continue
+    }
+    bulkRows.push({
+      single_product_id: singleId,
+      bulk_product_id: bulkId,
+      unit_multiplier: bulk.multiplier,
+      is_active: true,
+    })
+  }
+
+  if (bulkRows.length) {
+    const existingBulk = await ss.listProductBulkMappings({}, { select: ['id'] })
+    if (existingBulk.length) {
+      await ss.deleteProductBulkMappings(existingBulk.map((r: any) => r.id))
+    }
+    await ss.createProductBulkMappings(bulkRows)
+    logger.info(`[seed:suggestive] created ${bulkRows.length} product bulk mappings.`)
+  } else {
+    logger.info('[seed:suggestive] no product bulk mappings (products not seeded yet).')
+  }
 }
