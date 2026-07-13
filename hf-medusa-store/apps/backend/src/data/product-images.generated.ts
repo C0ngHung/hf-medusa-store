@@ -31,10 +31,28 @@ export const S3_IMAGES: Record<string, { thumbnail: string; images: string[] }> 
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/giay-cau-long-victor-a970-nl-a-chinh-hang_1761591584-01KWZXSTAHS72D9X9XNQXDH3N2.webp",
     ],
   },
+  "victor-auraspeed-90k": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-victor-ars-90k-chinh-hang-1-01KXDHRRMF7SD3PBPEQ5J98NWD.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-victor-ars-90k-chinh-hang-1-01KXDHRRMF7SD3PBPEQ5J98NWD.webp",
+    ],
+  },
+  "victor-br9111-bag": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Bao-vot-cau-long-Victor-BR9211-C-2-01KXDJ1PQE990ZEA1BC80N3ZWS.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Bao-vot-cau-long-Victor-BR9211-C-2-01KXDJ1PQE990ZEA1BC80N3ZWS.webp",
+    ],
+  },
   "victor-br9213-bag": {
     thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mf942cr2bk0cc6%40resize_w450_nl-01KWZYJD620GMQX2K9YXYZCP4C.webp",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mf942cr2bk0cc6%40resize_w450_nl-01KWZYJD620GMQX2K9YXYZCP4C.webp",
+    ],
+  },
+  "victor-gr262-3pack": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/9644e225-b294-4313-ad26-2bc6ffd0c4fc-01KXDJAGR0Z8Q6QA5D9S237CMX.png",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/9644e225-b294-4313-ad26-2bc6ffd0c4fc-01KXDJAGR0Z8Q6QA5D9S237CMX.png",
     ],
   },
   "victor-gr262-grip": {
@@ -57,10 +75,28 @@ export const S3_IMAGES: Record<string, { thumbnail: string; images: string[] }> 
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-victor-ryuga-ii-chinh-hang-5-01KWZX6J88RZTYNMV5EGFRYC8V.webp",
     ],
   },
+  "victor-vbs-63": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-victor-vs-63cs-am_1711072058-01KXDJ8NQN9P8D6J0AVYFW70G7.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-victor-vs-63cs-am_1711072058-01KXDJ8NQN9P8D6J0AVYFW70G7.webp",
+    ],
+  },
   "yonex-ac102-towel-grip": {
     thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/sg-11134201-824ji-mpriigsn1ji8cb-01KWZYN112BQB4RBBRDZF4QNW4.webp",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/sg-11134201-824ji-mpriigsn1ji8cb-01KWZYN112BQB4RBBRDZF4QNW4.webp",
+    ],
+  },
+  "yonex-ac105-grip": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-7ra0g-m75z7t9x45up67%40resize_w450_nl-01KXDHWAG17CZ4A975Q5NV7PMV.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-7ra0g-m75z7t9x45up67%40resize_w450_nl-01KXDHWAG17CZ4A975Q5NV7PMV.webp",
+    ],
+  },
+  "yonex-aerobite": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-yonex-bg-aerobite-1-01KXDHP6NG31NNPFCST69YY6YJ.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-yonex-bg-aerobite-1-01KXDHP6NG31NNPFCST69YY6YJ.webp",
     ],
   },
   "yonex-as30": {
@@ -74,6 +110,13 @@ export const S3_IMAGES: Record<string, { thumbnail: string; images: string[] }> 
     thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-yonex-as30-1-01KWZXXAWDQGSH5HD7697DF91N.webp",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-yonex-as30-1-01KWZXXAWDQGSH5HD7697DF91N.webp",
+    ],
+  },
+  "yonex-astrox-88d-pro": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-yonex-astrox-88d-pro-2024-chinh-hang_1710988318-01KXDHQQAQDR1Y34ABZWZWDR0M.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-yonex-astrox-88d-pro-2024-chinh-hang_1711052539-01KXDHQQAP0H148YVK8WREWYKB.webp",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vot-cau-long-yonex-astrox-88d-pro-2024-chinh-hang_1710988318-01KXDHQQAQDR1Y34ABZWZWDR0M.webp",
     ],
   },
   "yonex-astrox-99-pro": {
@@ -92,6 +135,12 @@ export const S3_IMAGES: Record<string, { thumbnail: string; images: string[] }> 
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cang-cuoc-vot-yonex-bg65-1-01KWZWXTGB5SK1GK82YG5G92SY.webp",
     ],
   },
+  "yonex-bg65-3pack": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/112adb35-d8e9-4a04-a3ff-2af4df7466d5-01KXDJ6ATCFX39E5ZTSK6SQKX5.png",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/112adb35-d8e9-4a04-a3ff-2af4df7466d5-01KXDJ6ATCFX39E5ZTSK6SQKX5.png",
+    ],
+  },
   "yonex-bg80-power": {
     thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-yonex-bg80-power-1-01KWZX3R30WNJWKZMATY60372H.webp",
     images: [
@@ -102,6 +151,12 @@ export const S3_IMAGES: Record<string, { thumbnail: string; images: string[] }> 
     thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
+    ],
+  },
+  "yonex-mavis-350-3box": {
+    thumbnail: "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mjjkscxq9hqe92%40resize_w450_nl-01KXDHXWX8QFHQPN83J1J2DYEH.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mjjkscxq9hqe92%40resize_w450_nl-01KXDHXWX8QFHQPN83J1J2DYEH.webp",
     ],
   },
   "yonex-nanoflare-800": {

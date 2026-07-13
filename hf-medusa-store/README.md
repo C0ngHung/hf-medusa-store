@@ -63,7 +63,7 @@ The fastest way to get started is deploying with [Medusa Cloud](https://cloud.me
 
 ### Local Installation
 
-> **Prerequisites:
+> \*\*Prerequisites:
 >
 > - [Node.js](https://nodejs.org/) v20+
 > - [PostgreSQL](https://www.postgresql.org/) v15+
@@ -111,7 +111,7 @@ cd apps/backend
 pnpm dev
 ```
 
-7. Open the admin dashboard at `localhost:9000/app` and log in. Retrieve your publishable API key at Settings > Publishable API key.
+7. Open the admin dashboard at `localhost:9009/app` and log in. Retrieve your publishable API key at Settings > Publishable API key.
 
 8. Set up environment variables for the storefront:
 
@@ -125,14 +125,14 @@ cp apps/storefront/.env.template apps/storefront/.env.local
 NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY=pk_6c3...
 ```
 
-10.  Start storefront:
+10. Start storefront:
 
 ```bash
 cd apps/storefront
 pnpm dev
 ```
 
-The storefront runs on `http://localhost:8000`.
+The storefront runs on `http://localhost:8008`.
 
 You can slo run the following command from the root to start both backend and storefront:
 
@@ -144,13 +144,13 @@ pnpm dev
 
 The storefront is configured via environment variables in `apps/storefront/.env.local`:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from your Medusa backend | — |
-| `NEXT_PUBLIC_MEDUSA_BACKEND_URL` | URL of your Medusa backend | `http://localhost:9000` |
-| `NEXT_PUBLIC_DEFAULT_REGION` | Default region country code | `dk` |
-| `NEXT_PUBLIC_BASE_URL` | Base URL of the storefront | `https://localhost:8000` |
-| `NEXT_PUBLIC_STRIPE_KEY` | Stripe publishable key (optional) | — |
+| Variable                             | Description                                  | Default                  |
+| ------------------------------------ | -------------------------------------------- | ------------------------ |
+| `NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY` | Publishable API key from your Medusa backend | —                        |
+| `NEXT_PUBLIC_MEDUSA_BACKEND_URL`     | URL of your Medusa backend                   | `http://localhost:9009`  |
+| `NEXT_PUBLIC_DEFAULT_REGION`         | Default region country code                  | `dk`                     |
+| `NEXT_PUBLIC_BASE_URL`               | Base URL of the storefront                   | `https://localhost:8008` |
+| `NEXT_PUBLIC_STRIPE_KEY`             | Stripe publishable key (optional)            | —                        |
 
 ## Resources
 

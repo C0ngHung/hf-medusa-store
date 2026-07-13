@@ -1,8 +1,8 @@
 import { getLocaleHeader } from "@lib/util/get-locale-header"
 import Medusa, { FetchArgs, FetchInput } from "@medusajs/js-sdk"
 
-// Defaults to standard port for Medusa server
-let MEDUSA_BACKEND_URL = "http://localhost:9000"
+// Defaults to the hf backend port (9009); override via NEXT_PUBLIC_MEDUSA_BACKEND_URL
+let MEDUSA_BACKEND_URL = "http://localhost:9009"
 
 if (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL) {
   MEDUSA_BACKEND_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL
@@ -18,7 +18,7 @@ const originalFetch = sdk.client.fetch.bind(sdk.client)
 
 sdk.client.fetch = async <T>(
   input: FetchInput,
-  init?: FetchArgs
+  init?: FetchArgs,
 ): Promise<T> => {
   const headers = init?.headers ?? {}
   let localeHeader: Record<string, string | null> | undefined
