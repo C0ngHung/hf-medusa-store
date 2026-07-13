@@ -1,50 +1,40 @@
-import { MedusaRequest, MedusaResponse } from '@medusajs/framework/http'
-import { SUGGESTIVE_SELLING_MODULE } from '../../../modules/suggestive-selling'
-import { CreateSuggestionRuleBody } from './validators'
-import { invalidateSuggestionCache } from './helpers'
+import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
+import { CreateSuggestionRuleBody } from "./validators";
+import { listSuggestionRulesWorkflow } from "../../../workflows/suggestive-selling/admin/list-suggestion-rules";
+import { createSuggestionRuleWorkflow } from "../../../workflows/suggestive-selling/admin/create-suggestion-rule";
 
 /**
  * GET /admin/suggestion-rules — list rules (SRS §6.1).
- * Query: type, is_active, limit, offset. Returns rules with items + conditions.
+ * Query: type, is_active, limit, offset. Thin route → workflow (no service here).
  */
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
-  const service: any = req.scope.resolve(SUGGESTIVE_SELLING_MODULE)
+  const {
+    type,
+    is_active,
+    limit = "50",
+    offset = "0",
+  } = req.query as Record<string, string>;
 
-  const { type, is_active, limit = '50', offset = '0' } = req.query as Record<string, string>
-  const filters: Record<string, unknown> = {}
-  if (type) filters.type = type
-  if (is_active !== undefined) filters.is_active = is_active === 'true'
+  const filters: Record<string, unknown> = {};
+  if (type) filters.type = type;
+  if (is_active !== undefined) filters.is_active = is_active === "true";
 
-  const [suggestion_rules, count] = await service.listAndCountSuggestionRules(filters, {
-    relations: ['items', 'conditions', 'sources'],
-    take: Number(limit),
-    skip: Number(offset),
-    order: { priority: 'ASC' },
-  })
+  const { result } = await listSuggestionRulesWorkflow(req.scope).run({
+    input: { filters, take: Number(limit), skip: Number(offset) },
+  });
 
-  res.json({ suggestion_rules, count, limit: Number(limit), offset: Number(offset) })
-}
+  res.json({ ...result, limit: Number(limit), offset: Number(offset) });
+};
 
 /**
- * POST /admin/suggestion-rules — create a rule with nested items + conditions.
+ * POST /admin/suggestion-rules — create a rule with nested items/conditions/sources.
  */
 export const POST = async (
   req: MedusaRequest<CreateSuggestionRuleBody>,
-  res: MedusaResponse
+  res: MedusaResponse,
 ) => {
-  const service: any = req.scope.resolve(SUGGESTIVE_SELLING_MODULE)
-  const { items, conditions, source_product_ids, ...ruleData } = req.validatedBody
-
-  const suggestion_rule = await service.createSuggestionRules({
-    ...ruleData,
-    items,
-    conditions,
-    // Fan the source product ids into pivot rows (SuggestionRuleSource).
-    sources: (source_product_ids ?? []).map((source_product_id) => ({
-      source_product_id,
-    })),
-  })
-
-  await invalidateSuggestionCache(req.scope, suggestion_rule.id)
-  res.status(201).json({ suggestion_rule })
-}
+  const { result } = await createSuggestionRuleWorkflow(req.scope).run({
+    input: req.validatedBody,
+  });
+  res.status(201).json({ suggestion_rule: result });
+};
