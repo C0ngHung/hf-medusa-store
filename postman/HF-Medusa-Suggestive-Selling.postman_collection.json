@@ -1,0 +1,191 @@
+{
+  "info": {
+    "name": "HF Medusa — Suggestive Selling (Admin)",
+    "description": "Admin CRUD for suggestion-rules (SRS §6.1). API-only per SRS (no UI).\n\nUsage:\n1. Run 'Auth › Login' first — it stores {{token}} automatically.\n2. Run 'Suggestion Rules › Create' — it stores {{ruleId}} for the follow-up requests.\n3. Then List / Get / Update / Delete.\n\nEdit collection variables (baseUrl, adminEmail, adminPassword, sourceProductId, suggestedProductId) to match your environment.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:9009" },
+    { "key": "adminEmail", "value": "postman@test.com" },
+    { "key": "adminPassword", "value": "Supersecret123" },
+    { "key": "token", "value": "" },
+    { "key": "ruleId", "value": "" },
+    {
+      "key": "sourceProductId",
+      "value": "prod_01KXCW9Y2YY9NSHH5JN1SAQXA8",
+      "description": "yonex-astrox-99-pro (from seed)"
+    },
+    {
+      "key": "suggestedProductId",
+      "value": "prod_01KXCW9Y2YQK7MTRY4R7M2HDDW",
+      "description": "yonex-bg65 (from seed)"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login (admin emailpass)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) { pm.collectionVariables.set('token', json.token); }",
+                  "pm.test('got token', () => pm.expect(json.token).to.be.a('string'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/emailpass",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "user", "emailpass"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Suggestion Rules (Admin)",
+      "item": [
+        {
+          "name": "Create rule (Tier-1 manual)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.suggestion_rule && j.suggestion_rule.id) { pm.collectionVariables.set('ruleId', j.suggestion_rule.id); }",
+                  "pm.test('201 created', () => pm.response.to.have.status(201));",
+                  "pm.test('has pivot source', () => pm.expect(j.suggestion_rule.sources.length).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Complete your setup (demo)\",\n  \"type\": \"product\",\n  \"tier\": \"manual\",\n  \"priority\": 5,\n  \"is_active\": true,\n  \"source_product_ids\": [\"{{sourceProductId}}\"],\n  \"items\": [\n    { \"suggested_product_id\": \"{{suggestedProductId}}\", \"display_order\": 0, \"custom_label\": \"Best Match\" }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules"]
+            }
+          }
+        },
+        {
+          "name": "List rules",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules?type=product&limit=50&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules"],
+              "query": [
+                { "key": "type", "value": "product" },
+                { "key": "is_active", "value": "true", "disabled": true },
+                { "key": "limit", "value": "50" },
+                { "key": "offset", "value": "0" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get rule by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/{{ruleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "{{ruleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Update rule",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Complete your setup (edited)\",\n  \"priority\": 8,\n  \"source_product_ids\": [\"{{sourceProductId}}\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/{{ruleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "{{ruleId}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete rule (soft)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/{{ruleId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "{{ruleId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Store (pending — Sơn 2.5.1)",
+      "description": "Store-facing suggestion endpoints are not implemented yet (Sơn's route wraps the evaluate-product-suggestions workflow). These will 404 until then.",
+      "item": [
+        {
+          "name": "Product suggestions (NOT YET IMPLEMENTED)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "<publishable-key>",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/products/{{sourceProductId}}/suggestions",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "store",
+                "products",
+                "{{sourceProductId}}",
+                "suggestions"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
