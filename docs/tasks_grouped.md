@@ -203,20 +203,20 @@
 
 ## Ngày 1
 
-- [ ] **1.3.1** — Hoàn thiện Solution Define cho Suggestive Selling
-- [ ] **1.3.3** — Chốt API contract giữa SuggestiveSelling, VoucherEngine và Cart
-- [ ] **1.3.4** — Chốt error response và customer message tiếng Việt
-- [ ] **1.3.7** — Tạo/review SPEC.md cho 2 module trước khi implement
+- [x] **1.3.1** — Hoàn thiện Solution Define cho Suggestive Selling
+- [x] **1.3.3** — Chốt API contract giữa SuggestiveSelling, VoucherEngine và Cart
+- [x] **1.3.4** — Chốt error response và customer message tiếng Việt
+- [x] **1.3.7** — Tạo/review SPEC.md cho 2 module trước khi implement
 
 > **Deliverable:** Solution Define/SPEC phần SuggestiveSelling sẵn sàng.
 
 ## Ngày 2
 
-- [ ] **2.1.5** — Code SuggestionEvent model
-- [ ] **2.2.1** — Code evaluateSuggestions workflow cho product detail page
-- [ ] **2.2.8** — Code data model support Tier 3 Behavioral, nhưng không implement logic Phase 2
-- [ ] **2.2.9** — Code response gồm image, name, price, discount_price, label, display_order
-- [ ] **2.3.8** — Code compact variant-selector response khi product có nhiều variants nhưng không có default
+- [x] **2.1.5** — Code SuggestionEvent model
+- [x] **2.2.1** — Code evaluateSuggestions workflow cho product detail page
+- [x] **2.2.8** — Code data model support Tier 3 Behavioral, nhưng không implement logic Phase 2
+- [x] **2.2.9** — Code response gồm image, name, price, discount_price, label, display_order
+- [x] **2.3.8** — Code compact variant-selector response khi product có nhiều variants nhưng không có default
 
 > **Deliverable:** Runtime contracts, event model và response format sẵn sàng.
 
