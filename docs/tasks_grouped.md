@@ -183,14 +183,37 @@
 >
 > ✅ Đã có sẵn (qua 2.2.4–2.2.7): model `category_complement_mapping`, migration, và seed 3 map. Phần **thiếu** là Admin CRUD API để quản lý map thay vì chỉ sửa qua seed script.
 
-- [ ] **2.5.10** — Code Admin API `GET /admin/category-complements` — list/filter `source_category_id`, `is_active`; phân trang `limit`(50)/`offset`(0) _(ngoài SRS — G3)_
-- [ ] **2.5.11** — Code Admin API `POST /admin/category-complements` — tạo map (source→complement category, `display_order`); **duplicate pair → 409** _(ngoài SRS — G3)_
-- [ ] **2.5.12** — Code Admin API `PUT /admin/category-complements/:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
-- [ ] **2.5.13** — Code Admin API `DELETE /admin/category-complements/:id` — xoá cứng map _(ngoài SRS — G3)_
-- [ ] **2.5.14** — Zod validators + invalidate cache gợi ý khi map đổi (bump `suggest:cart-rules:version`, xoá `suggest:product:v3:*`) _(ngoài SRS — G3)_
+- [x] **2.5.10** — Code Admin API `GET` list/filter `source_category_id`, `is_active`; phân trang `limit`/`offset` _(ngoài SRS — G3)_ _(⚠️ path thực tế `/admin/category-complement-mappings`, không phải `/admin/category-complements`)_
+- [x] **2.5.11** — Code Admin API `POST` — tạo map (source→complement, `display_order`) _(ngoài SRS — G3)_ _(⚠️ **chưa** có 409 duplicate-pair; validate source≠complement ở UI)_
+- [x] **2.5.12** — Code Admin API `PUT /:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
+- [x] **2.5.13** — Code Admin API `DELETE /:id` _(ngoài SRS — G3)_ _(⚠️ **soft-delete** qua MedusaService, không phải xoá cứng như mô tả)_
+- [ ] **2.5.14** — Zod validators ✅ nhưng **cache invalidation chưa làm** (chưa bump `suggest:cart-rules:version` / xoá `suggest:product:v3:*` khi map đổi) _(ngoài SRS — G3)_
 
-> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🔴 Chưa bắt đầu.
-> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; xếp sau các task Must-Have của SRS.
+> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🟢 **CRUD API + UI xong (2026-07-14, commit `4352707`)**; còn tồn: 409-duplicate (2.5.11), hard-delete (2.5.13), cache-invalidation (2.5.14).
+> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; các phần tồn xếp sau các task Must-Have của SRS.
+
+### 🖥️ Admin Dashboard UI — quản lý config (2026-07-14, commit `4352707`)
+
+> ⚠️ **NGOÀI SRS** — SRS §1.2 ghi admin panel là **"API only"** (UI Out of Scope). Đây là UI dashboard bổ sung (quyết định team) consume Admin API sẵn có + mới. Build pass 0 errors; admin tsc + `medusa build` xanh.
+
+Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
+
+- [x] **UI-1** Suggestion rules — list (tab Product/Cart) + create/edit/delete, reuse `/admin/suggestion-rules`. Tier **khoá `manual`** (chỉ tier engine tiêu thụ; `category`/`behavioral` trên rule không được engine dùng — Tier-2 nằm ở bảng riêng). Editor cart-condition **có cấu trúc** (chọn category theo tên, **không lộ `pcat_` id**); khối items/conditions ẩn/hiện theo type.
+- [x] **UI-2** Product bulk mappings (CR-04) — CRUD UI + **API mới** `/admin/product-bulk-mappings` (GET/POST/PUT/DELETE, soft-delete).
+- [x] **UI-3** Category complements (Tier-2) — CRUD UI (dùng API 2.5.10–2.5.14).
+- [x] **UI-4** Category top sellers — UI **read-only** + **API read mới** `/admin/category-top-sellers`.
+- [x] **UI-5** Suggestion events — UI **read-only** + filter (context/action) + **API read mới** `/admin/suggestion-events`.
+
+> Stack: `@medusajs/js-sdk` + `@medusajs/icons` + react-query; product/category picker resolve id→tên. Flat single-table configs resolve module service trực tiếp (không workflow); rule writes dùng lại endpoint workflow-backed sẵn có.
+
+### 🏷️ Kích hoạt CR-03 — product brand data (2026-07-14, commit `484537a`)
+
+> CR-03 (same-brand accessories, Sơn **2.4.5**) trước đây **inert** vì không product nào có `metadata.brand` → `readBrand()` luôn null → distinct brands = 0 ≠ 1, không bao giờ fire.
+
+- [x] Script idempotent `scripts/backfill-product-brands.ts` — suy brand từ handle (`yonex-`/`victor-`/`lining-`) → chạy: **39/39 product có brand**; re-run = **0 updated** (verified idempotent + bền).
+- [x] Seed `initial-data-seed.ts` set `metadata.brand` khi tạo product (seed mới tự có).
+
+> ⚠️ CR-03 chỉ fire khi giỏ **toàn 1 brand**, và ưu tiên **thấp hơn** CR-01/CR-02 (priority 30) → dễ bị CR-01 chiếm hết 3 slot. Cần giỏ single-brand đã "đủ bộ" để thấy rõ.
 
 ## Ngày 5
 
@@ -221,8 +244,6 @@
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
-- [ ] **5.5.5** — Hoàn thiện WBS diagramS
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần SuggestiveSelling foundation và WBS diagram.
 
@@ -353,7 +374,6 @@
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
 - [ ] **5.5.4** — Chuẩn bị demo checkout end-to-end
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần product/cart suggestion, one-tap add và analytics.
 
