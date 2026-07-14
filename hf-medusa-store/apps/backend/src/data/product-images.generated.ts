@@ -108,13 +108,6 @@ export const S3_IMAGES: Record<
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mf942cr2bk0cc6%40resize_w450_nl-01KWZYJD620GMQX2K9YXYZCP4C.webp",
     ],
   },
-  "victor-gr262-3pack": {
-    thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/9644e225-b294-4313-ad26-2bc6ffd0c4fc-01KXDJAGR0Z8Q6QA5D9S237CMX.png",
-    images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/9644e225-b294-4313-ad26-2bc6ffd0c4fc-01KXDJAGR0Z8Q6QA5D9S237CMX.png",
-    ],
-  },
   "victor-gr262-grip": {
     thumbnail:
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/quan-can-vot-cau-long-victor-gr262drm-xanh_1741312232-01KWZXVGQAF5RBDY1957VDZ8Q4.webp",
@@ -207,13 +200,6 @@ export const S3_IMAGES: Record<
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cang-cuoc-vot-yonex-bg65-1-01KWZWXTGB5SK1GK82YG5G92SY.webp",
     ],
   },
-  "yonex-bg65-3pack": {
-    thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/112adb35-d8e9-4a04-a3ff-2af4df7466d5-01KXDJ6ATCFX39E5ZTSK6SQKX5.png",
-    images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/112adb35-d8e9-4a04-a3ff-2af4df7466d5-01KXDJ6ATCFX39E5ZTSK6SQKX5.png",
-    ],
-  },
   "yonex-bg80-power": {
     thumbnail:
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/day-cuoc-cang-vot-yonex-bg80-power-1-01KWZX3R30WNJWKZMATY60372H.webp",
@@ -226,13 +212,6 @@ export const S3_IMAGES: Record<
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
-    ],
-  },
-  "yonex-mavis-350-3box": {
-    thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mjjkscxq9hqe92%40resize_w450_nl-01KXDHXWX8QFHQPN83J1J2DYEH.webp",
-    images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mjjkscxq9hqe92%40resize_w450_nl-01KXDHXWX8QFHQPN83J1J2DYEH.webp",
     ],
   },
   "yonex-nanoflare-800": {
