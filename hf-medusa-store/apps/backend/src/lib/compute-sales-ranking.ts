@@ -5,7 +5,15 @@
  */
 
 export type OrderLike = {
-  items?: { product_id?: string | null; quantity?: number | null }[];
+  items?: {
+    product_id?: string | null;
+    quantity?: number | null;
+    // On a Medusa order line item, `quantity` is a computed field backed by the
+    // `detail` (order_item) relation. Depending on the graph field selection the
+    // value can arrive either directly on the item or nested under `detail`, so
+    // accept both here — the aggregation reads whichever is present.
+    detail?: { quantity?: number | null } | null;
+  }[];
 };
 
 export type TopSellerRow = {
@@ -27,7 +35,7 @@ export function computeSalesRanking(
   for (const order of orders ?? []) {
     for (const item of order.items ?? []) {
       if (!item?.product_id) continue;
-      const qty = item.quantity ?? 0;
+      const qty = item.quantity ?? item.detail?.quantity ?? 0;
       salesByProduct.set(
         item.product_id,
         (salesByProduct.get(item.product_id) ?? 0) + qty,
