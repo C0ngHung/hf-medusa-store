@@ -66,5 +66,8 @@ module.exports = defineConfig({
     {
       resolve: './src/modules/suggestive-selling',
     },
+    {
+      resolve: './src/modules/voucher-engine',
+    },
   ],
 })

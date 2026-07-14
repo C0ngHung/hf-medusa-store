@@ -58,3 +58,6 @@ Thumbs.db
 
 # ── Claude Code personal overrides ──
 .claude/settings.local.json
+
+# ── Local working docs (per-dev scratch; never commit) ──
+workbench/
