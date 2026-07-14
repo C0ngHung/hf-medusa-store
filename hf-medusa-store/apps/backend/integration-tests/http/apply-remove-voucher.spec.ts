@@ -1,0 +1,274 @@
+/**
+ * Store voucher apply/remove — REAL HTTP integration (SPEC §23.5, Decision E/G;
+ * tasks 3.4.1, 3.4.2, 3.4.6, 3.4.7, 3.4.8, 3.4.10, 3.4.14, 3.5.1/3.5.7/3.5.8).
+ *
+ * Exercises the actual `POST`/`DELETE /store/carts/:id/voucher` routes (not
+ * just the workflow directly) against a real seeded Cart, boots the full app
+ * via `medusaIntegrationTestRunner`. Covers: tamper rejection (SEC-01), a
+ * real apply creating a real ephemeral Promotion and reconciling
+ * `updated_cart_total`, the one-active-voucher replace-confirmation gate
+ * (409 → `?replace=true`), and remove (idempotent, no usage increment).
+ *
+ * Store routes require a publishable API key (`x-publishable-api-key`
+ * header) — this test's disposable DB has no catalog seed, so a minimal
+ * sales-channel + publishable-key pair is created once in `beforeAll` via the
+ * same core workflows the repo's own `initial-data-seed.ts` uses.
+ */
+import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
+import { Modules } from "@medusajs/framework/utils";
+import {
+  createApiKeysWorkflow,
+  createSalesChannelsWorkflow,
+  linkSalesChannelsToApiKeyWorkflow,
+} from "@medusajs/medusa/core-flows";
+import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
+import type VoucherEngineService from "../../src/modules/voucher-engine/service";
+
+jest.setTimeout(60_000);
+// Known infra flake (not an assertion failure) — see
+// .claude/lessons/voucher-engine/2026-07-14-redis-bullmq-teardown-race.md.
+// Absorbs the Redis/BullMQ teardown race between heavy full-app tests in the
+// same file; a genuinely broken assertion still fails identically on retry.
+jest.retryTimes(2);
+
+medusaIntegrationTestRunner({
+  testSuite: ({ getContainer, api }) => {
+    describe("POST/DELETE /store/carts/:id/voucher (real HTTP, tasks 3.4.x/3.5.x)", () => {
+      const FAR_PAST = new Date("2020-01-01T00:00:00Z");
+      const FAR_FUTURE = new Date("2999-01-01T00:00:00Z");
+      let publishableKeyHeaders: { headers: Record<string, string> };
+
+      function container() {
+        return getContainer();
+      }
+
+      // `beforeEach`, not `beforeAll`: `medusaIntegrationTestRunner` resets
+      // the database between tests in the same file (verified empirically —
+      // a publishable key created in `beforeAll` was gone by the second
+      // test), so the sales-channel + publishable-key pair must be recreated
+      // before every test, not once for the whole suite.
+      beforeEach(async () => {
+        const {
+          result: [salesChannel],
+        } = await createSalesChannelsWorkflow(container()).run({
+          input: { salesChannelsData: [{ name: "Voucher Test Channel" }] },
+        });
+        const {
+          result: [apiKey],
+        } = await createApiKeysWorkflow(container()).run({
+          input: {
+            api_keys: [
+              {
+                title: "Voucher Test Key",
+                type: "publishable",
+                created_by: "",
+              },
+            ],
+          },
+        });
+        await linkSalesChannelsToApiKeyWorkflow(container()).run({
+          input: { id: apiKey.id, add: [salesChannel.id] },
+        });
+        publishableKeyHeaders = {
+          headers: { "x-publishable-api-key": apiKey.token },
+        };
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async function createCart(items: any[]): Promise<{ id: string }> {
+        const cartModuleService = container().resolve(Modules.CART);
+        const cart = await cartModuleService.createCarts({
+          currency_code: "vnd",
+          items,
+        } as any);
+        return (Array.isArray(cart) ? cart[0] : cart) as { id: string };
+      }
+
+      async function createVoucher(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        overrides: Record<string, any>,
+      ) {
+        const service = container().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        return service.createVoucherConfigs({
+          valid_from: FAR_PAST,
+          valid_to: FAR_FUTURE,
+          ...overrides,
+        } as any);
+      }
+
+      it("rejects a body containing pricing/identity fields with 400 (strict rejection, SEC-01 tamper test)", async () => {
+        const cart = await createCart([
+          { title: "Racket", unit_price: 1_000_000, quantity: 1 },
+        ]);
+
+        await expect(
+          api.post(
+            `/store/carts/${cart.id}/voucher`,
+            {
+              code: "TAMPER10",
+              discount_amount: 999_999,
+              cart_id: "some-other-cart",
+            },
+            publishableKeyHeaders,
+          ),
+        ).rejects.toMatchObject({
+          response: { status: 400 },
+        });
+      });
+
+      it("applies a valid voucher: attaches a real ephemeral Promotion and returns the authoritative cart total (tasks 3.4.1/3.4.4/3.4.14)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_http",
+          },
+        ]);
+        await createVoucher({
+          code: "HTTPAPPLY10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+        });
+
+        const { status, data } = await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "httpapply10" }, // lowercase on purpose — normalized server-side
+          publishableKeyHeaders,
+        );
+
+        expect(status).toBe(200);
+        expect(data.success).toBe(true);
+        expect(data.discount_amount).toBe(100_000);
+        expect(data.discount_capped).toBe(false);
+        expect(data.cap_explanation).toBeNull();
+        expect(data.updated_cart_total).toBe(900_000);
+        expect(data.voucher_details.code).toBe("HTTPAPPLY10");
+        expect(data.voucher_details.type).toBe("percentage");
+        expect(data.voucher_details.value).toBe(1000);
+      });
+
+      it("returns 409 VOUCHER_REPLACE_REQUIRED when applying a second voucher without ?replace=true (tasks 3.4.6/3.4.7)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_replace",
+          },
+        ]);
+        await createVoucher({
+          code: "FIRSTVOUCHER",
+          discount_type: "percentage",
+          discount_value: 1000,
+        });
+        await createVoucher({
+          code: "SECONDVOUCHER",
+          discount_type: "percentage",
+          discount_value: 2000,
+        });
+
+        await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "FIRSTVOUCHER" },
+          publishableKeyHeaders,
+        );
+
+        await expect(
+          api.post(
+            `/store/carts/${cart.id}/voucher`,
+            { code: "SECONDVOUCHER" },
+            publishableKeyHeaders,
+          ),
+        ).rejects.toMatchObject({
+          response: {
+            status: 409,
+            data: expect.objectContaining({
+              code: "VOUCHER_REPLACE_REQUIRED",
+              type: "conflict",
+              details: { current_code: "FIRSTVOUCHER" },
+            }),
+          },
+        });
+
+        // Confirming with ?replace=true swaps the voucher (task 3.4.8).
+        const { status, data } = await api.post(
+          `/store/carts/${cart.id}/voucher?replace=true`,
+          { code: "SECONDVOUCHER" },
+          publishableKeyHeaders,
+        );
+        expect(status).toBe(200);
+        expect(data.voucher_details.code).toBe("SECONDVOUCHER");
+        expect(data.discount_amount).toBe(200_000); // 20% of 1,000,000
+      });
+
+      it("removes an applied voucher: reverts the cart total and does not increment usage_count (tasks 3.4.2/3.4.10)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_remove",
+          },
+        ]);
+        const voucher = await createVoucher({
+          code: "REMOVEME10",
+          discount_type: "percentage",
+          discount_value: 1000,
+        });
+
+        await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "REMOVEME10" },
+          publishableKeyHeaders,
+        );
+
+        const { status, data } = await api.delete(
+          `/store/carts/${cart.id}/voucher`,
+          publishableKeyHeaders,
+        );
+
+        expect(status).toBe(200);
+        expect(data.success).toBe(true);
+        expect(data.updated_cart_total).toBe(1_000_000);
+        expect(data.message).toBe("Đã gỡ mã giảm giá.");
+
+        const service = container().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        const reloaded = await service.retrieveVoucherConfig(
+          (voucher as { id: string }).id,
+        );
+        expect(reloaded.usage_count).toBe(0); // Rule 12 — apply/remove never touches usage_count
+
+        // `cart.metadata.voucher` must actually be cleared, not just left
+        // stale (regression check: `CartModuleService.updateCarts`'s
+        // `metadata` patch is a merge, not a replace — a patch that merely
+        // OMITS the `voucher` key is a no-op for it; only an explicit `""`
+        // value deletes it — see the fix in `remove-voucher.ts`).
+        const cartModuleService = container().resolve(Modules.CART);
+        const reloadedCart = await cartModuleService.retrieveCart(cart.id, {
+          select: ["id", "metadata"],
+        });
+        expect(
+          (reloadedCart.metadata as Record<string, unknown> | null)?.voucher,
+        ).toBeUndefined();
+      });
+
+      it("removing when no voucher is active is a 200 idempotent no-op (API_CONTRACT §1.3)", async () => {
+        const cart = await createCart([
+          { title: "Grip", unit_price: 50_000, quantity: 1 },
+        ]);
+
+        const { status, data } = await api.delete(
+          `/store/carts/${cart.id}/voucher`,
+          publishableKeyHeaders,
+        );
+        expect(status).toBe(200);
+        expect(data.success).toBe(true);
+      });
+    });
+  },
+});
