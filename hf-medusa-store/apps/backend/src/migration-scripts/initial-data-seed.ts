@@ -21,6 +21,10 @@ import {
 } from "@medusajs/medusa/core-flows";
 import { S3_IMAGES } from "../data/product-images.generated";
 import seedSuggestiveSelling from "../scripts/seed-suggestive-selling";
+import seedVoucherEngine from "../scripts/seed-voucher-engine";
+import seedCustomers from "../scripts/seed-customers";
+import seedOrders from "../scripts/seed-orders";
+import computeCategoryTopSellers from "../jobs/compute-category-top-sellers";
 
 /**
  * Badminton catalog seed (VND).
@@ -53,6 +57,18 @@ const CATEGORY_NAMES = [
 // Mock image placeholder for products without real photos yet.
 const mockImg = (handle: string) =>
   `https://placehold.co/800x800/png?text=${encodeURIComponent(handle)}`;
+
+// Brand inferred from the handle prefix → product metadata.brand. Powers CR-03
+// (same-brand accessories, SUGG-004), read via readBrand() in the cart engine.
+// Keep in sync with scripts/backfill-product-brands.ts (which backfills existing
+// data). Returns null for unbranded/generic products.
+const brandOf = (handle: string): string | null => {
+  const h = handle.toLowerCase();
+  if (h.startsWith("yonex-")) return "Yonex";
+  if (h.startsWith("victor-")) return "Victor";
+  if (h.startsWith("lining-")) return "Li-Ning";
+  return null;
+};
 
 // Real product photos (S3) live in ../data/product-images.generated.ts —
 // regenerated from the DB after uploads. Missing products fall back to mockImg.
@@ -287,34 +303,145 @@ const PRODUCTS: ProductSeed[] = [
     80,
   ),
 
-  // ── Cầu (Shuttlecocks) ──
+  // ── Cầu lông (Shuttlecocks) — 5 quả cầu đơn, mỗi loại có combo 3 ống tương ứng ──
   single(
-    "Yonex Mavis 350 (nhựa)",
+    "Yonex Mavis 350",
     "yonex-mavis-350",
     "SHU-MAVIS350",
     "Shuttlecocks",
     350_000,
-    "Cầu nhựa bền, tập luyện, hộp 6 quả.",
+    "Cầu nhựa bền, tập luyện, 1 ống 6 quả.",
     120,
   ),
   single(
-    "Yonex Aerosensa 30 (lông)",
+    "Yonex Aerosensa 30",
     "yonex-as30",
     "SHU-AS30",
     "Shuttlecocks",
     850_000,
-    "Cầu lông vũ thi đấu, hộp 12 quả.",
+    "Cầu lông vũ thi đấu, 1 ống 12 quả.",
+    130,
+  ),
+  single(
+    "Yonex Aerosensa 50",
+    "yonex-as50",
+    "SHU-AS50",
+    "Shuttlecocks",
+    980_000,
+    "Cầu lông vũ thi đấu cao cấp, 1 ống 12 quả.",
+    130,
+  ),
+  single(
+    "Yonex Mavis 2000",
+    "yonex-mavis-2000",
+    "SHU-MAVIS2000",
+    "Shuttlecocks",
+    420_000,
+    "Cầu nhựa cao cấp, độ bền cao, 1 ống 6 quả.",
+    120,
+  ),
+  single(
+    "Li-Ning A+62",
+    "lining-a62",
+    "SHU-LNA62",
+    "Shuttlecocks",
+    620_000,
+    "Cầu lông vũ tập luyện - thi đấu, 1 ống 12 quả.",
     130,
   ),
 
-  // ── Ống cầu bulk (Tubes) ──
+  // ── Ống cầu (Tubes) — mỗi loại: bản 1 ống (single, consumable của CR-04) + combo 3 ống (bulk) ──
+  // 1 ống (single): bỏ vào giỏ qty 1 → CR-04 gợi combo 3 ống cùng loại.
   single(
-    "Yonex AS30 3-Tube combo 3 ống",
+    "Yonex Mavis 350 - 1 ống",
+    "yonex-mavis-350-1tube",
+    "TUB-MAVIS350X1",
+    "Tubes",
+    350_000,
+    "1 ống cầu Mavis 350 (6 quả).",
+    120,
+  ),
+  single(
+    "Yonex Aerosensa 30 - 1 ống",
+    "yonex-as30-1tube",
+    "TUB-AS30X1",
+    "Tubes",
+    850_000,
+    "1 ống cầu Aerosensa 30 (12 quả).",
+    130,
+  ),
+  single(
+    "Yonex Aerosensa 50 - 1 ống",
+    "yonex-as50-1tube",
+    "TUB-AS50X1",
+    "Tubes",
+    980_000,
+    "1 ống cầu Aerosensa 50 (12 quả).",
+    130,
+  ),
+  single(
+    "Yonex Mavis 2000 - 1 ống",
+    "yonex-mavis-2000-1tube",
+    "TUB-MAVIS2000X1",
+    "Tubes",
+    420_000,
+    "1 ống cầu Mavis 2000 (6 quả).",
+    120,
+  ),
+  single(
+    "Li-Ning A+62 - 1 ống",
+    "lining-a62-1tube",
+    "TUB-LNA62X1",
+    "Tubes",
+    620_000,
+    "1 ống cầu Li-Ning A+62 (12 quả).",
+    130,
+  ),
+
+  // combo 3 ống (bulk): thứ CR-04 gợi ý khi có bản 1 ống trong giỏ.
+  single(
+    "Yonex Mavis 350 - Combo 3 ống",
+    "yonex-mavis-350-3tube",
+    "TUB-MAVIS350X3",
+    "Tubes",
+    990_000,
+    "Combo 3 ống cầu Mavis 350, giá tốt hơn/ống.",
+    360,
+  ),
+  single(
+    "Yonex Aerosensa 30 - Combo 3 ống",
     "yonex-as30-3tube",
     "TUB-AS30X3",
     "Tubes",
-    2_300_000,
+    2_400_000,
     "Combo 3 ống cầu Aerosensa 30, giá tốt hơn/ống.",
+    380,
+  ),
+  single(
+    "Yonex Aerosensa 50 - Combo 3 ống",
+    "yonex-as50-3tube",
+    "TUB-AS50X3",
+    "Tubes",
+    2_760_000,
+    "Combo 3 ống cầu Aerosensa 50, giá tốt hơn/ống.",
+    380,
+  ),
+  single(
+    "Yonex Mavis 2000 - Combo 3 ống",
+    "yonex-mavis-2000-3tube",
+    "TUB-MAVIS2000X3",
+    "Tubes",
+    1_180_000,
+    "Combo 3 ống cầu Mavis 2000, giá tốt hơn/ống.",
+    360,
+  ),
+  single(
+    "Li-Ning A+62 - Combo 3 ống",
+    "lining-a62-3tube",
+    "TUB-LNA62X3",
+    "Tubes",
+    1_740_000,
+    "Combo 3 ống cầu Li-Ning A+62, giá tốt hơn/ống.",
     380,
   ),
 
@@ -379,35 +506,6 @@ const PRODUCTS: ProductSeed[] = [
     1_100_000,
     "Túi vợt Victor 2 ngăn.",
     1300,
-  ),
-
-  // Bulk/multipack — nguồn gợi ý cho CR-04 (single qty=1 → bulk cùng loại).
-  single(
-    "Yonex BG65 combo 3 cuộn",
-    "yonex-bg65-3pack",
-    "STR-BG65X3",
-    "Strings",
-    330_000,
-    "Combo 3 cuộn dây BG65, giá tốt hơn/cuộn.",
-    60,
-  ),
-  single(
-    "Victor GR262 combo 3 cuộn",
-    "victor-gr262-3pack",
-    "GRP-GR262X3",
-    "Grips",
-    190_000,
-    "Combo 3 cuộn quấn cán GR262.",
-    90,
-  ),
-  single(
-    "Yonex Mavis 350 combo 3 hộp",
-    "yonex-mavis-350-3box",
-    "SHU-MAVIS350X3",
-    "Shuttlecocks",
-    950_000,
-    "Combo 3 hộp cầu Mavis 350, giá tốt hơn/hộp.",
-    360,
   ),
 ];
 
@@ -612,6 +710,10 @@ export default async function initial_data_seed({
         description: p.description,
         weight: p.weight,
         status: ProductStatus.PUBLISHED,
+        // CR-03 brand (SUGG-004); omitted when generic/unbranded.
+        ...(brandOf(p.handle)
+          ? { metadata: { brand: brandOf(p.handle) } }
+          : {}),
         shipping_profile_id: shippingProfile.id,
         thumbnail: S3_IMAGES[p.handle]?.thumbnail ?? mockImg(p.handle),
         images: (S3_IMAGES[p.handle]?.images ?? [mockImg(p.handle)]).map(
@@ -652,8 +754,24 @@ export default async function initial_data_seed({
     `[seed] Catalog done. ${CATEGORY_NAMES.length} categories, ${PRODUCTS.length} products (VND).`,
   );
 
-  // Chain the SuggestiveSelling seed so a single `db:migrate` leaves BOTH the
-  // catalog AND the suggestion data (rules / complements / bulk mappings) ready.
-  // Runs after the catalog exists so it can resolve products/categories by handle.
-  await seedSuggestiveSelling({ container });
+  // Chain every downstream seed so ONE `db:migrate` leaves a fully demo-ready DB.
+  // Ordered by dependency — each step is idempotent, so re-running migrate is safe:
+  //   1. suggestive     — rules / complement maps / bulk mappings (needs catalog)
+  //   2. voucher        — voucher configs + global cap (needs categories)
+  //   3. customers      — login-capable demo accounts (see DEMO_SCENARIOS.md)
+  //   4. orders         — demo orders for those customers (needs customers + products)
+  //   5. top-seller job — aggregate those orders → category_top_seller snapshot
+  //      (SUGG-001 Tier 2 / SPEC A.6). Runs the REAL job so the Tier-2 ranking is
+  //      order-derived; `seed-category-top-sellers.ts` stays a synthetic cold-start
+  //      fallback for a DB with no orders.
+  logger.info(
+    "[seed] chaining module seeds (suggestive → voucher → customers → orders → top-sellers)...",
+  );
+  // The seeds are authored as `medusa exec` scripts (ExecArgs = { container, args }).
+  const execArgs = { container, args: [] as string[] };
+  await seedSuggestiveSelling(execArgs);
+  await seedVoucherEngine(execArgs);
+  await seedCustomers(execArgs);
+  await seedOrders(execArgs);
+  await computeCategoryTopSellers(container);
 }

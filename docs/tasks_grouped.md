@@ -152,7 +152,13 @@
 - [x] **2.2.10** — Code max result 3-5 products cho product-level suggestions
 
 > **Deliverable:** Product-level suggestion logic đáp ứng SUGG-001. ✅ _(workflow evaluate-product-suggestions + unit test T-SUGG-01/02)_
-> ⚠️ Tier-2 top-seller đang stub newest-first → nhánh riêng `feat/suggestive-selling-topseller-ranking` (phương án B+C).
+> ✅ **Tier-2 top-seller (2026-07-14):** hết stub — job `compute-category-top-sellers` aggregate order → `category_top_seller` (đã fix bug đọc `items.detail.quantity`, commit `c064efa`); fallback newest-first khi snapshot rỗng. Seed order/customer + snapshot chain vào `db:migrate`.
+>
+> **📌 Việc phát sinh 2026-07-14 (ngoài số task, nhánh `feat/one-tap-add-storefront`):**
+>
+> - Data cầu/ống tái cấu trúc: Shuttlecocks = 5 quả cầu; Tubes = 5×"1 ống" (single) + 5×"combo 3 ống" (bulk); xoá 3 combo string/grip/box gây nhầm.
+> - **CR-04 chạy thật**: "1 ống" trong giỏ → gợi "combo 3 ống" (verified `rule=CR-04`). `product_bulk_mapping` = 5 cặp 1ống→3ống.
+> - One-tap add wire qua endpoint attributed `POST /store/carts/:id/suggested-items` (SUGG-003) + backend `addSuggestedItemWorkflow`.
 
 ## Ngày 4
 
@@ -160,24 +166,68 @@
 - [x] **2.5.5** — Code Admin API PUT /admin/suggestion-rules/:id
 - [x] **2.5.6** — Code Admin API DELETE /admin/suggestion-rules/:id bằng soft delete
 - [x] **2.5.7** — Validate input cho suggestion APIs _(zod validators)_
-- [~] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion
-  - 📝 **Quyết định tạm (2026-07-13):** khi không có suggestion → **trả `[]`** (workflow đã tự trả rỗng). Phần chuẩn hóa _vỏ response_ `{suggestions: []}` + degrade-to-empty (BR-10) nằm ở **store route của Sơn (2.5.1)** → **BÀN LẠI SAU** khi có route đó.
+- [x] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion _(✅ 2026-07-14: store route của Sơn (2.5.1/2.5.2) trả `{suggestions: [], count: 0}` + degrade-to-empty 200 BR-10; workflow admin trả rỗng)_
 - [ ] **2.5.9** — Chuẩn hóa error response và message tiếng Việt _(cần `middlewares.ts` — file chung, coordinate cả team, Part C)_
 
-> **Deliverable:** Admin APIs cho rule management. 🟡 CRUD+validate ✅; 2.5.8 chốt tạm (bàn sau), 2.5.9 chờ chuẩn error i18n chung.
+> **Deliverable:** Admin APIs cho rule management. 🟢 CRUD+validate ✅, 2.5.8 ✅ (degrade-to-empty qua route Sơn); 🟡 chỉ còn 2.5.9 chờ chuẩn error i18n chung (`middlewares.ts`, Part C).
+
+### Category Complement Map — Admin CRUD
+
+> ⚠️ **NGOÀI SRS.pdf** — verified 2026-07-14 khi đọc trực tiếp `SRS_SuggestiveSelling_Voucher_v1.0.pdf`:
+> SRS **không** có entity `CategoryComplementMapping` (§5.1 Data Model chỉ liệt kê `SuggestionRule`,
+> `SuggestionRuleItem`, `CartSuggestionCondition`, `SuggestionEvent`) và **không** có endpoint
+> `/admin/category-complements` (§6.1 chỉ có CRUD `/admin/suggestion-rules`). SUGG-001 (trang 5) chỉ
+> mô tả Tier-2 mapping bằng **prose giá trị cố định** (rackets→strings/grips/bags…).
+> → Việc model-hoá thành bảng + CRUD là **quyết định thiết kế G3 của team** (xem [SPEC.md:73](SPEC.md#L73),
+> [API_CONTRACT §6](API_CONTRACT_Suggestive_Voucher_Cart.md#L297-L300)), **không phải yêu cầu bắt buộc từ SRS**.
+>
+> ✅ Đã có sẵn (qua 2.2.4–2.2.7): model `category_complement_mapping`, migration, và seed 3 map. Phần **thiếu** là Admin CRUD API để quản lý map thay vì chỉ sửa qua seed script.
+
+- [x] **2.5.10** — Code Admin API `GET` list/filter `source_category_id`, `is_active`; phân trang `limit`/`offset` _(ngoài SRS — G3)_ _(⚠️ path thực tế `/admin/category-complement-mappings`, không phải `/admin/category-complements`)_
+- [x] **2.5.11** — Code Admin API `POST` — tạo map (source→complement, `display_order`) _(ngoài SRS — G3)_ _(⚠️ **chưa** có 409 duplicate-pair; validate source≠complement ở UI)_
+- [x] **2.5.12** — Code Admin API `PUT /:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
+- [x] **2.5.13** — Code Admin API `DELETE /:id` _(ngoài SRS — G3)_ _(⚠️ **soft-delete** qua MedusaService, không phải xoá cứng như mô tả)_
+- [ ] **2.5.14** — Zod validators ✅ nhưng **cache invalidation chưa làm** (chưa bump `suggest:cart-rules:version` / xoá `suggest:product:v3:*` khi map đổi) _(ngoài SRS — G3)_
+
+> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🟢 **CRUD API + UI xong (2026-07-14, commit `4352707`)**; còn tồn: 409-duplicate (2.5.11), hard-delete (2.5.13), cache-invalidation (2.5.14).
+> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; các phần tồn xếp sau các task Must-Have của SRS.
+
+### 🖥️ Admin Dashboard UI — quản lý config (2026-07-14, commit `4352707`)
+
+> ⚠️ **NGOÀI SRS** — SRS §1.2 ghi admin panel là **"API only"** (UI Out of Scope). Đây là UI dashboard bổ sung (quyết định team) consume Admin API sẵn có + mới. Build pass 0 errors; admin tsc + `medusa build` xanh.
+
+Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
+
+- [x] **UI-1** Suggestion rules — list (tab Product/Cart) + create/edit/delete, reuse `/admin/suggestion-rules`. Tier **khoá `manual`** (chỉ tier engine tiêu thụ; `category`/`behavioral` trên rule không được engine dùng — Tier-2 nằm ở bảng riêng). Editor cart-condition **có cấu trúc** (chọn category theo tên, **không lộ `pcat_` id**); khối items/conditions ẩn/hiện theo type.
+- [x] **UI-2** Product bulk mappings (CR-04) — CRUD UI + **API mới** `/admin/product-bulk-mappings` (GET/POST/PUT/DELETE, soft-delete).
+- [x] **UI-3** Category complements (Tier-2) — CRUD UI (dùng API 2.5.10–2.5.14).
+- [x] **UI-4** Category top sellers — UI **read-only** + **API read mới** `/admin/category-top-sellers`.
+- [x] **UI-5** Suggestion events — UI **read-only** + filter (context/action) + **API read mới** `/admin/suggestion-events`.
+
+> Stack: `@medusajs/js-sdk` + `@medusajs/icons` + react-query; product/category picker resolve id→tên. Flat single-table configs resolve module service trực tiếp (không workflow); rule writes dùng lại endpoint workflow-backed sẵn có.
+
+### 🏷️ Kích hoạt CR-03 — product brand data (2026-07-14, commit `484537a`)
+
+> CR-03 (same-brand accessories, Sơn **2.4.5**) trước đây **inert** vì không product nào có `metadata.brand` → `readBrand()` luôn null → distinct brands = 0 ≠ 1, không bao giờ fire.
+
+- [x] Script idempotent `scripts/backfill-product-brands.ts` — suy brand từ handle (`yonex-`/`victor-`/`lining-`) → chạy: **39/39 product có brand**; re-run = **0 updated** (verified idempotent + bền).
+- [x] Seed `initial-data-seed.ts` set `metadata.brand` khi tạo product (seed mới tự có).
+
+> ⚠️ CR-03 chỉ fire khi giỏ **toàn 1 brand**, và ưu tiên **thấp hơn** CR-01/CR-02 (priority 30) → dễ bị CR-01 chiếm hết 3 slot. Cần giỏ single-brand đã "đủ bộ" để thấy rõ.
 
 ## Ngày 5
 
-- [ ] **2.3.7** — Code one-tap add default variant vào cart với quantity 1
-- [ ] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion
-- [ ] **2.3.10** — Code toast message xác nhận add-to-cart
-- [ ] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add
-- [ ] **4.1.1** — Kết nối cart với SuggestiveSelling result
-- [ ] **4.1.4** — Gắn suggested products vào cart/demo response
-- [ ] **4.3.1** — Demo flow product detail → product-level suggestions
-- [ ] **4.3.2** — Demo flow one-tap add suggested product to cart
+- [x] **2.3.7** — Code one-tap add default variant vào cart với quantity 1 _(UI: Sơn `suggestion-card`; add đi qua endpoint attributed)_
+- [x] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion _(Sơn `ADDED_STATE_MS=3000`)_
+- [x] **2.3.10** — Code toast message xác nhận add-to-cart _(Sơn carousel toast)_
+- [x] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add _(undo theo `line_item.id` sau khi wire attributed)_
+- [x] **4.1.1** — Kết nối cart với SuggestiveSelling result _(templates product/cart nhúng carousel — Sơn)_
+- [x] **4.1.4** — Gắn suggested products vào cart/demo response _(qua `POST /store/carts/:id/suggested-items` → attribution ghi vào `line_item.metadata`)_
+- [x] **4.3.1** — Demo flow product detail → product-level suggestions
+- [x] **4.3.2** — Demo flow one-tap add suggested product to cart
 
-> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart.
+> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart. ✅
+> **Ghi chú (2026-07-14):** UI storefront do **Sơn** làm (commit `7f84378`, đánh số 4.4.x). **one-tap add đã wire lại qua endpoint attributed** `POST /store/carts/:id/suggested-items` (SUGG-003) để ghi attribution vào line-item metadata + emit `add_to_cart` server-side (nhánh `feat/one-tap-add-storefront`). Chồng lấn ownership Linh↔Sơn — cần coordinate.
 
 ## Ngày 6
 
@@ -194,8 +244,6 @@
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
-- [ ] **5.5.5** — Hoàn thiện WBS diagram
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần SuggestiveSelling foundation và WBS diagram.
 
@@ -242,33 +290,57 @@
 
 ## Ngày 4
 
-- [ ] **2.5.1** — Code Store API GET /store/products/:id/suggestions
-- [ ] **2.5.2** — Code Store API GET /store/cart/suggestions
-- [ ] **2.5.3** — Code Store API POST /store/suggestions/:id/events
-- [ ] **2.6.1** — Code subscriber cho cart.updated
-- [ ] **2.6.2** — Code re-evaluate suggestions khi item added/removed/quantity updated
-- [ ] **2.6.3** — Code Redis key product:{product_id}:suggestions
-- [ ] **2.6.4** — Code Redis key cart:{cart_id}:suggestions
-- [ ] **2.6.5** — Code Redis TTL 5 phút cho suggestion results
-- [ ] **2.6.6** — Code cache invalidation ngay khi cart change
-- [ ] **2.6.8** — Code SuggestionEvent impression
-- [ ] **2.6.9** — Code SuggestionEvent tap
-- [ ] **2.6.10** — Code SuggestionEvent add_to_cart
-- [ ] **2.6.11** — Code SuggestionEvent dismiss
-- [ ] **2.6.12** — Code event payload đầy đủ: rule_id, source_context, source_product_id/cart, suggested_product_id, customer_id, session_id, timestamp, action
+- [x] **2.5.1** — Code Store API GET /store/products/:id/suggestions
+- [x] **2.5.2** — Code Store API GET /store/cart/suggestions
+- [x] **2.5.3** — Code Store API POST /store/suggestions/:id/events
+- [x] **2.6.1** — Code subscriber cho cart.updated
+- [x] **2.6.2** — Code re-evaluate suggestions khi item added/removed/quantity updated
+- [x] **2.6.3** — Code Redis key product:{product_id}:suggestions
+- [x] **2.6.4** — Code Redis key cart:{cart_id}:suggestions
+- [x] **2.6.5** — Code Redis TTL 5 phút cho suggestion results
+- [x] **2.6.6** — Code cache invalidation ngay khi cart change
+- [x] **2.6.8** — Code SuggestionEvent impression
+- [x] **2.6.9** — Code SuggestionEvent tap
+- [x] **2.6.10** — Code SuggestionEvent add_to_cart
+- [x] **2.6.11** — Code SuggestionEvent dismiss
+- [x] **2.6.12** — Code event payload đầy đủ: rule_id, source_context, source_product_id/cart, suggested_product_id, customer_id, session_id, timestamp, action
 
 > **Deliverable:** Store APIs, cache và analytics events hoàn thành.
 
 ## Ngày 5
 
-- [ ] **2.4.4** — Code badge_text “Add for FREE shipping!” cho CR-02
-- [ ] **2.6.7** — Code stock availability cache cho suggested products nếu cần
-- [ ] **2.7.4** — Đảm bảo cold miss fallback sang DB query và cache write
-- [ ] **2.7.5** — Đảm bảo frontend/demo có thể hiển thị skeleton loader khi cart-level suggestion async
-- [ ] **4.1.7** — Recalculate cart total sau add/remove suggested item
-- [ ] **4.3.3** — Demo flow cart page → cart-level suggestions
+- [x] **2.4.4** — Code badge_text “Thêm để được Freeship!” cho CR-02
+- [x] **2.6.7** — Code stock availability cache cho suggested products nếu cần
+- [x] **2.7.4** — Đảm bảo cold miss fallback sang DB query và cache write
+- [x] **2.7.5** — Đảm bảo frontend/demo có thể hiển thị skeeton loader khi cart-level suggestion async
+- [x] **4.1.7** — Recalculate cart total sau add/remove suggested item
+- [x] **4.3.3** — Demo flow cart page → cart-level suggestions
 
 > **Deliverable:** Cart-level suggestion refresh, cache và demo cart flow hoàn chỉnh.
+
+### 🎨 UI Storefront — SuggestiveSelling (consume Store APIs Ngày 4)
+
+> _FE Next.js tiêu thụ Store APIs của Sơn. **Phối hợp Linh** theo OWNERSHIP (suggestion UI/one-tap-add = Linh) trước khi động vào `apps/storefront/`. Nhánh đề xuất: `feat/suggestive-selling-storefront-ui`._
+
+**PDP — `GET /store/products/:id/suggestions`:**
+
+- [x] **4.4.1** — Design + code component PDP “Thường được mua cùng” (carousel/grid ngang, tối đa 3–5 sản phẩm) consume `GET /store/products/:id/suggestions`
+- [x] **4.4.2** — Design suggestion product card: image, name, price, discount*price, label *(map response 2.2.9)\_
+- [x] **4.4.3** — One-tap add button `[+]` trên card → add default variant qty 1 _(nối 2.3.7)_ + Added state 3s + toast + Undo 3s _(nối 2.3.9–2.3.11)_
+- [x] **4.4.3b** — Error state khi one-tap add thất bại (out-of-stock đột xuất / lỗi mạng / 5xx): revert nút về trạng thái ban đầu + error toast đỏ, không hiện "Đã thêm"
+- [x] **4.4.3c** — Sản phẩm nhiều variants không có default (`requires_variant_selection`): đổi `[+]` thành `[Chọn phân loại]` → chuyển hướng PDP (hoặc mini variant-selector) _(nối 2.3.8)_
+- [x] **4.4.4** — Dismiss button `[x]` góc card (fade-out + collapse) ẩn sản phẩm khỏi section
+
+**Cart page / drawer — `GET /store/cart/suggestions`:**
+
+- [x] **4.4.5** — Design + code component Cart “Bạn có thể cần thêm” (compact list vuốt ngang, tối đa 3) consume `GET /store/cart/suggestions`
+- [x] **4.4.6** — Badge CR-02 “Thêm để được Freeship!” trên cart suggestion card _(nối 2.4.4 + threshold_info 2.4.10)_
+- [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
+- [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
+- [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
+- [x] **4.4.14** — Seed data for cart _(✅ 2026-07-14, commit `b29e2f7`: seed 4 cart rules CR-01…CR-04 + conditions; verified 4 rules/DB. CR-04 fire khi "1 ống" trong giỏ → gợi combo 3 ống)_
+
+> **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
 ## Ngày 6
 
@@ -283,13 +355,37 @@
 
 > **Deliverable:** Evidence cho cart-level suggestion, one-tap add, cache và analytics.
 
+### 🎨 UI Storefront — event tracking + evidence
+
+> _Gắn trigger tracking vào các component UI của Ngày 5 (`POST /store/suggestion-events`, batch/202). **Phối hợp Linh** (suggestion UI = Linh)._
+
+**Tracking events — `POST /store/suggestion-events`:**
+
+- [ ] **4.4.10** — Impression tracking bằng `IntersectionObserver` (component visible ≥50% trong ~1–2s) → gửi `action=impression` _(nối 2.6.8)_
+- [ ] **4.4.11** — Tap tracking khi click image/name đi tới PDP → gửi `action=tap` _(nối 2.6.9)_
+- [ ] **4.4.12** — add*to_cart tracking khi bấm `[+]` → gửi `action=add_to_cart` *(kèm 4.4.3, nối 2.6.10)\_
+- [ ] **4.4.13** — Dismiss tracking khi bấm `[x]` → gửi `action=dismiss` _(kèm 4.4.4, nối 2.6.11)_
+- [ ] **4.4.14** — Gửi đủ client payload: rule*id, source_context, source/suggested_product_id, session_id *(nối 2.6.12; customer*id do server lấy từ auth)*
+- [ ] **4.4.15** — UI evidence: screenshot/recording PDP + cart suggestions, network log 4 event (impression/tap/add/dismiss), empty-state ẩn section _(gắn vào 5.1.10 / 5.4.6)_
+
+> **Deliverable UI:** 4 event tracking (impression/tap/add_to_cart/dismiss) bắn đúng payload + evidence network log kèm PR.
+
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
 - [ ] **5.5.4** — Chuẩn bị demo checkout end-to-end
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần product/cart suggestion, one-tap add và analytics.
+
+### 🎨 UI Storefront — demo
+
+> _Demo end-to-end UI trên `apps/storefront` (port 8008). **Phối hợp Linh** (suggestion UI = Linh)._
+
+- [ ] **4.4.16** — Demo UI flow: PDP → “Thường được mua cùng” → impression/tap tracking _(gắn 4.3.1)_
+- [ ] **4.4.17** — Demo UI flow: Cart → “Bạn có thể cần thêm” + badge Freeship + skeleton khi cart đổi _(gắn 4.3.3)_
+- [ ] **4.4.18** — Demo UI flow: one-tap add → toast + Undo, dismiss → fade-out, empty-state ẩn section _(gắn 4.3.2)_
+
+> **Deliverable UI:** Demo record đủ 3 flow UI (PDP suggestions, cart suggestions + badge/skeleton, one-tap add/dismiss + tracking).
 
 # 👤 Thức
 

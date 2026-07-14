@@ -21,10 +21,15 @@ export default async function computeCategoryTopSellers(
 
   const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
-  // Orders in window + their line items (product_id, quantity).
+  // Orders in window + their line items.
+  // NOTE: on an order line item `quantity` is a COMPUTED field backed by the
+  // `detail` (order_item) relation — it only resolves when `items.detail` is
+  // requested. Asking for `items.quantity` alone returns undefined, which would
+  // make every product aggregate to 0 and silently produce an empty snapshot.
+  // computeSalesRanking reads `detail.quantity`, so request it here.
   const { data: orders } = await query.graph({
     entity: "order",
-    fields: ["id", "items.product_id", "items.quantity"],
+    fields: ["id", "items.product_id", "items.detail.quantity"],
     filters: { created_at: { $gte: since } },
   });
 
