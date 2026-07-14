@@ -2,6 +2,10 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { evaluateSuggestionsWorkflow } from "../../../../../workflows/evaluate-suggestions";
 import { PRODUCT_LIMIT } from "../../../../../modules/suggestive-selling/constants";
+import {
+  dismissalScope,
+  getDismissed,
+} from "../../../../../lib/suggestion-cache";
 
 /**
  * GET /store/products/:id/suggestions — product-level suggestions (SUGG-001,
@@ -39,8 +43,25 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         ? (authContext.actor_id ?? null)
         : null;
 
+    // D6 dismissals (BR-02(c)) for the product_view context, scoped to
+    // customer (if logged in) or session; passed through for the runtime filter.
+    const dismissed = await getDismissed(
+      req.scope,
+      dismissalScope(customerId, sessionId),
+      "product_view",
+    );
+
     const { result } = await evaluateSuggestionsWorkflow(req.scope).run({
-      input: { productId, request: { limit, cartId, customerId, sessionId } },
+      input: {
+        productId,
+        request: {
+          limit,
+          cartId,
+          customerId,
+          sessionId,
+          dismissedProductIds: [...dismissed],
+        },
+      },
     });
 
     res.json({ suggestions: result, count: result.length });

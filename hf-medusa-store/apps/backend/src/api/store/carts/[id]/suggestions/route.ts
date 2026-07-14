@@ -2,6 +2,10 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { evaluateCartSuggestionsWorkflow } from "../../../../../workflows/evaluate-cart-suggestions";
 import { CART_LIMIT } from "../../../../../modules/suggestive-selling/constants";
+import {
+  dismissalScope,
+  getDismissed,
+} from "../../../../../lib/suggestion-cache";
 
 /**
  * GET /store/carts/:id/suggestions — cart-level "You Might Also Need"
@@ -39,8 +43,24 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         ? (authContext.actor_id ?? null)
         : null;
 
+    // D6 dismissals (BR-02(c)) for the cart context, scoped to customer (if
+    // logged in) or session; passed through for the runtime filter.
+    const dismissed = await getDismissed(
+      req.scope,
+      dismissalScope(customerId, sessionId),
+      "cart",
+    );
+
     const { result } = await evaluateCartSuggestionsWorkflow(req.scope).run({
-      input: { cartId, request: { limit, customerId, sessionId } },
+      input: {
+        cartId,
+        request: {
+          limit,
+          customerId,
+          sessionId,
+          dismissedProductIds: [...dismissed],
+        },
+      },
     });
 
     res.json({
