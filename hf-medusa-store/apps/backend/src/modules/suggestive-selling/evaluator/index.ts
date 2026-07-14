@@ -6,7 +6,12 @@
  * the Medusa runtime.
  */
 export { EvaluationEngine } from "./engine";
-export type { EngineDeps, EngineLogger, QueryGraph } from "./engine";
+export type {
+  EngineDeps,
+  EngineLogger,
+  QueryGraph,
+  SuggestionCache,
+} from "./engine";
 export { CartEvaluationEngine } from "./cart-engine";
 export type { CartEngineDeps, CartRuleService } from "./cart-engine";
 export * from "./pipeline";

@@ -116,6 +116,12 @@ export interface ProductEvaluationRequest {
   customerId?: string | null;
   /** Session scope for dismissals/analytics (from `x-session-id`). */
   sessionId?: string | null;
+  /**
+   * Products dismissed this session for the `product_view` context (BR-02(c) / D6).
+   * A plain array (not a Set) because it crosses the workflow boundary and must
+   * serialize; the engine rehydrates it to a Set for the filter.
+   */
+  dismissedProductIds?: string[];
 }
 
 /** Resolved pricing context for `calculated_price` (SPEC A.4 enrich, D9). */
@@ -201,6 +207,10 @@ export interface CartEvaluationRequest {
   customerId?: string | null;
   /** Session scope for dismissals/analytics (from `x-session-id`). */
   sessionId?: string | null;
-  /** Products dismissed this session for the cart context (D6, wired Day-4). */
-  dismissedProductIds?: Set<string>;
+  /**
+   * Products dismissed this session for the `cart` context (D6). A plain array
+   * (not a Set) because it crosses the workflow boundary and must serialize; the
+   * engine rehydrates it to a Set for the filter.
+   */
+  dismissedProductIds?: string[];
 }

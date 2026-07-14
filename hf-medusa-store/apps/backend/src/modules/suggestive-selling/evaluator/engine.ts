@@ -2,6 +2,7 @@ import { QueryContext } from "@medusajs/framework/utils";
 import {
   CONSUMABLE_CATEGORIES,
   RECENT_PURCHASE_WINDOW_DAYS,
+  SUGGESTION_CACHE_TTL,
 } from "../constants";
 import type {
   EnrichedCandidate,
@@ -49,9 +50,26 @@ export interface EngineLogger {
   debug(message: string): void;
 }
 
+/**
+ * Minimal cache view (`Modules.CACHE`) used for the raw-buffer cache-aside (BR-06).
+ * Optional — when absent the engine simply computes fresh every request (D11).
+ */
+export interface SuggestionCache {
+  get<T = unknown>(key: string): Promise<T | null>;
+  set(key: string, data: unknown, ttl?: number): Promise<void>;
+}
+
 export interface EngineDeps {
   query: QueryGraph;
   logger: EngineLogger;
+  /** Optional cache adapter for the raw enriched buffer (2.6.3). */
+  cache?: SuggestionCache | null;
+  /**
+   * Cache key for this product's raw enriched buffer (`suggest:product:v3:{id}`),
+   * or null to bypass caching. The step passes null for cart-scoped requests
+   * (region-specific pricing + in-cart filter make them non-shareable).
+   */
+  cacheKey?: string | null;
 }
 
 /**
@@ -80,8 +98,9 @@ export class EvaluationEngine {
     request: ProductEvaluationRequest,
   ): Promise<ProductSuggestion[]> {
     try {
-      const pricing = await this.resolvePricingContext(request.cartId);
-      const enriched = await this.enrichCandidates(candidates, pricing);
+      // Cache the RAW enriched buffer (pre-filter) so one key serves every viewer
+      // (SPEC A.4 stage 7 / D7); per-customer BR-02 filtering runs at request time.
+      const enriched = await this.readOrEnrichCandidates(candidates, request);
       const filterContext = await this.buildFilterContext(productId, request);
       // Pure: BR-02 filter → BR-01 rank/limit → response projection (SPEC A.4 4–6).
       return finalizeSuggestions(enriched, filterContext, request.limit);
@@ -91,6 +110,45 @@ export class EvaluationEngine {
       );
       return [];
     }
+  }
+
+  /**
+   * Cache-aside over the enriched buffer (BR-06 / 2.6.3). On a hit the enrichment
+   * queries are skipped entirely; on a miss we resolve pricing, enrich, and store
+   * the buffer under `cacheKey` with the 5-minute TTL (2.6.5). Cache errors degrade
+   * to a fresh compute (never fatal). Skipped when no `cacheKey` is provided.
+   */
+  private async readOrEnrichCandidates(
+    candidates: RawCandidate[],
+    request: ProductEvaluationRequest,
+  ): Promise<EnrichedCandidate[]> {
+    const { cache, cacheKey } = this.deps;
+
+    if (cache && cacheKey) {
+      try {
+        const hit = await cache.get<EnrichedCandidate[]>(cacheKey);
+        if (hit) return hit;
+      } catch (err) {
+        this.deps.logger.warn(
+          `[suggestive] product cache read failed key=${cacheKey}: ${errMessage(err)}`,
+        );
+      }
+    }
+
+    const pricing = await this.resolvePricingContext(request.cartId);
+    const enriched = await this.enrichCandidates(candidates, pricing);
+
+    if (cache && cacheKey) {
+      try {
+        await cache.set(cacheKey, enriched, SUGGESTION_CACHE_TTL);
+      } catch (err) {
+        this.deps.logger.warn(
+          `[suggestive] product cache write failed key=${cacheKey}: ${errMessage(err)}`,
+        );
+      }
+    }
+
+    return enriched;
   }
 
   /** Stage 6 enrich (SPEC A.4): attach price, variant, stock, taxonomy per candidate. */
@@ -180,9 +238,9 @@ export class EvaluationEngine {
     return {
       sourceProductId: productId,
       cartProductIds,
-      // D6 server-side dismissals are wired in Day-4 alongside the dismissal-write
-      // endpoint + cache; until a write path exists this is always empty.
-      dismissedProductIds: new Set(),
+      // D6 server-side dismissals (BR-02(c)) — resolved by the route from the cache
+      // dismissal set and passed through the request; rehydrated to a Set here.
+      dismissedProductIds: new Set(request.dismissedProductIds ?? []),
       recentlyPurchasedProductIds,
       consumableCategories: new Set(CONSUMABLE_CATEGORIES),
     };

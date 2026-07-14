@@ -8,6 +8,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { evaluateProductSuggestionsWorkflow } from "./suggestive-selling/evaluate-product-suggestions";
 import { EvaluationEngine } from "../modules/suggestive-selling/evaluator";
 import { RAW_CANDIDATE_CAP } from "../modules/suggestive-selling/constants";
+import { cache, productCacheKey } from "../lib/suggestion-cache";
 import type {
   ProductEvaluationRequest,
   ProductSuggestion,
@@ -49,7 +50,19 @@ const finalizeProductSuggestionsStep = createStep(
     const query = container.resolve(ContainerRegistrationKeys.QUERY);
     const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
 
-    const engine = new EvaluationEngine({ query, logger });
+    // Cache the RAW enriched buffer per product (2.6.3) ONLY for the region-
+    // deterministic no-cart path (guest / LCP hot path). With a cart, pricing is
+    // region-specific and the in-cart filter is request-specific → compute fresh.
+    const cacheKey = input.request.cartId
+      ? null
+      : productCacheKey(input.productId);
+
+    const engine = new EvaluationEngine({
+      query,
+      logger,
+      cache: cache(container),
+      cacheKey,
+    });
     const suggestions = await engine.enrichAndFinalize(
       input.candidates ?? [],
       input.productId,
