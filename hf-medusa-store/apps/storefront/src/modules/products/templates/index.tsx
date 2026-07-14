@@ -7,6 +7,8 @@ import ProductTabs from "@modules/products/components/product-tabs"
 import RelatedProducts from "@modules/products/components/related-products"
 import ProductInfo from "@modules/products/templates/product-info"
 import SkeletonRelatedProducts from "@modules/skeletons/templates/skeleton-related-products"
+import ProductSuggestions from "@modules/suggestions/templates/product-suggestions"
+import SuggestionsSkeleton from "@modules/suggestions/components/suggestions-skeleton"
 import { notFound } from "next/navigation"
 import { HttpTypes } from "@medusajs/types"
 
@@ -56,6 +58,20 @@ const ProductTemplate: React.FC<ProductTemplateProps> = ({
             <ProductActionsWrapper id={product.id} region={region} />
           </Suspense>
         </div>
+      </div>
+      {/* 4.4.1 — "Thường được mua cùng" (SUGG-001). Streamed via Suspense so the
+          skeleton (4.4.7) shows while suggestions resolve; hides itself if empty. */}
+      <div
+        className="content-container my-16 small:my-32"
+        data-testid="product-suggestions-container"
+      >
+        <Suspense fallback={<SuggestionsSkeleton variant="grid" />}>
+          <ProductSuggestions
+            productId={product.id}
+            countryCode={countryCode}
+            currencyCode={region.currency_code}
+          />
+        </Suspense>
       </div>
       <div
         className="content-container my-16 small:my-32"
