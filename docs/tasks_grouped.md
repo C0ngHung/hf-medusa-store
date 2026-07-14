@@ -152,7 +152,13 @@
 - [x] **2.2.10** — Code max result 3-5 products cho product-level suggestions
 
 > **Deliverable:** Product-level suggestion logic đáp ứng SUGG-001. ✅ _(workflow evaluate-product-suggestions + unit test T-SUGG-01/02)_
-> ⚠️ Tier-2 top-seller đang stub newest-first → nhánh riêng `feat/suggestive-selling-topseller-ranking` (phương án B+C).
+> ✅ **Tier-2 top-seller (2026-07-14):** hết stub — job `compute-category-top-sellers` aggregate order → `category_top_seller` (đã fix bug đọc `items.detail.quantity`, commit `c064efa`); fallback newest-first khi snapshot rỗng. Seed order/customer + snapshot chain vào `db:migrate`.
+>
+> **📌 Việc phát sinh 2026-07-14 (ngoài số task, nhánh `feat/one-tap-add-storefront`):**
+>
+> - Data cầu/ống tái cấu trúc: Shuttlecocks = 5 quả cầu; Tubes = 5×"1 ống" (single) + 5×"combo 3 ống" (bulk); xoá 3 combo string/grip/box gây nhầm.
+> - **CR-04 chạy thật**: "1 ống" trong giỏ → gợi "combo 3 ống" (verified `rule=CR-04`). `product_bulk_mapping` = 5 cặp 1ống→3ống.
+> - One-tap add wire qua endpoint attributed `POST /store/carts/:id/suggested-items` (SUGG-003) + backend `addSuggestedItemWorkflow`.
 
 ## Ngày 4
 
@@ -160,11 +166,10 @@
 - [x] **2.5.5** — Code Admin API PUT /admin/suggestion-rules/:id
 - [x] **2.5.6** — Code Admin API DELETE /admin/suggestion-rules/:id bằng soft delete
 - [x] **2.5.7** — Validate input cho suggestion APIs _(zod validators)_
-- [~] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion
-  - 📝 **Quyết định tạm (2026-07-13):** khi không có suggestion → **trả `[]`** (workflow đã tự trả rỗng). Phần chuẩn hóa _vỏ response_ `{suggestions: []}` + degrade-to-empty (BR-10) nằm ở **store route của Sơn (2.5.1)** → **BÀN LẠI SAU** khi có route đó.
+- [x] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion _(✅ 2026-07-14: store route của Sơn (2.5.1/2.5.2) trả `{suggestions: [], count: 0}` + degrade-to-empty 200 BR-10; workflow admin trả rỗng)_
 - [ ] **2.5.9** — Chuẩn hóa error response và message tiếng Việt _(cần `middlewares.ts` — file chung, coordinate cả team, Part C)_
 
-> **Deliverable:** Admin APIs cho rule management. 🟡 CRUD+validate ✅; 2.5.8 chốt tạm (bàn sau), 2.5.9 chờ chuẩn error i18n chung.
+> **Deliverable:** Admin APIs cho rule management. 🟢 CRUD+validate ✅, 2.5.8 ✅ (degrade-to-empty qua route Sơn); 🟡 chỉ còn 2.5.9 chờ chuẩn error i18n chung (`middlewares.ts`, Part C).
 
 ### Category Complement Map — Admin CRUD
 
@@ -312,7 +317,7 @@
 - [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
 - [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
 - [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
-- [ ] **4.4.14** — Seed data for cart
+- [x] **4.4.14** — Seed data for cart _(✅ 2026-07-14, commit `b29e2f7`: seed 4 cart rules CR-01…CR-04 + conditions; verified 4 rules/DB. CR-04 fire khi "1 ống" trong giỏ → gợi combo 3 ống)_
 
 > **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
