@@ -237,7 +237,7 @@ const SuggestionsCarousel = ({
         )}
       >
         {items.map((item) => (
-          <div key={item.product_id} className="snap-start">
+          <div key={item.product_id} className="snap-start h-full">
             <SuggestionCard
               item={item}
               currencyCode={currencyCode}

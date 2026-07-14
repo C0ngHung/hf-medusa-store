@@ -85,7 +85,9 @@ const SuggestionCard = ({
     <Thumbnail thumbnail={item.image_url} size="square" className="w-full" />
   )
   const name = (
-    <Text className="line-clamp-2 text-sm font-medium text-ui-fg-base">
+    // Reserve two lines so 1-line and 2-line names keep the price/button rows
+    // aligned across cards (equal-height layout).
+    <Text className="line-clamp-2 min-h-[2.5rem] text-sm font-medium leading-tight text-ui-fg-base">
       {item.name}
     </Text>
   )
@@ -93,7 +95,7 @@ const SuggestionCard = ({
   return (
     <div
       className={clx(
-        "relative flex shrink-0 flex-col rounded-lg border border-gray-100 bg-white p-3 transition-all duration-300 ease-out",
+        "relative flex h-full shrink-0 flex-col rounded-lg border border-gray-100 bg-white p-3 transition-all duration-300 ease-out",
         compact ? "w-56" : "w-44",
         isDismissing && "-translate-y-1 scale-95 opacity-0",
       )}
@@ -171,8 +173,9 @@ const SuggestionCard = ({
         )}
       </div>
 
-      {/* One-tap add (4.4.3) — or a PDP link when a variant must be chosen */}
-      <div className="mt-3">
+      {/* One-tap add (4.4.3) — or a PDP link when a variant must be chosen.
+          mt-auto pins the action row to the bottom so buttons align across cards. */}
+      <div className="mt-auto pt-3">
         {canQuickAdd ? (
           <Button
             onClick={handleAdd}
