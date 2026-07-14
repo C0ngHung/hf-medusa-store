@@ -1,17 +1,24 @@
 import { MedusaContainer } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import { SUGGESTIVE_SELLING_MODULE } from "../modules/suggestive-selling";
+import {
+  CR02_DEFAULT_BADGE,
+  CR02_THRESHOLD_PCT,
+  CR04_DEFAULT_MAX_QUANTITY,
+} from "../modules/suggestive-selling/constants";
 
 /**
  * Seed for the SuggestiveSelling module — run with:
  *   npx medusa exec ./src/scripts/seed-suggestive-selling.ts
  *
- * Seeds three things (SRS SUGG-001 / SUGG-004 CR-04), resolving catalog by
- * name/handle so it must run AFTER the catalog seed. Idempotent: clears its own
- * data before inserting.
+ * Seeds four things (SRS SUGG-001 / SUGG-004), resolving catalog by name/handle
+ * so it must run AFTER the catalog seed. Idempotent: clears its own data before
+ * inserting.
  *   1. Tier-2 category complement mapping (category → complementary categories).
  *   2. Tier-1 manual product rules (source product(s) → specific suggested products).
  *   3. CR-04 product bulk mapping (single consumable → its designated multipack).
+ *   4. Cart-level rules CR-01…CR-04 (+ their conditions) that drive the cart
+ *      "Bạn có thể cần thêm" section — WITHOUT these no cart suggestions show.
  */
 
 // Tier-2: source category → complementary categories (by name).
@@ -244,4 +251,106 @@ export default async function seedSuggestiveSelling({
       "[seed:suggestive] no product bulk mappings (products not seeded yet).",
     );
   }
+
+  // ── Cart-level rules CR-01…CR-04 (SUGG-004, tasks 2.4.2–2.4.6) ──
+  // Each CR is its OWN cart rule with a SINGLE condition: matchesCartRule ANDs a
+  // rule's conditions together (2.4.7 / BR-03), so bundling all four in one rule
+  // would only fire when every condition holds at once. `priority` asc drives the
+  // CR-01→CR-04 evaluation order. condition_params shapes match the pure matcher
+  // + engine (evaluator/cart-rules.ts, evaluator/cart-engine.ts). Category ids are
+  // resolved by name (idByName, above) so the seed stays catalog-agnostic.
+  const catId = (name: string) => idByName.get(name) as string | undefined;
+  const cr01SourceIds = ["Rackets", "Shoes", "Shuttlecocks"]
+    .map(catId)
+    .filter((id): id is string => !!id);
+  const accessoryCatIds = [
+    "Strings",
+    "Grips",
+    "Bags",
+    "Socks",
+    "Insoles",
+    "Tubes",
+  ]
+    .map(catId)
+    .filter((id): id is string => !!id);
+
+  const cartRules: Array<{
+    name: string;
+    priority: number;
+    condition_type:
+      | "category_missing"
+      | "threshold_near"
+      | "brand_match"
+      | "consumable_upsell";
+    condition_params: Record<string, unknown>;
+  }> = [];
+
+  // CR-01 (2.4.2): cart holds a racket/shoe/shuttle → suggest top-sellers from the
+  // complementary categories the cart is MISSING (uses the Tier-2 complement
+  // mappings seeded above). This is the rule that populates a typical cart.
+  if (cr01SourceIds.length) {
+    cartRules.push({
+      name: "Cart CR-01: complete the setup",
+      priority: 10,
+      condition_type: "category_missing",
+      condition_params: { source_category_ids: cr01SourceIds },
+    });
+  }
+  // CR-02 (2.4.3): subtotal within 15% below the 7.000.000₫ free-shipping ceiling
+  // → nudge a product that pushes the cart over it (fires only inside the band).
+  cartRules.push({
+    name: "Cart CR-02: free-shipping nudge",
+    priority: 20,
+    condition_type: "threshold_near",
+    condition_params: {
+      percentage: CR02_THRESHOLD_PCT,
+      badge_text: CR02_DEFAULT_BADGE,
+    },
+  });
+  // CR-03 (2.4.5): single-brand cart → same-brand accessories. INERT for now — no
+  // product carries metadata.brand yet, so brand_match never resolves a brand;
+  // seeded so the rule set is complete and it activates once brands are populated.
+  if (accessoryCatIds.length) {
+    cartRules.push({
+      name: "Cart CR-03: same-brand accessories",
+      priority: 30,
+      condition_type: "brand_match",
+      condition_params: { accessory_category_ids: accessoryCatIds },
+    });
+  }
+  // CR-04 (2.4.6): a consumable line at qty ≤ default → its multipack (uses the
+  // product bulk mappings seeded above).
+  cartRules.push({
+    name: "Cart CR-04: buy the multipack",
+    priority: 40,
+    condition_type: "consumable_upsell",
+    condition_params: { max_quantity: CR04_DEFAULT_MAX_QUANTITY },
+  });
+
+  // Idempotent: drop existing cart-type rules (cascade removes their conditions),
+  // then recreate. `existingRules` was fetched above with type selected.
+  const existingCartRuleIds = existingRules
+    .filter((r: any) => r.type === "cart")
+    .map((r: any) => r.id);
+  if (existingCartRuleIds.length) {
+    await ss.deleteSuggestionRules(existingCartRuleIds);
+  }
+  for (const r of cartRules) {
+    await ss.createSuggestionRules({
+      name: r.name,
+      type: "cart",
+      tier: "manual",
+      priority: r.priority,
+      is_active: true,
+      conditions: [
+        {
+          condition_type: r.condition_type,
+          condition_params: r.condition_params,
+        },
+      ],
+    });
+  }
+  logger.info(
+    `[seed:suggestive] created ${cartRules.length} cart rules (CR-01…CR-04).`,
+  );
 }
