@@ -4,45 +4,45 @@
 
 ## Ngày 1
 
-- [ ] **1.2.1** — Tạo cấu trúc thư mục .claude
-- [ ] **1.2.2** — Tạo rules cho coding, testing, security, Medusa
-- [ ] **1.2.3** — Tạo workflow vibe coding bằng Claude Code
-- [ ] **1.2.4** — Tạo convention cho branch, PR, evidence
-- [ ] **1.2.5** — Chốt ownership file để giảm conflict khi 4 người cùng code
-- [ ] **1.3.5** — Chốt Redis usage: suggestion cache, voucher validation cache, failed-attempt counter
+- [x] **1.2.1** — Tạo cấu trúc thư mục .claude
+- [x] **1.2.2** — Tạo rules cho coding, testing, security, Medusa
+- [x] **1.2.3** — Tạo workflow vibe coding bằng Claude Code
+- [x] **1.2.4** — Tạo convention cho branch, PR, evidence
+- [x] **1.2.5** — Chốt ownership file để giảm conflict khi 4 người cùng code
+- [x] **1.3.5** — Chốt Redis usage: suggestion cache, voucher validation cache, failed-attempt counter
 
 > **Deliverable:** Claude workflow, rules và ownership convention hoàn thành.
 
 ## Ngày 2
 
-- [ ] **3.1.1** — Code custom module VoucherEngine
-- [ ] **3.1.2** — Code VoucherConfig model
-- [ ] **3.1.3** — Code VoucherUsageLog model
-- [ ] **3.1.4** — Code DiscountCapConfig model
-- [ ] **3.1.5** — Code voucher scope theo product/category
-- [ ] **3.1.6** — Code migration cho VoucherEngine tables
-- [ ] **3.1.7** — Code module service cho voucher config
-- [ ] **3.1.8** — Code module service cho usage/audit log
-- [ ] **3.1.9** — Register VoucherEngine module vào Medusa project
-- [ ] **3.1.10** — Seed voucher/demo data phục vụ test
+- [x] **3.1.1** — Code custom module VoucherEngine
+- [x] **3.1.2** — Code VoucherConfig model
+- [x] **3.1.3** — Code VoucherUsageLog model
+- [x] **3.1.4** — Code DiscountCapConfig model
+- [x] **3.1.5** — Code voucher scope theo product/category
+- [x] **3.1.6** — Code migration cho VoucherEngine tables
+- [x] **3.1.7** — Code module service cho voucher config
+- [x] **3.1.8** — Code module service cho usage/audit log
+- [x] **3.1.9** — Register VoucherEngine module vào Medusa project
+- [x] **3.1.10** — Seed voucher/demo data phục vụ test
 
 > **Deliverable:** VoucherEngine foundation, migration và services sẵn sàng.
 
 ## Ngày 3
 
-- [ ] **3.2.1** — Code normalize voucher code: trim, uppercase, case-insensitive lookup
-- [ ] **3.2.2** — Code voucher code format: alphanumeric, minimum 6 characters
-- [ ] **3.2.3** — Code lookup VoucherConfig by code
-- [ ] **3.2.4** — Code validation V1: voucher tồn tại và active
-- [ ] **3.2.5** — Code validation V2: current date nằm trong valid_from và valid_to
-- [ ] **3.2.6** — Code validation V3: global usage_count < usage_limit
-- [ ] **3.2.7** — Code validation V4: per-user usage count < per_user_limit
-- [ ] **3.2.8** — Code validation V5: cart subtotal >= min_order_value
-- [ ] **3.2.9** — Code validation V6: cart có item thuộc applicable products/categories
-- [ ] **3.2.10** — Code validation V7: customer segment condition nếu có source được approve
-- [ ] **3.2.11** — Code validation V8: stacking conflict
-- [ ] **3.2.12** — Code fail-fast validation theo thứ tự V1 → V8
-- [ ] **3.2.13** — Code error-code và message tiếng Việt tương ứng V1 → V8
+- [x] **3.2.1** — Code normalize voucher code: trim, uppercase, case-insensitive lookup
+- [x] **3.2.2** — Code voucher code format: alphanumeric, minimum 6 characters
+- [x] **3.2.3** — Code lookup VoucherConfig by code
+- [x] **3.2.4** — Code validation V1: voucher tồn tại và active
+- [x] **3.2.5** — Code validation V2: current date nằm trong valid_from và valid_to
+- [x] **3.2.6** — Code validation V3: global usage_count < usage_limit
+- [x] **3.2.7** — Code validation V4: per-user usage count < per_user_limit
+- [x] **3.2.8** — Code validation V5: cart subtotal >= min_order_value
+- [x] **3.2.9** — Code validation V6: cart có item thuộc applicable products/categories
+- [x] **3.2.10** — Code validation V7: customer segment condition nếu có source được approve
+- [x] **3.2.11** — Code validation V8: stacking conflict
+- [x] **3.2.12** — Code fail-fast validation theo thứ tự V1 → V8
+- [x] **3.2.13** — Code error-code và message tiếng Việt tương ứng V1 → V8
 
 > **Deliverable:** Voucher validation V1-V8 đáp ứng VOUCH-002.
 
