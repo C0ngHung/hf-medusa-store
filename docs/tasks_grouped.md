@@ -189,16 +189,17 @@
 
 ## Ngày 5
 
-- [ ] **2.3.7** — Code one-tap add default variant vào cart với quantity 1
-- [ ] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion
-- [ ] **2.3.10** — Code toast message xác nhận add-to-cart
-- [ ] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add
-- [ ] **4.1.1** — Kết nối cart với SuggestiveSelling result
-- [ ] **4.1.4** — Gắn suggested products vào cart/demo response
-- [ ] **4.3.1** — Demo flow product detail → product-level suggestions
-- [ ] **4.3.2** — Demo flow one-tap add suggested product to cart
+- [x] **2.3.7** — Code one-tap add default variant vào cart với quantity 1 _(UI: Sơn `suggestion-card`; add đi qua endpoint attributed)_
+- [x] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion _(Sơn `ADDED_STATE_MS=3000`)_
+- [x] **2.3.10** — Code toast message xác nhận add-to-cart _(Sơn carousel toast)_
+- [x] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add _(undo theo `line_item.id` sau khi wire attributed)_
+- [x] **4.1.1** — Kết nối cart với SuggestiveSelling result _(templates product/cart nhúng carousel — Sơn)_
+- [x] **4.1.4** — Gắn suggested products vào cart/demo response _(qua `POST /store/carts/:id/suggested-items` → attribution ghi vào `line_item.metadata`)_
+- [x] **4.3.1** — Demo flow product detail → product-level suggestions
+- [x] **4.3.2** — Demo flow one-tap add suggested product to cart
 
-> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart.
+> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart. ✅
+> **Ghi chú (2026-07-14):** UI storefront do **Sơn** làm (commit `7f84378`, đánh số 4.4.x). **one-tap add đã wire lại qua endpoint attributed** `POST /store/carts/:id/suggested-items` (SUGG-003) để ghi attribution vào line-item metadata + emit `add_to_cart` server-side (nhánh `feat/one-tap-add-storefront`). Chồng lấn ownership Linh↔Sơn — cần coordinate.
 
 ## Ngày 6
 
