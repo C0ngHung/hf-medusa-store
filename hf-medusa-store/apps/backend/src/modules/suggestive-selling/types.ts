@@ -123,3 +123,84 @@ export interface PricingContext {
   currencyCode: string;
   regionId?: string | null;
 }
+
+// ── Cart-level suggestions ("You Might Also Need", SUGG-004 / SPEC A.6) ──
+
+/** The four cart-rule codes, evaluated in this fixed order (BR-03 / 2.4.7). */
+export type CartRuleCode = "CR-01" | "CR-02" | "CR-03" | "CR-04";
+
+/**
+ * A product after enrichment, independent of any suggestion provenance. Produced
+ * by `enrichProductRow` (pure) and shared by cart-rule candidate generation. Cart
+ * rules attach their own `rule_code`/`badge` on top when projecting to the wire.
+ */
+export interface EnrichedProduct {
+  product_id: string;
+  handle: string | null;
+  name: string;
+  image_url: string | null;
+  status: string;
+  category_ids: string[];
+  category_names: string[];
+  brand: string | null;
+  variant_id: string | null;
+  requires_variant_selection: boolean;
+  in_stock: boolean;
+  /** Original list price, floored to integer VND (INT-01); null when unpriced. */
+  price: number | null;
+  /** Promo price when an item-level promotion applies (calculated < original), else null. */
+  discount_price: number | null;
+}
+
+/**
+ * Wire shape of a single cart-level suggestion — API Contract §1.1.
+ * `tier` is always `"cart"`; `rule_code` carries the CR-0x that produced it and
+ * `badge_text` the CR-02 nudge (null for the others). `rule_id` is null: cart
+ * suggestions are attributed by CR code, not by rule id (prompt 3.2 / BR-04).
+ */
+export interface CartSuggestion {
+  product_id: string;
+  handle: string | null;
+  variant_id: string | null;
+  name: string;
+  image_url: string | null;
+  price: number | null;
+  discount_price: number | null;
+  in_stock: boolean;
+  requires_variant_selection: boolean;
+  status: string;
+  category_names: string[];
+  brand: string | null;
+  tier: "cart";
+  rule_id: null;
+  rule_code: CartRuleCode;
+  badge_text: string | null;
+}
+
+/**
+ * Free-shipping progress for the CR-02 nudge (API Contract §1.1). Non-null only
+ * when CR-02 fired AND the response carries at least one suggestion (2.4.9/2.4.10).
+ */
+export interface ThresholdInfo {
+  target: number;
+  current: number;
+  remaining: number;
+}
+
+/** Raw (pre-dismissal-filter) cart evaluation output, cached per cart in Day-4 (BR-06). */
+export interface CartRawResult {
+  candidates: CartSuggestion[];
+  threshold_info: ThresholdInfo | null;
+}
+
+/** Per-request context for a cart-level evaluation (SPEC A.4 evaluateCart). */
+export interface CartEvaluationRequest {
+  /** Clamped to [1, CART_LIMIT] by the caller. */
+  limit: number;
+  /** Authenticated customer (from auth context); null for guests (BR-08). */
+  customerId?: string | null;
+  /** Session scope for dismissals/analytics (from `x-session-id`). */
+  sessionId?: string | null;
+  /** Products dismissed this session for the cart context (D6, wired Day-4). */
+  dismissedProductIds?: Set<string>;
+}

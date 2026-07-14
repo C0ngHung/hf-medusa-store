@@ -222,21 +222,21 @@
 
 ## Ngày 3
 
-- [ ] **2.3.1** — Code filter sản phẩm đã có trong cart
-- [ ] **2.3.2** — Code filter sản phẩm hết hàng theo stock availability
-- [ ] **2.3.3** — Code filter suggestion bị dismiss trong current session
-- [ ] **2.3.4** — Code filter sản phẩm đã mua trong 30 ngày gần nhất nếu có purchase-history source
-- [ ] **2.3.5** — Code ranking theo tier priority và display_order
-- [ ] **2.3.6** — Code limit kết quả: product-level tối đa 5, cart-level tối đa 3
-- [ ] **2.4.1** — Code cart-level evaluator cho section “You Might Also Need”
-- [ ] **2.4.2** — Code CR-01: cart có category X nhưng thiếu complementary category Y
-- [ ] **2.4.3** — Code CR-02: cart total gần promotional/free-shipping threshold trong 15%
-- [ ] **2.4.5** — Code CR-03: cart cùng brand thì suggest same-brand accessories
-- [ ] **2.4.6** — Code CR-04: cart có consumable quantity 1 thì suggest bulk/multipack
-- [ ] **2.4.7** — Code priority order CR-01 → CR-04
-- [ ] **2.4.8** — Code top 3 unique suggestions across fired rules
-- [ ] **2.4.9** — Code hide entire section nếu 0 suggestions
-- [ ] **2.4.10** — Code threshold_info response: target, current, remaining
+- [x] **2.3.1** — Code filter sản phẩm đã có trong cart
+- [x] **2.3.2** — Code filter sản phẩm hết hàng theo stock availability
+- [x] **2.3.3** — Code filter suggestion bị dismiss trong current session
+- [x] **2.3.4** — Code filter sản phẩm đã mua trong 30 ngày gần nhất nếu có purchase-history source
+- [x] **2.3.5** — Code ranking theo tier priority và display_order
+- [x] **2.3.6** — Code limit kết quả: product-level tối đa 5, cart-level tối đa 3
+- [x] **2.4.1** — Code cart-level evaluator cho section “You Might Also Need”
+- [x] **2.4.2** — Code CR-01: cart có category X nhưng thiếu complementary category Y
+- [x] **2.4.3** — Code CR-02: cart total gần promotional/free-shipping threshold trong 15%
+- [x] **2.4.5** — Code CR-03: cart cùng brand thì suggest same-brand accessories
+- [x] **2.4.6** — Code CR-04: cart có consumable quantity 1 thì suggest bulk/multipack
+- [x] **2.4.7** — Code priority order CR-01 → CR-04
+- [x] **2.4.8** — Code top 3 unique suggestions across fired rules
+- [x] **2.4.9** — Code hide entire section nếu 0 suggestions
+- [x] **2.4.10** — Code threshold_info response: target, current, remaining
 
 > **Deliverable:** Filtering/ranking và cart-level suggestion logic đáp ứng SRS.
 
