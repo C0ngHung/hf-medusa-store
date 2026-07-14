@@ -7,6 +7,11 @@ import {
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { SUGGESTIVE_SELLING_MODULE } from "../modules/suggestive-selling";
 import { CartEvaluationEngine } from "../modules/suggestive-selling/evaluator";
+import {
+  cache,
+  cartCacheKey,
+  getCartRuleVersion,
+} from "../lib/suggestion-cache";
 import type {
   CartEvaluationRequest,
   CartRawResult,
@@ -33,7 +38,21 @@ const evaluateCartSuggestionsStep = createStep(
     const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
     const suggestive = container.resolve(SUGGESTIVE_SELLING_MODULE);
 
-    const engine = new CartEvaluationEngine({ query, logger, suggestive });
+    // Versioned cart cache key (2.6.4/2.6.5): the cart-rule version namespaces the
+    // key so an admin rule change bumps it and invalidates every cart at once;
+    // `cart.updated` invalidates this exact key per cart (2.6.6).
+    const cacheAdapter = cache(container);
+    const cacheKey = cacheAdapter
+      ? cartCacheKey(input.cartId, await getCartRuleVersion(container))
+      : null;
+
+    const engine = new CartEvaluationEngine({
+      query,
+      logger,
+      suggestive,
+      cache: cacheAdapter,
+      cacheKey,
+    });
     const result = await engine.evaluateCart(input.cartId, input.request);
 
     return new StepResponse<CartRawResult>(result);

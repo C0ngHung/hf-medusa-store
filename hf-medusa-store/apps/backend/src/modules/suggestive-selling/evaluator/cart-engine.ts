@@ -4,6 +4,7 @@ import {
   CR02_DEFAULT_BADGE,
   CR04_DEFAULT_MAX_QUANTITY,
   FREE_SHIPPING_THRESHOLD,
+  SUGGESTION_CACHE_TTL,
 } from "../constants";
 import type {
   CartEvaluationRequest,
@@ -13,7 +14,7 @@ import type {
   PricingContext,
   ThresholdInfo,
 } from "../types";
-import type { EngineLogger, QueryGraph } from "./engine";
+import type { EngineLogger, QueryGraph, SuggestionCache } from "./engine";
 import { enrichProductRow, readBrand } from "./pipeline";
 import {
   cr02Band,
@@ -44,6 +45,14 @@ export interface CartEngineDeps {
   query: QueryGraph;
   logger: EngineLogger;
   suggestive: CartRuleService;
+  /** Optional cache adapter for the raw cart result (2.6.4); absent → compute fresh (D11). */
+  cache?: SuggestionCache | null;
+  /**
+   * Versioned cache key (`suggest:cart:v{version}:{cartId}`), or null to bypass.
+   * Built by the step from the current cart-rule version so a version bump
+   * invalidates every cart at once (SPEC A.9).
+   */
+  cacheKey?: string | null;
 }
 
 /** Standard product graph fields used by every cart-candidate fetch. */
@@ -92,8 +101,8 @@ export class CartEvaluationEngine {
     request: CartEvaluationRequest,
   ): Promise<CartRawResult> {
     try {
-      const raw = await this.computeCartRaw(cartId);
-      const dismissed = request.dismissedProductIds ?? new Set<string>();
+      const raw = await this.readOrComputeCartRaw(cartId);
+      const dismissed = new Set(request.dismissedProductIds ?? []);
       const limit = request.limit ?? CART_LIMIT;
 
       const candidates = raw.candidates
@@ -112,8 +121,44 @@ export class CartEvaluationEngine {
   }
 
   /**
+   * Cache-aside over the raw cart result (BR-06 / 2.6.4). On a hit `computeCartRaw`
+   * is skipped; on a miss the result is stored under `cacheKey` with the 5-minute
+   * TTL (2.6.5) and invalidated on `cart.updated` (2.6.6). The RAW (pre-dismissal)
+   * result is cached so the per-session dismissal filter still runs at request time
+   * (D6/D7). Cache errors degrade to a fresh compute; skipped without a `cacheKey`.
+   */
+  async readOrComputeCartRaw(cartId: string): Promise<CartRawResult> {
+    const { cache, cacheKey } = this.deps;
+
+    if (cache && cacheKey) {
+      try {
+        const hit = await cache.get<CartRawResult>(cacheKey);
+        if (hit) return hit;
+      } catch (err) {
+        this.deps.logger.warn(
+          `[suggestive] cart cache read failed key=${cacheKey}: ${errMessage(err)}`,
+        );
+      }
+    }
+
+    const raw = await this.computeCartRaw(cartId);
+
+    if (cache && cacheKey) {
+      try {
+        await cache.set(cacheKey, raw, SUGGESTION_CACHE_TTL);
+      } catch (err) {
+        this.deps.logger.warn(
+          `[suggestive] cart cache write failed key=${cacheKey}: ${errMessage(err)}`,
+        );
+      }
+    }
+
+    return raw;
+  }
+
+  /**
    * Compute the raw cart suggestions (pre-dismissal-filter) — SPEC A.6.
-   * This is the body a Day-4 cache would wrap (cache-aside). Fires each active
+   * This is the body the Day-4 cache-aside (`readOrComputeCartRaw`) wraps. Fires each active
    * cart rule in CR-01→CR-04 order, collects enriched candidates (deduped via a
    * shared exclude set that also holds the cart's own products), then merges to
    * ≤ CART_LIMIT unique suggestions (2.4.8, first rule keeps the badge — BR-04).
