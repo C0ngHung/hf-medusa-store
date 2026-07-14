@@ -312,6 +312,7 @@
 - [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
 - [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
 - [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
+- [ ] **4.4.14** — Seed data for cart
 
 > **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
