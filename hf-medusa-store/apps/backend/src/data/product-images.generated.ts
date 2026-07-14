@@ -196,7 +196,7 @@ export const S3_IMAGES: Record<
   },
   "yonex-as30": {
     thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-600x600-01KWZYFBD5VYAB1G7DNRRGJWG1.jpg",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-2-600x600-01KWZYFBD5A5P0ST6M8ZCGGDT8.jpg",
     images: [
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-2-600x600-01KWZYFBD5A5P0ST6M8ZCGGDT8.jpg",
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-600x600-01KWZYFBD5VYAB1G7DNRRGJWG1.jpg",
