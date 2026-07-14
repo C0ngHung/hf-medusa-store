@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "HF Medusa — Suggestive Selling (Admin)",
-    "description": "Admin CRUD for suggestion-rules (SRS §6.1). API-only per SRS (no UI).\n\nUsage:\n1. Run 'Auth › Login' first — it stores {{token}} automatically.\n2. Run 'Suggestion Rules › Create' — it stores {{ruleId}} for the follow-up requests.\n3. Then List / Get / Update / Delete.\n\nEdit collection variables (baseUrl, adminEmail, adminPassword, sourceProductId, suggestedProductId) to match your environment.",
+    "name": "HF Medusa — Suggestive Selling (Admin + Store)",
+    "description": "Admin CRUD for suggestion-rules (SRS §6.1, API-only) + Store-facing suggestion endpoints (Sơn — API Contract §1.1).\n\nUsage:\n1. Run 'Auth › Login' first — it stores {{token}} automatically (Admin requests only).\n2. Run 'Suggestion Rules › Create' — it stores {{ruleId}} for the follow-up requests.\n3. Then List / Get / Update / Delete.\n4. Store requests are public [C]: no {{token}} needed, but Medusa v2 store routes require the {{publishableKey}} header. Set {{cartId}} before calling cart suggestions.\n\nEdit collection variables (baseUrl, adminEmail, adminPassword, sourceProductId, suggestedProductId, publishableKey, cartId, sessionId) to match your environment.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -16,13 +16,33 @@
     { "key": "ruleId", "value": "" },
     {
       "key": "sourceProductId",
-      "value": "prod_01KXCW9Y2YY9NSHH5JN1SAQXA8",
-      "description": "yonex-astrox-99-pro (from seed)"
+      "value": "prod_01KXFDDXE555Y50DG7XBPCM7FX",
+      "description": "yonex-astrox-99-pro — has 3 Tier-1 manual suggestions → NO backfill (T-SUGG-01). NOTE: product ids are seed-generated and change on every reseed; refresh after `db:migrate`."
     },
     {
       "key": "suggestedProductId",
-      "value": "prod_01KXCW9Y2YQK7MTRY4R7M2HDDW",
-      "description": "yonex-bg65 (from seed)"
+      "value": "prod_01KXFDDXE5BC0YN9D58XT754HH",
+      "description": "yonex-bg65 (from seed) — refresh on reseed."
+    },
+    {
+      "key": "tier2ProductId",
+      "value": "prod_01KXFDDXE5Z3FDVNCVWH70FWR1",
+      "description": "lining-axforce-80 — has only 2 Tier-1 manual → triggers Tier-2 category-complement backfill (T-SUGG-02 / task 2.2.4). db:migrate seeds orders + builds the snapshot. Refresh on reseed."
+    },
+    {
+      "key": "publishableKey",
+      "value": "",
+      "description": "Store API publishable key — REQUIRED header for /store/* in Medusa v2. Not committed (security.md: no keys in source). Get it from the DB (api_key.token where type='publishable') or Admin → Settings → Publishable API Keys, then paste here."
+    },
+    {
+      "key": "cartId",
+      "value": "",
+      "description": "A cart id (from the storefront or seed) — used by cart-level suggestions and as the optional cart_id filter for product suggestions."
+    },
+    {
+      "key": "sessionId",
+      "value": "sess_demo_001",
+      "description": "x-session-id header — scopes dismissals & analytics for guests."
     }
   ],
   "item": [
@@ -158,29 +178,141 @@
       ]
     },
     {
-      "name": "Store (pending — Sơn 2.5.1)",
-      "description": "Store-facing suggestion endpoints are not implemented yet (Sơn's route wraps the evaluate-product-suggestions workflow). These will 404 until then.",
+      "name": "Store (Suggestions) — Sơn",
+      "description": "Store-facing suggestion endpoints (SUGG-001 / SUGG-004, API Contract §1.1), implemented by Sơn.\n\nPublic [C]: no {{token}} needed. Medusa v2 store routes require the x-publishable-api-key header ({{publishableKey}}). Optional customer auth is taken from the auth context only (SEC-04), never from the body. Degrade contract (BR-10 / §4.3): any internal failure still returns HTTP 200 with an empty list so the frontend hides the section — these routes never emit 5xx.\n\nAll of Sơn's Day-4 routes are implemented: GET products/:id/suggestions (2.5.1), GET carts/:id/suggestions (2.5.2), POST suggestion-events (2.5.3), + cart.updated subscriber (2.6.1).",
       "item": [
         {
-          "name": "Product suggestions (NOT YET IMPLEMENTED)",
+          "name": "GET product suggestions (2.5.1)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('200 OK (never 5xx — BR-10)', () => pm.response.to.have.status(200));",
+                  "pm.test('suggestions is an array', () => pm.expect(j.suggestions).to.be.an('array'));",
+                  "pm.test('count matches length', () => pm.expect(j.count).to.eql(j.suggestions.length));",
+                  "pm.test('at most PRODUCT_LIMIT=5', () => pm.expect(j.suggestions.length).to.be.at.most(5));"
+                ]
+              }
+            }
+          ],
           "request": {
             "auth": { "type": "noauth" },
             "method": "GET",
             "header": [
-              {
-                "key": "x-publishable-api-key",
-                "value": "<publishable-key>",
-                "disabled": true
-              }
+              { "key": "x-publishable-api-key", "value": "{{publishableKey}}" },
+              { "key": "x-session-id", "value": "{{sessionId}}" }
             ],
             "url": {
-              "raw": "{{baseUrl}}/store/products/{{sourceProductId}}/suggestions",
+              "raw": "{{baseUrl}}/store/products/{{sourceProductId}}/suggestions?limit=5",
               "host": ["{{baseUrl}}"],
               "path": [
                 "store",
                 "products",
                 "{{sourceProductId}}",
                 "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "default & max 5 (PRODUCT_LIMIT); clamped to [1,5]"
+                },
+                {
+                  "key": "cart_id",
+                  "value": "{{cartId}}",
+                  "description": "optional — filters out items already in the cart",
+                  "disabled": true
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET product suggestions — Tier-2 backfill (T-SUGG-02 / 2.2.4)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// lining-axforce-80 has only 2 Tier-1 manual items, so the evaluator",
+                  "// backfills the remaining slots from complement categories using the",
+                  "// category_top_seller snapshot (seed-category-top-sellers). Expect a mix",
+                  "// of tier='manual' and tier='category'.",
+                  "const j = pm.response.json();",
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('has suggestions', () => pm.expect(j.suggestions.length).to.be.above(0));",
+                  "const tiers = j.suggestions.map(s => s.tier);",
+                  "pm.test('Tier-2 backfill fired (>=1 tier=category)', () => pm.expect(tiers).to.include('category'));",
+                  "pm.test('Tier-1 manual shown first', () => { const firstCat = tiers.indexOf('category'); const lastManual = tiers.lastIndexOf('manual'); if (firstCat !== -1 && lastManual !== -1) pm.expect(lastManual).to.be.below(firstCat); });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "x-publishable-api-key", "value": "{{publishableKey}}" },
+              { "key": "x-session-id", "value": "{{sessionId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/products/{{tier2ProductId}}/suggestions?limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "store",
+                "products",
+                "{{tier2ProductId}}",
+                "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "default & max 5 (PRODUCT_LIMIT)"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET cart suggestions (2.5.2)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('200 OK (never 5xx — BR-10)', () => pm.response.to.have.status(200));",
+                  "pm.test('suggestions is an array', () => pm.expect(j.suggestions).to.be.an('array'));",
+                  "pm.test('count matches length', () => pm.expect(j.count).to.eql(j.suggestions.length));",
+                  "pm.test('at most CART_LIMIT=3', () => pm.expect(j.suggestions.length).to.be.at.most(3));",
+                  "pm.test('threshold_info present (null unless CR-02 fired)', () => pm.expect(j).to.have.property('threshold_info'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [
+              { "key": "x-publishable-api-key", "value": "{{publishableKey}}" },
+              { "key": "x-session-id", "value": "{{sessionId}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/suggestions?limit=3",
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "suggestions"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "description": "default & max 3 (CART_LIMIT); clamped to [1,3]"
+                }
               ]
             }
           }

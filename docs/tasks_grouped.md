@@ -166,6 +166,27 @@
 
 > **Deliverable:** Admin APIs cho rule management. 🟡 CRUD+validate ✅; 2.5.8 chốt tạm (bàn sau), 2.5.9 chờ chuẩn error i18n chung.
 
+### Category Complement Map — Admin CRUD
+
+> ⚠️ **NGOÀI SRS.pdf** — verified 2026-07-14 khi đọc trực tiếp `SRS_SuggestiveSelling_Voucher_v1.0.pdf`:
+> SRS **không** có entity `CategoryComplementMapping` (§5.1 Data Model chỉ liệt kê `SuggestionRule`,
+> `SuggestionRuleItem`, `CartSuggestionCondition`, `SuggestionEvent`) và **không** có endpoint
+> `/admin/category-complements` (§6.1 chỉ có CRUD `/admin/suggestion-rules`). SUGG-001 (trang 5) chỉ
+> mô tả Tier-2 mapping bằng **prose giá trị cố định** (rackets→strings/grips/bags…).
+> → Việc model-hoá thành bảng + CRUD là **quyết định thiết kế G3 của team** (xem [SPEC.md:73](SPEC.md#L73),
+> [API_CONTRACT §6](API_CONTRACT_Suggestive_Voucher_Cart.md#L297-L300)), **không phải yêu cầu bắt buộc từ SRS**.
+>
+> ✅ Đã có sẵn (qua 2.2.4–2.2.7): model `category_complement_mapping`, migration, và seed 3 map. Phần **thiếu** là Admin CRUD API để quản lý map thay vì chỉ sửa qua seed script.
+
+- [ ] **2.5.10** — Code Admin API `GET /admin/category-complements` — list/filter `source_category_id`, `is_active`; phân trang `limit`(50)/`offset`(0) _(ngoài SRS — G3)_
+- [ ] **2.5.11** — Code Admin API `POST /admin/category-complements` — tạo map (source→complement category, `display_order`); **duplicate pair → 409** _(ngoài SRS — G3)_
+- [ ] **2.5.12** — Code Admin API `PUT /admin/category-complements/:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
+- [ ] **2.5.13** — Code Admin API `DELETE /admin/category-complements/:id` — xoá cứng map _(ngoài SRS — G3)_
+- [ ] **2.5.14** — Zod validators + invalidate cache gợi ý khi map đổi (bump `suggest:cart-rules:version`, xoá `suggest:product:v3:*`) _(ngoài SRS — G3)_
+
+> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🔴 Chưa bắt đầu.
+> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; xếp sau các task Must-Have của SRS.
+
 ## Ngày 5
 
 - [ ] **2.3.7** — Code one-tap add default variant vào cart với quantity 1
