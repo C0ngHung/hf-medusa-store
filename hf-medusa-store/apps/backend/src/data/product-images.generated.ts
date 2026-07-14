@@ -6,6 +6,41 @@ export const S3_IMAGES: Record<
   string,
   { thumbnail: string; images: string[] }
 > = {
+  "yonex-mavis-350-1tube": {
+    thumbnail:
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-nhua-yonex-mav-350-6-in-1-vang-1-01KWZYC5K226KE07PKSNK2D675.webp",
+    ],
+  },
+  "yonex-as30-1tube": {
+    thumbnail:
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-600x600-01KWZYFBD5VYAB1G7DNRRGJWG1.jpg",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/Ong-cau-long-Yonex-Aerosensa-30-600x600-01KWZYFBD5VYAB1G7DNRRGJWG1.jpg",
+    ],
+  },
+  "yonex-as50-1tube": {
+    thumbnail:
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mi44fjmre1378f-01KXFSJ5HT8JK4YAKD8TXYTGGX.jpeg",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mi44fjmre1378f-01KXFSJ5HT8JK4YAKD8TXYTGGX.jpeg",
+    ],
+  },
+  "yonex-mavis-2000-1tube": {
+    thumbnail:
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-81ztc-mmnwvnviexom87%40resize_w450_nl-01KXFSGWAXGQ7ZYYQSD5FEJY1P.webp",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-81ztc-mmnwvnviexom87%40resize_w450_nl-01KXFSGWAXGQ7ZYYQSD5FEJY1P.webp",
+    ],
+  },
+  "lining-a62-1tube": {
+    thumbnail:
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/lining_a62_xd_renewed_shuttlecock_1560791902_e9d4ef11_progressive-01KXFSFVK6JECNVR8D20T2G5SV.jpg",
+    images: [
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/lining_a62_xd_renewed_shuttlecock_1560791902_e9d4ef11_progressive-01KXFSFVK6JECNVR8D20T2G5SV.jpg",
+    ],
+  },
   "lining-a62": {
     thumbnail:
       "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/lining_a62_xd_renewed_shuttlecock_1560791902_e9d4ef11_progressive-01KXFSFVK6JECNVR8D20T2G5SV.jpg",

@@ -338,7 +338,55 @@ const PRODUCTS: ProductSeed[] = [
     130,
   ),
 
-  // ── Ống cầu combo bulk (Tubes) — combo 3 ống, tên khớp từng quả cầu (CR-04) ──
+  // ── Ống cầu (Tubes) — mỗi loại: bản 1 ống (single, consumable của CR-04) + combo 3 ống (bulk) ──
+  // 1 ống (single): bỏ vào giỏ qty 1 → CR-04 gợi combo 3 ống cùng loại.
+  single(
+    "Yonex Mavis 350 - 1 ống",
+    "yonex-mavis-350-1tube",
+    "TUB-MAVIS350X1",
+    "Tubes",
+    350_000,
+    "1 ống cầu Mavis 350 (6 quả).",
+    120,
+  ),
+  single(
+    "Yonex Aerosensa 30 - 1 ống",
+    "yonex-as30-1tube",
+    "TUB-AS30X1",
+    "Tubes",
+    850_000,
+    "1 ống cầu Aerosensa 30 (12 quả).",
+    130,
+  ),
+  single(
+    "Yonex Aerosensa 50 - 1 ống",
+    "yonex-as50-1tube",
+    "TUB-AS50X1",
+    "Tubes",
+    980_000,
+    "1 ống cầu Aerosensa 50 (12 quả).",
+    130,
+  ),
+  single(
+    "Yonex Mavis 2000 - 1 ống",
+    "yonex-mavis-2000-1tube",
+    "TUB-MAVIS2000X1",
+    "Tubes",
+    420_000,
+    "1 ống cầu Mavis 2000 (6 quả).",
+    120,
+  ),
+  single(
+    "Li-Ning A+62 - 1 ống",
+    "lining-a62-1tube",
+    "TUB-LNA62X1",
+    "Tubes",
+    620_000,
+    "1 ống cầu Li-Ning A+62 (12 quả).",
+    130,
+  ),
+
+  // combo 3 ống (bulk): thứ CR-04 gợi ý khi có bản 1 ống trong giỏ.
   single(
     "Yonex Mavis 350 - Combo 3 ống",
     "yonex-mavis-350-3tube",

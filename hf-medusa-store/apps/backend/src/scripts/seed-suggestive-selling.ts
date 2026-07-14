@@ -28,13 +28,13 @@ const COMPLEMENT_MAP: Record<string, string[]> = {
   Shuttlecocks: ["Tubes"],
 };
 
-// CR-04: single consumable handle → designated bulk/multipack handle + unit count.
+// CR-04: single consumable handle (the "1 ống" tube) → its 3-tube combo + unit count.
 const BULK_MAP: Record<string, { handle: string; multiplier: number }> = {
-  "yonex-mavis-350": { handle: "yonex-mavis-350-3tube", multiplier: 3 },
-  "yonex-as30": { handle: "yonex-as30-3tube", multiplier: 3 },
-  "yonex-as50": { handle: "yonex-as50-3tube", multiplier: 3 },
-  "yonex-mavis-2000": { handle: "yonex-mavis-2000-3tube", multiplier: 3 },
-  "lining-a62": { handle: "lining-a62-3tube", multiplier: 3 },
+  "yonex-mavis-350-1tube": { handle: "yonex-mavis-350-3tube", multiplier: 3 },
+  "yonex-as30-1tube": { handle: "yonex-as30-3tube", multiplier: 3 },
+  "yonex-as50-1tube": { handle: "yonex-as50-3tube", multiplier: 3 },
+  "yonex-mavis-2000-1tube": { handle: "yonex-mavis-2000-3tube", multiplier: 3 },
+  "lining-a62-1tube": { handle: "lining-a62-3tube", multiplier: 3 },
 };
 
 // Tier-1: source product handle → suggested product handles ("Complete Your Setup").
