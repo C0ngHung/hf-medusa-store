@@ -22,23 +22,23 @@ export const S3_IMAGES: Record<
   },
   "yonex-as50-1tube": {
     thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mi44fjmre1378f-01KXFSJ5HT8JK4YAKD8TXYTGGX.jpeg",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-yonex-as50-1-01KXFVG6HHA1X1QXWPSG0WX3GC.webp",
     images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-820l4-mi44fjmre1378f-01KXFSJ5HT8JK4YAKD8TXYTGGX.jpeg",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/ong-cau-long-yonex-as50-1-01KXFVG6HHA1X1QXWPSG0WX3GC.webp",
     ],
   },
   "yonex-mavis-2000-1tube": {
     thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-81ztc-mmnwvnviexom87%40resize_w450_nl-01KXFSGWAXGQ7ZYYQSD5FEJY1P.webp",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/793b939d-322a-4a84-87d5-fb2b64ae2e0c-01KXFVEKFXF6YRS041H53QTFAF.png",
     images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/vn-11134207-81ztc-mmnwvnviexom87%40resize_w450_nl-01KXFSGWAXGQ7ZYYQSD5FEJY1P.webp",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/793b939d-322a-4a84-87d5-fb2b64ae2e0c-01KXFVEKFXF6YRS041H53QTFAF.png",
     ],
   },
   "lining-a62-1tube": {
     thumbnail:
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/lining_a62_xd_renewed_shuttlecock_1560791902_e9d4ef11_progressive-01KXFSFVK6JECNVR8D20T2G5SV.jpg",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/e8a4f680-7656-41b0-86b7-a96acc926bed-01KXFVCYH2J83QGPHMJG34ZY6N.png",
     images: [
-      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/lining_a62_xd_renewed_shuttlecock_1560791902_e9d4ef11_progressive-01KXFSFVK6JECNVR8D20T2G5SV.jpg",
+      "https://my-medusa-store-images-sydney.s3.ap-southeast-2.amazonaws.com/e8a4f680-7656-41b0-86b7-a96acc926bed-01KXFVCYH2J83QGPHMJG34ZY6N.png",
     ],
   },
   "lining-a62": {
