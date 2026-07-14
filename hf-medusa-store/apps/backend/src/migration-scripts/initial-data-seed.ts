@@ -58,6 +58,18 @@ const CATEGORY_NAMES = [
 const mockImg = (handle: string) =>
   `https://placehold.co/800x800/png?text=${encodeURIComponent(handle)}`;
 
+// Brand inferred from the handle prefix → product metadata.brand. Powers CR-03
+// (same-brand accessories, SUGG-004), read via readBrand() in the cart engine.
+// Keep in sync with scripts/backfill-product-brands.ts (which backfills existing
+// data). Returns null for unbranded/generic products.
+const brandOf = (handle: string): string | null => {
+  const h = handle.toLowerCase();
+  if (h.startsWith("yonex-")) return "Yonex";
+  if (h.startsWith("victor-")) return "Victor";
+  if (h.startsWith("lining-")) return "Li-Ning";
+  return null;
+};
+
 // Real product photos (S3) live in ../data/product-images.generated.ts —
 // regenerated from the DB after uploads. Missing products fall back to mockImg.
 
@@ -698,6 +710,10 @@ export default async function initial_data_seed({
         description: p.description,
         weight: p.weight,
         status: ProductStatus.PUBLISHED,
+        // CR-03 brand (SUGG-004); omitted when generic/unbranded.
+        ...(brandOf(p.handle)
+          ? { metadata: { brand: brandOf(p.handle) } }
+          : {}),
         shipping_profile_id: shippingProfile.id,
         thumbnail: S3_IMAGES[p.handle]?.thumbnail ?? mockImg(p.handle),
         images: (S3_IMAGES[p.handle]?.images ?? [mockImg(p.handle)]).map(
