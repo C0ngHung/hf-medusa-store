@@ -5,6 +5,7 @@
  * no Medusa imports. Integer VND math with Math.floor (INT-01). Conditions are quoted
  * from SPEC §B.3; error codes/messages come from the errors.ts catalog.
  */
+import { MIN_CODE_LENGTH } from "../../../modules/voucher-engine/constants";
 import { fail, PASS } from "./errors";
 import { normalizeCode } from "./normalize";
 import type {
@@ -14,11 +15,10 @@ import type {
   VoucherValidationContext,
 } from "./types";
 
-/** Minimum voucher code length (SPEC C.4: "voucher code ≥6 alnum uppercase"). */
-export const MIN_CODE_LENGTH = 6;
+export { MIN_CODE_LENGTH };
 
-/** Format rule applied AFTER normalizeCode: 6+ uppercase alphanumerics. */
-export const CODE_FORMAT = /^[A-Z0-9]{6,}$/;
+/** Format rule applied AFTER normalizeCode: `MIN_CODE_LENGTH`+ uppercase alphanumerics. */
+export const CODE_FORMAT = new RegExp(`^[A-Z0-9]{${MIN_CODE_LENGTH},}$`);
 
 /**
  * 3.2.2 — voucher code format. A malformed manual code has no dedicated customer

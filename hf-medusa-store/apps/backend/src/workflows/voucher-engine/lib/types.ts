@@ -18,7 +18,13 @@ export type VoucherErrorCode =
   | "VOUCHER_MIN_ORDER_NOT_MET"
   | "VOUCHER_NO_ELIGIBLE_ITEMS"
   | "VOUCHER_SEGMENT_NOT_ELIGIBLE"
-  | "VOUCHER_STACKING_CONFLICT";
+  | "VOUCHER_STACKING_CONFLICT"
+  // Day 4 (Thức) additions — apply/remove/replace/redemption-time codes, not part
+  // of the V1–V8 chain itself. SPEC §8.4 / API_CONTRACT §5.1.
+  | "VOUCHER_REPLACE_REQUIRED"
+  | "VOUCHER_CALCULATION_FAILED"
+  | "VOUCHER_CART_CHANGED"
+  | "VOUCHER_AUTO_REMOVED";
 
 /**
  * Outcome of a single validator or the whole chain. Results are RETURN VALUES,

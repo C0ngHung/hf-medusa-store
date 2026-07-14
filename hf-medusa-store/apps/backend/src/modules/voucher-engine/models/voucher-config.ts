@@ -1,4 +1,4 @@
-import { model } from '@medusajs/framework/utils'
+import { model } from "@medusajs/framework/utils";
 
 /**
  * VoucherConfig — voucher definition (SPEC §B.1 D-B1; SRS §5.2 V1–V8).
@@ -14,11 +14,16 @@ import { model } from '@medusajs/framework/utils'
  * every cart item is eligible.
  */
 const VoucherConfig = model
-  .define('voucher_config', {
+  .define("voucher_config", {
     id: model.id().primaryKey(),
     // V1 — stored UPPERCASE + trimmed (see workflows/voucher-engine/lib/normalize).
     code: model.text(),
-    discount_type: model.enum(['percentage', 'fixed_amount']),
+    // SPEC Decision C — backing Medusa Promotion used to apply this voucher to a
+    // cart (§14.2-A). Populated/updated only by the admin create/update workflow
+    // (out of this session's scope); client input is never trusted for this
+    // value. Null until a backing Promotion exists for this voucher.
+    promotion_id: model.text().nullable(),
+    discount_type: model.enum(["percentage", "fixed_amount"]),
     // basis-points when percentage (2000 = 20%); raw VND when fixed_amount.
     discount_value: model.number(),
     // V5 — minimum order value (VND) to qualify; null ⇒ no minimum.
@@ -43,6 +48,6 @@ const VoucherConfig = model
     valid_to: model.dateTime(),
     is_active: model.boolean().default(true),
   })
-  .indexes([{ on: ['code'], unique: true }, { on: ['is_active'] }])
+  .indexes([{ on: ["code"], unique: true }, { on: ["is_active"] }]);
 
-export default VoucherConfig
+export default VoucherConfig;
