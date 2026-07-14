@@ -194,7 +194,7 @@
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
-- [ ] **5.5.5** — Hoàn thiện WBS diagram
+- [ ] **5.5.5** — Hoàn thiện WBS diagramS
 - [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần SuggestiveSelling foundation và WBS diagram.
@@ -242,33 +242,56 @@
 
 ## Ngày 4
 
-- [ ] **2.5.1** — Code Store API GET /store/products/:id/suggestions
-- [ ] **2.5.2** — Code Store API GET /store/cart/suggestions
-- [ ] **2.5.3** — Code Store API POST /store/suggestions/:id/events
-- [ ] **2.6.1** — Code subscriber cho cart.updated
-- [ ] **2.6.2** — Code re-evaluate suggestions khi item added/removed/quantity updated
-- [ ] **2.6.3** — Code Redis key product:{product_id}:suggestions
-- [ ] **2.6.4** — Code Redis key cart:{cart_id}:suggestions
-- [ ] **2.6.5** — Code Redis TTL 5 phút cho suggestion results
-- [ ] **2.6.6** — Code cache invalidation ngay khi cart change
-- [ ] **2.6.8** — Code SuggestionEvent impression
-- [ ] **2.6.9** — Code SuggestionEvent tap
-- [ ] **2.6.10** — Code SuggestionEvent add_to_cart
-- [ ] **2.6.11** — Code SuggestionEvent dismiss
-- [ ] **2.6.12** — Code event payload đầy đủ: rule_id, source_context, source_product_id/cart, suggested_product_id, customer_id, session_id, timestamp, action
+- [x] **2.5.1** — Code Store API GET /store/products/:id/suggestions
+- [x] **2.5.2** — Code Store API GET /store/cart/suggestions
+- [x] **2.5.3** — Code Store API POST /store/suggestions/:id/events
+- [x] **2.6.1** — Code subscriber cho cart.updated
+- [x] **2.6.2** — Code re-evaluate suggestions khi item added/removed/quantity updated
+- [x] **2.6.3** — Code Redis key product:{product_id}:suggestions
+- [x] **2.6.4** — Code Redis key cart:{cart_id}:suggestions
+- [x] **2.6.5** — Code Redis TTL 5 phút cho suggestion results
+- [x] **2.6.6** — Code cache invalidation ngay khi cart change
+- [x] **2.6.8** — Code SuggestionEvent impression
+- [x] **2.6.9** — Code SuggestionEvent tap
+- [x] **2.6.10** — Code SuggestionEvent add_to_cart
+- [x] **2.6.11** — Code SuggestionEvent dismiss
+- [x] **2.6.12** — Code event payload đầy đủ: rule_id, source_context, source_product_id/cart, suggested_product_id, customer_id, session_id, timestamp, action
 
 > **Deliverable:** Store APIs, cache và analytics events hoàn thành.
 
 ## Ngày 5
 
-- [ ] **2.4.4** — Code badge_text “Add for FREE shipping!” cho CR-02
-- [ ] **2.6.7** — Code stock availability cache cho suggested products nếu cần
-- [ ] **2.7.4** — Đảm bảo cold miss fallback sang DB query và cache write
-- [ ] **2.7.5** — Đảm bảo frontend/demo có thể hiển thị skeleton loader khi cart-level suggestion async
-- [ ] **4.1.7** — Recalculate cart total sau add/remove suggested item
-- [ ] **4.3.3** — Demo flow cart page → cart-level suggestions
+- [x] **2.4.4** — Code badge_text “Thêm để được Freeship!” cho CR-02
+- [x] **2.6.7** — Code stock availability cache cho suggested products nếu cần
+- [x] **2.7.4** — Đảm bảo cold miss fallback sang DB query và cache write
+- [x] **2.7.5** — Đảm bảo frontend/demo có thể hiển thị skeeton loader khi cart-level suggestion async
+- [x] **4.1.7** — Recalculate cart total sau add/remove suggested item
+- [x] **4.3.3** — Demo flow cart page → cart-level suggestions
 
 > **Deliverable:** Cart-level suggestion refresh, cache và demo cart flow hoàn chỉnh.
+
+### 🎨 UI Storefront — SuggestiveSelling (consume Store APIs Ngày 4)
+
+> _FE Next.js tiêu thụ Store APIs của Sơn. **Phối hợp Linh** theo OWNERSHIP (suggestion UI/one-tap-add = Linh) trước khi động vào `apps/storefront/`. Nhánh đề xuất: `feat/suggestive-selling-storefront-ui`._
+
+**PDP — `GET /store/products/:id/suggestions`:**
+
+- [x] **4.4.1** — Design + code component PDP “Thường được mua cùng” (carousel/grid ngang, tối đa 3–5 sản phẩm) consume `GET /store/products/:id/suggestions`
+- [x] **4.4.2** — Design suggestion product card: image, name, price, discount*price, label *(map response 2.2.9)\_
+- [x] **4.4.3** — One-tap add button `[+]` trên card → add default variant qty 1 _(nối 2.3.7)_ + Added state 3s + toast + Undo 3s _(nối 2.3.9–2.3.11)_
+- [x] **4.4.3b** — Error state khi one-tap add thất bại (out-of-stock đột xuất / lỗi mạng / 5xx): revert nút về trạng thái ban đầu + error toast đỏ, không hiện "Đã thêm"
+- [x] **4.4.3c** — Sản phẩm nhiều variants không có default (`requires_variant_selection`): đổi `[+]` thành `[Chọn phân loại]` → chuyển hướng PDP (hoặc mini variant-selector) _(nối 2.3.8)_
+- [x] **4.4.4** — Dismiss button `[x]` góc card (fade-out + collapse) ẩn sản phẩm khỏi section
+
+**Cart page / drawer — `GET /store/cart/suggestions`:**
+
+- [x] **4.4.5** — Design + code component Cart “Bạn có thể cần thêm” (compact list vuốt ngang, tối đa 3) consume `GET /store/cart/suggestions`
+- [x] **4.4.6** — Badge CR-02 “Thêm để được Freeship!” trên cart suggestion card _(nối 2.4.4 + threshold_info 2.4.10)_
+- [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
+- [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
+- [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
+
+> **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
 ## Ngày 6
 
@@ -283,6 +306,21 @@
 
 > **Deliverable:** Evidence cho cart-level suggestion, one-tap add, cache và analytics.
 
+### 🎨 UI Storefront — event tracking + evidence
+
+> _Gắn trigger tracking vào các component UI của Ngày 5 (`POST /store/suggestion-events`, batch/202). **Phối hợp Linh** (suggestion UI = Linh)._
+
+**Tracking events — `POST /store/suggestion-events`:**
+
+- [ ] **4.4.10** — Impression tracking bằng `IntersectionObserver` (component visible ≥50% trong ~1–2s) → gửi `action=impression` _(nối 2.6.8)_
+- [ ] **4.4.11** — Tap tracking khi click image/name đi tới PDP → gửi `action=tap` _(nối 2.6.9)_
+- [ ] **4.4.12** — add*to_cart tracking khi bấm `[+]` → gửi `action=add_to_cart` *(kèm 4.4.3, nối 2.6.10)\_
+- [ ] **4.4.13** — Dismiss tracking khi bấm `[x]` → gửi `action=dismiss` _(kèm 4.4.4, nối 2.6.11)_
+- [ ] **4.4.14** — Gửi đủ client payload: rule*id, source_context, source/suggested_product_id, session_id *(nối 2.6.12; customer*id do server lấy từ auth)*
+- [ ] **4.4.15** — UI evidence: screenshot/recording PDP + cart suggestions, network log 4 event (impression/tap/add/dismiss), empty-state ẩn section _(gắn vào 5.1.10 / 5.4.6)_
+
+> **Deliverable UI:** 4 event tracking (impression/tap/add_to_cart/dismiss) bắn đúng payload + evidence network log kèm PR.
+
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
@@ -290,6 +328,16 @@
 - [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần product/cart suggestion, one-tap add và analytics.
+
+### 🎨 UI Storefront — demo
+
+> _Demo end-to-end UI trên `apps/storefront` (port 8008). **Phối hợp Linh** (suggestion UI = Linh)._
+
+- [ ] **4.4.16** — Demo UI flow: PDP → “Thường được mua cùng” → impression/tap tracking _(gắn 4.3.1)_
+- [ ] **4.4.17** — Demo UI flow: Cart → “Bạn có thể cần thêm” + badge Freeship + skeleton khi cart đổi _(gắn 4.3.3)_
+- [ ] **4.4.18** — Demo UI flow: one-tap add → toast + Undo, dismiss → fade-out, empty-state ẩn section _(gắn 4.3.2)_
+
+> **Deliverable UI:** Demo record đủ 3 flow UI (PDP suggestions, cart suggestions + badge/skeleton, one-tap add/dismiss + tracking).
 
 # 👤 Thức
 
