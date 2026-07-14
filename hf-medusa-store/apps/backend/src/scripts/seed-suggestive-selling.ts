@@ -23,10 +23,11 @@ const COMPLEMENT_MAP: Record<string, string[]> = {
 
 // CR-04: single consumable handle → designated bulk/multipack handle + unit count.
 const BULK_MAP: Record<string, { handle: string; multiplier: number }> = {
+  "yonex-mavis-350": { handle: "yonex-mavis-350-3tube", multiplier: 3 },
   "yonex-as30": { handle: "yonex-as30-3tube", multiplier: 3 },
-  "yonex-bg65": { handle: "yonex-bg65-3pack", multiplier: 3 },
-  "victor-gr262-grip": { handle: "victor-gr262-3pack", multiplier: 3 },
-  "yonex-mavis-350": { handle: "yonex-mavis-350-3box", multiplier: 3 },
+  "yonex-as50": { handle: "yonex-as50-3tube", multiplier: 3 },
+  "yonex-mavis-2000": { handle: "yonex-mavis-2000-3tube", multiplier: 3 },
+  "lining-a62": { handle: "lining-a62-3tube", multiplier: 3 },
 };
 
 // Tier-1: source product handle → suggested product handles ("Complete Your Setup").
