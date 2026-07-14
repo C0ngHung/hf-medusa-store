@@ -629,13 +629,16 @@ function categoryNamesOf(item: any): string[] {
  * Prefers cart totals; falls back to summing line unit_price×quantity.
  */
 function resolveSubtotal(cart: any, items: any[]): number {
-  const itemTotal = numOrNull(cart?.item_total);
+  // Money fields come back as BigNumber objects (see toAmount) — coercing via a
+  // plain `typeof === "number"` guard yields 0, so subtotal collapses to 0 and
+  // CR-02 (threshold_near) silently never fires. Coerce every money source.
+  const itemTotal = toAmount(cart?.item_total);
   if (itemTotal !== null) return itemTotal;
-  const subtotal = numOrNull(cart?.subtotal);
+  const subtotal = toAmount(cart?.subtotal);
   if (subtotal !== null) return subtotal;
   return items.reduce(
     (sum, item) =>
-      sum + numberOr(item?.unit_price, 0) * numberOr(item?.quantity, 0),
+      sum + (toAmount(item?.unit_price) ?? 0) * numberOr(item?.quantity, 0),
     0,
   );
 }
@@ -656,8 +659,19 @@ function numberOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-function numOrNull(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+/**
+ * Coerce a monetary value to an integer-VND number (INT-01). Medusa's
+ * query.graph returns money as a BigNumber object ({numeric_, raw_, bignumber_}),
+ * so a plain `typeof === "number"` guard rejects it and the amount reads as 0.
+ * We parse the object's string form — exact for the decimal strings Postgres
+ * emits (e.g. "6100000.0000000000000"). null = absent/unparseable, which lets
+ * resolveSubtotal fall through to the next money source.
+ */
+function toAmount(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const n = Number(typeof value === "object" ? String(value) : value);
+  return Number.isFinite(n) ? n : null;
 }
 
 function errMessage(err: unknown): string {
