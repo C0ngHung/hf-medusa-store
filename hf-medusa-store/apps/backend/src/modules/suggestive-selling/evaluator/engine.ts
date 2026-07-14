@@ -15,6 +15,7 @@ import type {
 import {
   computePriceFields,
   finalizeSuggestions,
+  readBrand,
   resolveVariant,
 } from "./pipeline";
 
@@ -280,12 +281,6 @@ export class EvaluationEngine {
     }
     return null;
   }
-}
-
-/** Brand is not a first-class Medusa entity here — read it from product metadata. */
-function readBrand(product: any): string | null {
-  const brand = product?.metadata?.brand;
-  return typeof brand === "string" && brand.length > 0 ? brand : null;
 }
 
 function errMessage(err: unknown): string {

@@ -4,6 +4,7 @@ import type {
   CalculatedPriceLike,
   DropReason,
   EnrichedCandidate,
+  EnrichedProduct,
   FilterContext,
   FilterOutcome,
   ProductSuggestion,
@@ -211,6 +212,66 @@ export function toProductSuggestion(
     rule_id: candidate.rule_id,
     label: candidate.custom_label,
     display_order: position,
+  };
+}
+
+/**
+ * Structural view of a Medusa product graph row — only the fields both engines
+ * read. Kept loose (optional/any) because `query.graph` returns partial rows.
+ */
+export interface ProductRowLike {
+  id: string;
+  title?: string | null;
+  handle?: string | null;
+  thumbnail?: string | null;
+  status?: string | null;
+  metadata?: Record<string, unknown> | null;
+  categories?: Array<{ id?: string | null; name?: string | null }> | null;
+  variants?: VariantLike[] | null;
+}
+
+/** Brand is not a first-class entity here — read it from product metadata (SPEC A.4). */
+export function readBrand(product: {
+  metadata?: Record<string, unknown> | null;
+}): string | null {
+  const brand = product?.metadata?.brand;
+  return typeof brand === "string" && brand.length > 0 ? brand : null;
+}
+
+/**
+ * Map a raw product graph row to the enriched, provenance-free shape (SPEC A.4
+ * step 6): variant resolution, price fields, stock, taxonomy, brand. Pure —
+ * shared by the product engine (enrichCandidates) and the cart engine so both
+ * derive display fields identically. `in_stock` is best-effort (has a variant);
+ * authoritative per-variant stock is re-checked at add-time (EC-07/SUGG-003).
+ */
+export function enrichProductRow(row: ProductRowLike): EnrichedProduct {
+  const variants = (row.variants ?? []) as VariantLike[];
+  const { variant_id, requires_variant_selection } = resolveVariant(variants);
+  const { price, discount_price } = computePriceFields(variants);
+  const categories = (row.categories ?? []).filter(Boolean) as Array<{
+    id?: string | null;
+    name?: string | null;
+  }>;
+
+  return {
+    product_id: row.id,
+    handle: row.handle ?? null,
+    name: row.title ?? "",
+    image_url: row.thumbnail ?? null,
+    status: row.status ?? "draft",
+    category_ids: categories
+      .map((c) => c?.id)
+      .filter((id): id is string => typeof id === "string"),
+    category_names: categories
+      .map((c) => c?.name)
+      .filter((name): name is string => typeof name === "string"),
+    brand: readBrand(row),
+    variant_id,
+    requires_variant_selection,
+    in_stock: variants.length > 0,
+    price,
+    discount_price,
   };
 }
 

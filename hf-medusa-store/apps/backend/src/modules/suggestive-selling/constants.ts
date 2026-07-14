@@ -54,6 +54,23 @@ export const CR02_PRICE_BAND_MULT = 2;
 /** CR-02 "within 15% of threshold" (D5). */
 export const CR02_THRESHOLD_PCT = 0.15;
 
+/**
+ * Free-shipping threshold used by CR-02 (SPEC A.6 / API Contract §1.1). Phase-1
+ * fallback constant — the SRS says the real value lives in the Promotion subsystem
+ * (OI-04); until that is wired, CR-02 fires against this fixed 7.000.000₫ ceiling.
+ * Integer VND (INT-01).
+ */
+export const FREE_SHIPPING_THRESHOLD = 7_000_000;
+
+/** Default CR-02 badge when a threshold_near rule doesn't override it (SPEC A.6). */
+export const CR02_DEFAULT_BADGE = "Mua thêm để được MIỄN PHÍ vận chuyển!";
+
+/**
+ * CR-04 default trigger quantity (SUGG-004): a consumable line at qty ≤ this many
+ * nudges its bulk/multipack. Overridable per-rule via condition_params.max_quantity.
+ */
+export const CR04_DEFAULT_MAX_QUANTITY = 1;
+
 /** Suggestion tiers in priority order (highest first) — Tier 1 > Tier 2 > Tier 3 (BR-01). */
 export const SUGGESTION_TIER_ORDER = [
   "manual",
