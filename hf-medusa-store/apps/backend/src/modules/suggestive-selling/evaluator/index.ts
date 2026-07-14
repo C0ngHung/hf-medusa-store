@@ -7,4 +7,7 @@
  */
 export { EvaluationEngine } from "./engine";
 export type { EngineDeps, EngineLogger, QueryGraph } from "./engine";
+export { CartEvaluationEngine } from "./cart-engine";
+export type { CartEngineDeps, CartRuleService } from "./cart-engine";
 export * from "./pipeline";
+export * from "./cart-rules";

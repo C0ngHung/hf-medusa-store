@@ -64,6 +64,27 @@ class SuggestiveSellingService extends MedusaService({
   }
 
   /**
+   * SPEC A.3 — active cart-level rules (SUGG-004), inside their valid window,
+   * with their conditions eager-loaded, ordered by priority asc so the evaluator
+   * runs them CR-01→CR-04 (2.4.7 / BR-03). Empty-conditions rules never fire
+   * (matchesCartRule), but are still returned; firing is decided downstream.
+   */
+  async listActiveCartRules(at: Date = new Date()) {
+    const rules = await this.listSuggestionRules(
+      { type: "cart", is_active: true },
+      { relations: ["conditions"] },
+    );
+
+    const inWindow = (r: any) =>
+      (!r.valid_from || new Date(r.valid_from) <= at) &&
+      (!r.valid_to || at <= new Date(r.valid_to));
+
+    return rules
+      .filter(inWindow)
+      .sort((a: any, b: any) => (a.priority ?? 0) - (b.priority ?? 0));
+  }
+
+  /**
    * SPEC A.3 — active category-complement mappings for a source category,
    * ordered by display_order (Tier-2 backfill source, SRS SUGG-001).
    */
