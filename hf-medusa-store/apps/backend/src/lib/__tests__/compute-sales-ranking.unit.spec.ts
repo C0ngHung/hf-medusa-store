@@ -53,4 +53,31 @@ describe("computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6)", () => 
       [],
     );
   });
+
+  // Regression: Medusa's order graph returns line-item quantity nested under
+  // `detail` (computed field). The aggregation must read it, otherwise every
+  // product sums to 0 and the snapshot comes back empty (the top-seller job bug).
+  it("reads quantity from items.detail.quantity (Medusa graph shape)", () => {
+    const orders = [
+      { items: [{ product_id: "p_string", detail: { quantity: 6 } }] },
+      { items: [{ product_id: "p_grip", detail: { quantity: 2 } }] },
+    ];
+    const rows = computeSalesRanking(orders, productCategories);
+    expect(rows.find((r) => r.product_id === "p_string")?.sales_count).toBe(6);
+    expect(rows.find((r) => r.product_id === "p_grip")?.sales_count).toBe(2);
+  });
+
+  it("prefers a direct quantity but falls back to detail across mixed shapes", () => {
+    const orders = [
+      { items: [{ product_id: "p_string", quantity: 4 }] }, // direct
+      { items: [{ product_id: "p_string", detail: { quantity: 3 } }] }, // nested
+    ];
+    const rows = computeSalesRanking(orders, productCategories);
+    expect(rows.find((r) => r.product_id === "p_string")?.sales_count).toBe(7);
+  });
+
+  it("treats a missing/undefined quantity as 0 (item dropped, not NaN)", () => {
+    const orders = [{ items: [{ product_id: "p_string" }] }]; // no quantity, no detail
+    expect(computeSalesRanking(orders, productCategories)).toHaveLength(0);
+  });
 });
