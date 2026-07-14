@@ -1,13 +1,20 @@
 "use server"
 
+import { revalidateTag } from "next/cache"
 import { sdk } from "@lib/config"
 import {
   CartSuggestionsResponse,
   ProductSuggestionsResponse,
+  SuggestionContext,
   SuggestionEventInput,
 } from "@modules/suggestions/types"
-import { getAuthHeaders } from "./cookies"
-import { deleteLineItem, retrieveCart, updateLineItem } from "./cart"
+import { getAuthHeaders, getCacheTag } from "./cookies"
+import {
+  deleteLineItem,
+  getOrSetCart,
+  retrieveCart,
+  updateLineItem,
+} from "./cart"
 
 /**
  * Storefront data access for SuggestiveSelling (tasks 4.4.1/4.4.5/4.4.9). All
@@ -124,4 +131,80 @@ export async function undoAddSuggestedItem({
   } else {
     await deleteLineItem(line.id)
   }
+}
+
+/**
+ * One-tap add WITH attribution (SUGG-003): POST /store/carts/:id/suggested-items
+ * (the attributed endpoint), NOT the generic addToCart. The backend workflow
+ * persists the attribution onto the line item's metadata, re-checks stock
+ * authoritatively, dedupes via Idempotency-Key, and emits the authoritative
+ * `add_to_cart` event server-side (2.6.10) — so the caller must NOT also track it.
+ *
+ * Creates the cart if none exists (getOrSetCart, mirroring addToCart) and
+ * revalidates the cart cache so the storefront reflects the new line. Errors
+ * (409 stock / 422 attribution·variant·inactive) propagate → the caller shows
+ * the error toast.
+ */
+export async function addSuggestedItem({
+  productId,
+  variantId,
+  countryCode,
+  idempotencyKey,
+  attribution,
+  slot,
+}: {
+  productId: string
+  variantId: string
+  countryCode: string
+  idempotencyKey: string
+  attribution: {
+    rule_id?: string | null
+    source_context: SuggestionContext
+    source_product_id?: string | null
+  }
+  slot?: number | null
+}): Promise<{ lineItemId: string | null; isReplay: boolean }> {
+  const cart = await getOrSetCart(countryCode)
+  if (!cart) throw new Error("Error retrieving or creating cart")
+
+  const headers: Record<string, string> = {
+    ...(await getAuthHeaders()),
+    "idempotency-key": idempotencyKey,
+  }
+
+  const res = await sdk.client.fetch<{
+    line_item: { id: string } | null
+    updated_cart_total: number
+    is_idempotent_replay: boolean
+  }>(`/store/carts/${cart.id}/suggested-items`, {
+    method: "POST",
+    body: {
+      product_id: productId,
+      variant_id: variantId,
+      quantity: 1,
+      ...(slot != null ? { slot } : {}),
+      attribution,
+    },
+    headers,
+    cache: "no-store",
+  })
+
+  const cartCacheTag = await getCacheTag("carts")
+  revalidateTag(cartCacheTag)
+  const fulfillmentCacheTag = await getCacheTag("fulfillment")
+  revalidateTag(fulfillmentCacheTag)
+
+  return {
+    lineItemId: res.line_item?.id ?? null,
+    isReplay: res.is_idempotent_replay,
+  }
+}
+
+/** Undo a one-tap add (SF-04) by the exact line item id returned from the add. */
+export async function undoSuggestedItem({
+  lineId,
+}: {
+  lineId: string
+}): Promise<void> {
+  await deleteLineItem(lineId)
 }
