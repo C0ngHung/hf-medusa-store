@@ -14,10 +14,7 @@
       "Bash(pnpm test:*)",
       "Bash(pnpm build:*)"
     ],
-    "deny": [
-      "Bash(rm -rf:*)",
-      "Bash(git push:*)"
-    ]
+    "deny": ["Bash(rm -rf:*)", "Bash(git push:*)"]
   },
   "hooks": {
     "PostToolUse": [
@@ -32,7 +29,16 @@
       }
     ]
   },
+  "extraKnownMarketplaces": {
+    "medusa": {
+      "source": {
+        "source": "github",
+        "repo": "medusajs/medusa-agent-skills"
+      }
+    }
+  },
   "enabledPlugins": {
-    "medusa-dev@medusa": true
+    "medusa-dev@medusa": true,
+    "ecommerce-storefront@medusa": true
   }
 }
