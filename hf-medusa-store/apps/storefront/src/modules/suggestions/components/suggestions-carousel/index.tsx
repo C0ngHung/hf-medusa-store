@@ -21,6 +21,7 @@ import {
 } from "@modules/common/components/ui"
 import {
   SuggestionContext,
+  SuggestionEventInput,
   SuggestionItem,
   ThresholdInfo,
 } from "@modules/suggestions/types"
@@ -40,6 +41,7 @@ type SuggestionsCarouselProps = {
 }
 
 const TOAST_MS = 3000 // Undo / error window (4.4.3 / 4.4.3b)
+const IMPRESSION_FLUSH_MS = 400 // debounce so cards visible together batch into one POST (4.4.10)
 
 /** Success carries the variant for Undo; error is informational only (4.4.3b). */
 type Toast =
@@ -136,6 +138,70 @@ const SuggestionsCarousel = ({
       },
     ])
   }
+
+  // Full client payload for the four actions (4.4.14); customer_id is server-side.
+  const buildEvent = useCallback(
+    (
+      action: SuggestionEventInput["action"],
+      item: SuggestionItem,
+      slot: number,
+    ): SuggestionEventInput => ({
+      action,
+      source_context: context,
+      suggested_product_id: item.product_id,
+      rule_id: item.rule_id,
+      source_product_id: sourceProductId,
+      tier: item.tier,
+      slot: slot || null,
+    }),
+    [context, sourceProductId],
+  )
+
+  // Impression tracking (4.4.10). Cards fire as they cross the 50%/dwell gate; we
+  // buffer and debounce-flush so a screenful that appears at once posts as ONE
+  // batch (endpoint accepts ≤10/batch). Stable identity → card observers don't
+  // re-subscribe each render.
+  const impressionBuffer = useRef<SuggestionEventInput[]>([])
+  const impressionTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const flushImpressions = useCallback(() => {
+    impressionTimer.current = null
+    const batch = impressionBuffer.current
+    if (!batch.length) return
+    impressionBuffer.current = []
+    void trackSuggestionEvents(batch)
+  }, [])
+
+  const handleImpression = useCallback(
+    (item: SuggestionItem, slot: number) => {
+      impressionBuffer.current.push(buildEvent("impression", item, slot))
+      if (!impressionTimer.current) {
+        impressionTimer.current = setTimeout(
+          flushImpressions,
+          IMPRESSION_FLUSH_MS,
+        )
+      }
+    },
+    [buildEvent, flushImpressions],
+  )
+
+  // Tap (4.4.11) — fire immediately (navigation follows); fire-and-forget.
+  const handleTap = useCallback(
+    (item: SuggestionItem, slot: number) => {
+      void trackSuggestionEvents([buildEvent("tap", item, slot)])
+    },
+    [buildEvent],
+  )
+
+  // Flush any buffered impressions on unmount so they aren't lost.
+  useEffect(
+    () => () => {
+      if (impressionTimer.current) {
+        clearTimeout(impressionTimer.current)
+        flushImpressions()
+      }
+    },
+    [flushImpressions],
+  )
 
   // ── Horizontal scroll: native touch-swipe on mobile, arrow buttons on desktop
   //    (point 3). Edge state hides an arrow when there is nothing more that way. ──
@@ -236,14 +302,17 @@ const SuggestionsCarousel = ({
           "snap-x snap-mandatory overscroll-x-contain [scrollbar-width:thin]",
         )}
       >
-        {items.map((item) => (
+        {items.map((item, index) => (
           <div key={item.product_id} className="snap-start h-full">
             <SuggestionCard
               item={item}
               currencyCode={currencyCode}
               variant={variant}
+              slot={index + 1}
               onAdd={handleAdd}
               onDismiss={handleDismiss}
+              onImpression={handleImpression}
+              onTap={handleTap}
             />
           </div>
         ))}

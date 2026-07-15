@@ -308,9 +308,9 @@ export default async function seedSuggestiveSelling({
       badge_text: CR02_DEFAULT_BADGE,
     },
   });
-  // CR-03 (2.4.5): single-brand cart → same-brand accessories. INERT for now — no
-  // product carries metadata.brand yet, so brand_match never resolves a brand;
-  // seeded so the rule set is complete and it activates once brands are populated.
+  // CR-03 (2.4.5): single-brand cart → same-brand accessories. Brands are populated
+  // by scripts/seed-product-brands.ts (product.metadata.brand); run that so this
+  // rule resolves a brand. Only fires for a cart with exactly ONE distinct brand.
   if (accessoryCatIds.length) {
     cartRules.push({
       name: "Cart CR-03: same-brand accessories",
