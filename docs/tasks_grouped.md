@@ -245,15 +245,15 @@ Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
 
 ## Ngày 6
 
-- [ ] **5.1.1** — Test T-SUGG-01: product có 3 manual suggestions → hiển thị đúng thứ tự
-- [ ] **5.1.2** — Test T-SUGG-02: product có 1 manual suggestion → backfill category complement
-- [ ] **5.1.3** — Test T-SUGG-03: suggested product đã có trong cart → bị loại
-- [ ] **5.1.4** — Test T-SUGG-04: suggested product hết hàng → bị loại
-- [ ] **5.1.5** — Test T-SUGG-05: suggestion dismissed → không hiện lại trong session
-- [ ] **5.4.1** — Fix bug sau SuggestiveSelling tests
-- [ ] **5.4.6** — Tổng hợp evidence theo SUGG requirements
+- [x] **5.1.1** — Test T-SUGG-01: product có 3 manual suggestions → hiển thị đúng thứ tự _(unit `evaluate`/`pipeline` + HTTP `suggestion-dismissal.spec.ts`)_
+- [x] **5.1.2** — Test T-SUGG-02: product có 1 manual suggestion → backfill category complement _(unit `evaluate.unit.spec.ts`)_
+- [x] **5.1.3** — Test T-SUGG-03: suggested product đã có trong cart → bị loại _(unit `pipeline.unit.spec.ts` applyBr02Filter)_
+- [x] **5.1.4** — Test T-SUGG-04: suggested product hết hàng → bị loại _(unit `pipeline.unit.spec.ts` + backfill regression)_
+- [x] **5.1.5** — Test T-SUGG-05: suggestion dismissed → không hiện lại trong session _(unit `suggestion-cache.unit.spec.ts` roundtrip + HTTP end-to-end)_
+- [x] **5.4.1** — Fix bug sau SuggestiveSelling tests _(dismiss chưa persist server-side → wire `addDismissal` vào `POST /store/suggestion-events`; khép carryover ⚠️1 Day-4/5)_
+- [x] **5.4.6** — Tổng hợp evidence theo SUGG requirements _(`docs/day6-suggestive-selling-review.md`: unit 97/97, HTTP 3/3, tsc sạch)_
 
-> **Deliverable:** Evidence cho product-level suggestion, filtering và admin rule behavior.
+> **Deliverable:** Evidence cho product-level suggestion, filtering và admin rule behavior. ✅ _(unit 97/97 · HTTP integration 3/3 · fix bug dismiss T-SUGG-05)_
 
 ## Ngày 7
 
@@ -352,20 +352,20 @@ Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
 - [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
 - [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
 - [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
-- [x] **4.4.14** — Seed data for cart _(✅ 2026-07-14, commit `b29e2f7`: seed 4 cart rules CR-01…CR-04 + conditions; verified 4 rules/DB. CR-04 fire khi "1 ống" trong giỏ → gợi combo 3 ống)_
+- [ ] **4.4.14** — Seed data for cart
 
 > **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
 ## Ngày 6
 
-- [ ] **5.1.6** — Test T-SUGG-06: one-tap add → item vào cart, toast hiển thị
-- [ ] **5.1.7** — Test T-SUGG-07: cart có racket, không có string → CR-01 suggest strings
-- [ ] **5.1.8** — Test T-SUGG-08: cart gần free shipping threshold → badge hiển thị
-- [ ] **5.1.9** — Test T-SUGG-09: cart change → suggestions refresh, old cache invalidated
-- [ ] **5.1.10** — Test T-SUGG-10: events impression/tap/add/dismiss được tracking
-- [ ] **5.3.7** — Test Redis cache invalidation
-- [ ] **5.4.1** — Fix bug sau SuggestiveSelling tests
-- [ ] **5.4.6** — Tổng hợp evidence theo SUGG requirements
+- [ ] **5.1.6** — Test T-SUGG-06: one-tap add → item vào cart, toast hiển thị _(⚠️ chưa: cần Playwright E2E storefront + cart có region/pricing; backend one-tap-add endpoint đã có nhưng chưa có test tự động)_
+- [x] **5.1.7** — Test T-SUGG-07: cart có racket, không có string → CR-01 suggest strings _(unit `cart-rules.unit.spec.ts` — pure predicate `matchesCartCondition` CR-01)_
+- [x] **5.1.8** — Test T-SUGG-08: cart gần free shipping threshold → badge hiển thị _(unit `cart-rules.unit.spec.ts` — `cr02Fires` band + `mergeDedupeCart` badge/BR-04)_
+- [x] **5.1.9** — Test T-SUGG-09: cart change → suggestions refresh, old cache invalidated _(HTTP `suggestion.spec.ts` "cart.updated → cache invalidation": subscriber + event-bus e2e trên cache module thật + unit `suggestion-cache`)_
+- [x] **5.1.10** — Test T-SUGG-10: events impression/tap/add/dismiss được tracking _(HTTP `suggestion.spec.ts` "POST /store/suggestion-events": 4 action persisted + payload + reject malformed)_
+- [x] **5.3.7** — Test Redis cache invalidation _(unit `suggestion-cache.unit.spec.ts` key/version/invalidate + HTTP e2e trên Modules.CACHE thật)_
+- [x] **5.4.1** — Fix bug sau SuggestiveSelling tests
+- [x] **5.4.6** — Tổng hợp evidence theo SUGG requirements
 
 > **Deliverable:** Evidence cho cart-level suggestion, one-tap add, cache và analytics.
 
@@ -375,12 +375,12 @@ Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
 
 **Tracking events — `POST /store/suggestion-events`:**
 
-- [ ] **4.4.10** — Impression tracking bằng `IntersectionObserver` (component visible ≥50% trong ~1–2s) → gửi `action=impression` _(nối 2.6.8)_
-- [ ] **4.4.11** — Tap tracking khi click image/name đi tới PDP → gửi `action=tap` _(nối 2.6.9)_
-- [ ] **4.4.12** — add*to_cart tracking khi bấm `[+]` → gửi `action=add_to_cart` *(kèm 4.4.3, nối 2.6.10)\_
-- [ ] **4.4.13** — Dismiss tracking khi bấm `[x]` → gửi `action=dismiss` _(kèm 4.4.4, nối 2.6.11)_
-- [ ] **4.4.14** — Gửi đủ client payload: rule*id, source_context, source/suggested_product_id, session_id *(nối 2.6.12; customer*id do server lấy từ auth)*
-- [ ] **4.4.15** — UI evidence: screenshot/recording PDP + cart suggestions, network log 4 event (impression/tap/add/dismiss), empty-state ẩn section _(gắn vào 5.1.10 / 5.4.6)_
+- [x] **4.4.10** — Impression tracking bằng `IntersectionObserver` (component visible ≥50% trong ~1–2s) → gửi `action=impression` _(nối 2.6.8; `suggestion-card` IntersectionObserver 0.5 + dwell 1s, batch-flush ở carousel)_
+- [x] **4.4.11** — Tap tracking khi click image/name đi tới PDP → gửi `action=tap` _(nối 2.6.9; `onTap` trên link ảnh/tên → carousel bắn `tap`)_
+- [x] **4.4.12** — add*to_cart tracking khi bấm `[+]` → gửi `action=add_to_cart` *(kèm 4.4.3, nối 2.6.10)\_
+- [x] **4.4.13** — Dismiss tracking khi bấm `[x]` → gửi `action=dismiss` _(kèm 4.4.4, nối 2.6.11)_
+- [x] **4.4.14** — Gửi đủ client payload: rule*id, source_context, source/suggested_product_id, session_id *(nối 2.6.12; customer*id do server lấy từ auth)*
+- [ ] **4.4.15** — UI evidence: screenshot/recording PDP + cart suggestions, network log 4 event (impression/tap/add/dismiss), empty-state ẩn section _(⚠️ chưa: cần chạy storefront + capture network log; 4 trigger event nay đã đủ để capture)_
 
 > **Deliverable UI:** 4 event tracking (impression/tap/add_to_cart/dismiss) bắn đúng payload + evidence network log kèm PR.
 

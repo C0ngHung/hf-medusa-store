@@ -2,6 +2,7 @@ import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import { createSuggestionEventsWorkflow } from "../../../workflows/suggestion-event";
 import type { SuggestionEventInput } from "../../../workflows/suggestion-event";
+import { addDismissal, dismissalScope } from "../../../lib/suggestion-cache";
 
 /**
  * POST /store/suggestion-events — batch analytics tracking (SUGG-006 / SF-08,
@@ -85,6 +86,22 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
         tier: typeof e.tier === "string" ? e.tier : null,
         slot: typeof e.slot === "number" ? e.slot : null,
       });
+    }
+
+    // SUGG-002 / BR-02(c) — persist dismissals server-side so subsequent GETs drop
+    // the product ("dismissed → không hiện lại trong session", T-SUGG-05). Without
+    // this the dismissal set has no writer and dismissed items reappear on re-fetch.
+    // Scope/context mirror the read side (getDismissed in the suggestions routes):
+    // customer id when logged in, else session; keyed per source_context. Best-effort
+    // (addDismissal swallows cache errors) so it never affects the analytics 202.
+    for (const e of valid) {
+      if (e.action !== "dismiss") continue;
+      await addDismissal(
+        req.scope,
+        dismissalScope(e.customer_id, e.session_id),
+        e.source_context,
+        e.suggested_product_id,
+      );
     }
 
     let accepted = 0;

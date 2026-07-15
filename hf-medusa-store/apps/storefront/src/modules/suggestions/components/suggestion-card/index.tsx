@@ -12,7 +12,7 @@ import LocalizedClientLink from "@modules/common/components/localized-client-lin
 import Thumbnail from "@modules/products/components/thumbnail"
 import { convertToLocale } from "@lib/util/money"
 import { SuggestionItem } from "@modules/suggestions/types"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 type SuggestionCardProps = {
   item: SuggestionItem
@@ -22,10 +22,18 @@ type SuggestionCardProps = {
   onAdd: (item: SuggestionItem) => Promise<boolean>
   /** Dismiss (4.4.4): called after the fade-out animation completes. */
   onDismiss: (item: SuggestionItem) => void
+  /** Impression (4.4.10): fired ONCE when the card is ≥50% visible for the dwell. */
+  onImpression?: (item: SuggestionItem, slot: number) => void
+  /** Tap (4.4.11): fired when the image/name is clicked to open the PDP. */
+  onTap?: (item: SuggestionItem, slot: number) => void
+  /** 1-based display position, sent as `slot` in the analytics payload (4.4.14). */
+  slot?: number
 }
 
 const DISMISS_ANIM_MS = 300
 const ADDED_STATE_MS = 3000 // "Added" confirmation window (4.4.3)
+const IMPRESSION_VISIBLE_RATIO = 0.5 // ≥50% in view (4.4.10)
+const IMPRESSION_DWELL_MS = 1000 // must stay visible ~1s before it counts (4.4.10)
 
 /**
  * A single suggested-product card (tasks 4.4.2/4.4.3/4.4.4/4.4.6). Shows the six
@@ -40,10 +48,53 @@ const SuggestionCard = ({
   variant = "grid",
   onAdd,
   onDismiss,
+  onImpression,
+  onTap,
+  slot,
 }: SuggestionCardProps) => {
   const [isAdding, setIsAdding] = useState(false)
   const [isAdded, setIsAdded] = useState(false)
   const [isDismissing, setIsDismissing] = useState(false)
+
+  // Impression tracking (4.4.10): observe this card; when it has been ≥50% visible
+  // continuously for the dwell window, fire ONCE (guarded), then stop observing.
+  const cardRef = useRef<HTMLDivElement>(null)
+  const impressedRef = useRef(false)
+  useEffect(() => {
+    const el = cardRef.current
+    if (!onImpression || !el || impressedRef.current) return
+    if (typeof IntersectionObserver === "undefined") return // SSR / unsupported
+
+    let dwell: ReturnType<typeof setTimeout> | null = null
+    const clearDwell = () => {
+      if (dwell) {
+        clearTimeout(dwell)
+        dwell = null
+      }
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        const visible =
+          entry.isIntersecting &&
+          entry.intersectionRatio >= IMPRESSION_VISIBLE_RATIO
+        if (visible && !dwell && !impressedRef.current) {
+          dwell = setTimeout(() => {
+            impressedRef.current = true
+            onImpression(item, slot ?? 0)
+            io.disconnect()
+          }, IMPRESSION_DWELL_MS)
+        } else if (!visible) {
+          clearDwell() // scrolled away before the dwell completed — reset.
+        }
+      },
+      { threshold: [IMPRESSION_VISIBLE_RATIO] },
+    )
+    io.observe(el)
+    return () => {
+      clearDwell()
+      io.disconnect()
+    }
+  }, [item, onImpression, slot])
 
   const compact = variant === "compact"
   const hasDiscount =
@@ -94,6 +145,7 @@ const SuggestionCard = ({
 
   return (
     <div
+      ref={cardRef}
       className={clx(
         "relative flex h-full shrink-0 flex-col rounded-lg border border-gray-100 bg-white p-3 transition-all duration-300 ease-out",
         compact ? "w-56" : "w-44",
@@ -135,9 +187,13 @@ const SuggestionCard = ({
         </span>
       )}
 
-      {/* Image + name link to the PDP (tap navigation) */}
+      {/* Image + name link to the PDP (tap navigation, 4.4.11) */}
       {productHref ? (
-        <LocalizedClientLink href={productHref} className="flex flex-col gap-2">
+        <LocalizedClientLink
+          href={productHref}
+          className="flex flex-col gap-2"
+          onClick={() => onTap?.(item, slot ?? 0)}
+        >
           {image}
           {name}
         </LocalizedClientLink>
