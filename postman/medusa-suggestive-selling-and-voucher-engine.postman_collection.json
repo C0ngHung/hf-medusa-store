@@ -1,0 +1,1044 @@
+{
+  "info": {
+    "name": "HF Medusa — Suggestive Selling + VoucherEngine (Complete API)",
+    "description": "Complete REST API collection for Suggestive Selling (Day 3–4 · Sơn) and VoucherEngine (Day 1–4 · Thức, Hùng).\n\n**Store APIs (Customer-Facing):**\n- GET /store/products/:id/suggestions — product-level recommendations\n- GET /store/carts/:id/suggestions — cart-level CR-01..CR-04 recommendations\n- POST /store/carts/:id/suggested-items — add suggested item to cart\n- POST /store/carts/:id/voucher — apply voucher\n- DELETE /store/carts/:id/voucher — remove voucher\n- GET /store/customers/me/vouchers — fetch customer's applied/redeemed vouchers\n- POST /store/suggestion-events — log analytics events (view/add/filter)\n\n**Admin APIs (Management):**\n- Suggestion Rules (CRUD) — manage cart rules (CR-01..04 config)\n- Category Complement Mappings (CRUD) — CR-01 category pairs\n- Product Bulk Mappings (CRUD) — CR-04 single↔bulk product pairs\n- Category Top Sellers (read) — Tier-2 ranking snapshot for sales-desc order\n- Suggestion Events (read) — aggregated analytics\n- Vouchers (create, analytics) — create/manage voucher configs\n\n**Auth & Headers:**\n- Store: x-publishable-api-key (from seed, default provided); optional bearer token for customer context\n- Admin: bearer token (JWT from login); x-publishable-api-key for store-facing admin dashboards\n- Session: x-session-id (optional, scopes dismissal + analytics per session)\n\n**Setup:**\n1. Run Setup › Login to get admin token\n2. Run Setup › Get Publishable Key\n3. Run Setup › Create Cart + Add Items\n4. Then run Store › Suggestions / Vouchers workflows\n\n**Note:** All endpoints follow the degrade contract (BR-10) — failures return HTTP 200 with empty results, not 5xx. Tests assert shape, not non-emptiness.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:9009",
+      "description": "backend port (.env PORT=9009)"
+    },
+    {
+      "key": "adminEmail",
+      "value": "postman@test.com"
+    },
+    {
+      "key": "adminPassword",
+      "value": "Supersecret123"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "description": "admin JWT — auto-filled by Setup › Login"
+    },
+    {
+      "key": "publishableKey",
+      "value": "pk_160f5ac26e56619f4b1913353ebac7932a8c390e6a6379879df59db4a8b34de7",
+      "description": "x-publishable-api-key (Default from seed). Re-fetch via Setup › Get publishable key if rotates."
+    },
+    {
+      "key": "sessionId",
+      "value": "sess_postman_demo",
+      "description": "x-session-id — scopes dismissal set + analytics (D6/SEC-04)"
+    },
+    {
+      "key": "regionId",
+      "value": "reg_01KX54P002XZTC793GRS1QMW53",
+      "description": "Vietnam / VND (from seed)"
+    },
+    {
+      "key": "productId",
+      "value": "prod_01KX5SXC11R4JQY12RFMQ5KDW2",
+      "description": "apacs-astrox-77 (source for product suggestions)"
+    },
+    {
+      "key": "cartId",
+      "value": "",
+      "description": "created by Setup › Create Cart"
+    },
+    {
+      "key": "voucherCode",
+      "value": "SUMMER50",
+      "description": "voucher code to test"
+    },
+    {
+      "key": "voucherId",
+      "value": "",
+      "description": "voucher UUID (from list or create)"
+    }
+  ],
+  "item": [
+    {
+      "name": "Setup",
+      "item": [
+        {
+          "name": "Login (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set('token', json.access_token);",
+                  "  pm.test('Token extracted', () => pm.expect(json.access_token).to.exist);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/user/emailpass",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "user",
+                "emailpass"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Publishable Key",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/publishable-api-keys",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "publishable-api-keys"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Cart",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.cart && json.cart.id) {",
+                  "  pm.collectionVariables.set('cartId', json.cart.id);",
+                  "  pm.test('Cart created', () => pm.expect(json.cart.id).to.exist);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "application/json"
+              },
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"region_id\": \"{{regionId}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/store/carts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Item to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"variant_id\": \"variant_01KX5SXCZAYBXJZTKGQ64RJE4C\",\n      \"quantity\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/line-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts",
+                "{{cartId}}",
+                "line-items"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Store — Suggestive Selling",
+      "item": [
+        {
+          "name": "Product-Level Suggestions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/products/{{productId}}/suggestions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "products",
+                "{{productId}}",
+                "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "GET /store/products/:id/suggestions — SUGG-001/002 product-level recommendations (filters BR-02)"
+          }
+        },
+        {
+          "name": "Cart-Level Suggestions (CR-01..04)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              },
+              {
+                "key": "x-session-id",
+                "value": "{{sessionId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/suggestions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts",
+                "{{cartId}}",
+                "suggestions"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "3",
+                  "disabled": true
+                },
+                {
+                  "key": "dismissed_product_ids",
+                  "value": "",
+                  "disabled": true
+                }
+              ]
+            },
+            "description": "GET /store/carts/:id/suggestions — SUGG-004 cart-level rules CR-01..CR-04 (category missing, threshold nudge, same-brand, consumable upsell)"
+          }
+        },
+        {
+          "name": "Add Suggested Item to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"variant_id\": \"variant_01KX5SXCZAYBXJZTKGQ64RJE4C\",\n  \"quantity\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/suggested-items",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts",
+                "{{cartId}}",
+                "suggested-items"
+              ]
+            },
+            "description": "POST /store/carts/:id/suggested-items — add suggested item with attribution (rule_id, tier)"
+          }
+        },
+        {
+          "name": "Log Suggestion Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              },
+              {
+                "key": "x-session-id",
+                "value": "{{sessionId}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"view\",\n  \"product_id\": \"{{productId}}\",\n  \"cart_id\": \"{{cartId}}\",\n  \"rule_id\": \"rule_id_here\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/store/suggestion-events",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "suggestion-events"
+              ]
+            },
+            "description": "POST /store/suggestion-events — analytics (view/filter/add events, 2.6.8–2.6.12)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Store — VoucherEngine",
+      "item": [
+        {
+          "name": "Apply Voucher to Cart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{voucherCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/voucher",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts",
+                "{{cartId}}",
+                "voucher"
+              ]
+            },
+            "description": "POST /store/carts/:id/voucher — apply voucher code (validation V1–V8, cap enforcement)"
+          }
+        },
+        {
+          "name": "Remove Voucher from Cart",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/voucher",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "carts",
+                "{{cartId}}",
+                "voucher"
+              ]
+            },
+            "description": "DELETE /store/carts/:id/voucher — detach voucher, revalidate cart"
+          }
+        },
+        {
+          "name": "Get My Vouchers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/customers/me/vouchers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "store",
+                "customers",
+                "me",
+                "vouchers"
+              ]
+            },
+            "description": "GET /store/customers/me/vouchers — list customer's applied + redeemed vouchers (Day 4, 3.5.8)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Suggestion Rules (CRUD)",
+      "item": [
+        {
+          "name": "List Suggestion Rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules?offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-rules"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Suggestion Rule",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.suggestion_rule && json.suggestion_rule.id) {",
+                  "  pm.collectionVariables.set('ruleId', json.suggestion_rule.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Rule CR-02\",\n  \"description\": \"Threshold nudge rule\",\n  \"priority\": 10,\n  \"is_active\": true,\n  \"conditions\": [\n    {\n      \"condition_type\": \"threshold_near\",\n      \"condition_params\": {\n        \"percentage\": 80,\n        \"badge_text\": \"Free shipping soon!\"\n      }\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-rules"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Suggestion Rule",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-rules",
+                "rule_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Suggestion Rule",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"priority\": 20,\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-rules",
+                "rule_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Suggestion Rule",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-rules",
+                "rule_id_here"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Category Complement Mappings (CRUD)",
+      "item": [
+        {
+          "name": "List Category Complements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-complement-mappings?offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-complement-mappings"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "CR-01 category pairs (source → complement). Used by cart rule CR-01."
+          }
+        },
+        {
+          "name": "Create Category Complement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"source_category_id\": \"cat_source_id\",\n  \"complement_category_id\": \"cat_complement_id\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-complement-mappings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-complement-mappings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Category Complement",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-complement-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Category Complement",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"complement_category_id\": \"cat_new_complement_id\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-complement-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Category Complement",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-complement-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Product Bulk Mappings (CRUD)",
+      "item": [
+        {
+          "name": "List Product Bulk Mappings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/product-bulk-mappings?offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "product-bulk-mappings"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "CR-04 single → bulk product mappings (consumable upsell). Used by cart rule CR-04."
+          }
+        },
+        {
+          "name": "Create Product Bulk Mapping",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"single_product_id\": \"prod_single_id\",\n  \"bulk_product_id\": \"prod_bulk_id\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/product-bulk-mappings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "product-bulk-mappings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Product Bulk Mapping",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "product-bulk-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update Product Bulk Mapping",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "product-bulk-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Product Bulk Mapping",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "product-bulk-mappings",
+                "mapping_id_here"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Vouchers (Management)",
+      "item": [
+        {
+          "name": "Create Voucher Config",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.voucher && json.voucher.id) {",
+                  "  pm.collectionVariables.set('voucherId', json.voucher.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"SUMMER50\",\n  \"description\": \"Summer 50% discount\",\n  \"discount_value\": 5000,\n  \"discount_type\": \"percentage\",\n  \"usage_limit\": 100,\n  \"is_active\": true,\n  \"valid_from\": \"2026-07-01T00:00:00Z\",\n  \"valid_until\": \"2026-08-31T23:59:59Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "vouchers"
+              ]
+            },
+            "description": "POST /admin/vouchers — create voucher config (Day 4, 3.6.1)"
+          }
+        },
+        {
+          "name": "Get Voucher Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/vouchers/{{voucherId}}/analytics",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "vouchers",
+                "{{voucherId}}",
+                "analytics"
+              ]
+            },
+            "description": "GET /admin/vouchers/:id/analytics — voucher usage stats (redemptions, revenue, top products)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Analytics & Reporting",
+      "item": [
+        {
+          "name": "List Category Top Sellers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/category-top-sellers?category_ids=cat_id1,cat_id2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "category-top-sellers"
+              ],
+              "query": [
+                {
+                  "key": "category_ids",
+                  "value": "cat_id1,cat_id2"
+                }
+              ]
+            },
+            "description": "GET /admin/category-top-sellers — precomputed ranking snapshot (Tier-2 plan B, SUGG-005)"
+          }
+        },
+        {
+          "name": "List Suggestion Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/suggestion-events?offset=0&limit=20",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "suggestion-events"
+              ],
+              "query": [
+                {
+                  "key": "offset",
+                  "value": "0"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "GET /admin/suggestion-events — aggregated suggestion analytics (view/filter/add counts)"
+          }
+        }
+      ]
+    }
+  ]
+}
