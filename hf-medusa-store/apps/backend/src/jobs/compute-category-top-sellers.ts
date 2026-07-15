@@ -81,5 +81,5 @@ export default async function computeCategoryTopSellers(
 
 export const config = {
   name: "compute-category-top-sellers",
-  schedule: "0 */6 * * *", // every 6 hours
+  schedule: "* * * * *", // every minute
 };
