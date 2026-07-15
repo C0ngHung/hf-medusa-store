@@ -84,3 +84,18 @@ Backend tests (from `apps/backend/`):
 - Do not pipe test output to `tail` in the same command.
 - Never commit, push, reset, clean, merge, rebase, or cherry-pick
   without explicit user approval.
+
+
+## Tool usage
+
+1. Use Read, Grep, and Glob for repository inspection.
+2. Do not use Bash merely as a replacement for Read, Grep, or Glob.
+3. Do not recursively scan node_modules.
+4. Dependency source inspection is allowed only to resolve an exact API,
+   type, or runtime-behavior question.
+5. Search one exact package and symbol at a time.
+6. Never modify generated files or node_modules.
+7. Adjacent findings must be logged, not investigated, unless explicitly
+   included in the current task.
+8. A subagent must not invoke another subagent unless the parent task
+   explicitly permits delegation.

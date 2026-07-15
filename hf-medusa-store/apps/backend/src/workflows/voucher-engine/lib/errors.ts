@@ -107,6 +107,23 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     message: "verify-cart-totals mismatch — safe-fail, cart reverted",
     customer_message: "Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.",
   },
+  // CONFLICT-8/PD-15 (2026-07-15): distinct INTERNAL-only code for the Rule-11
+  // shrink guard (verify-cart-totals step 4) — a coexisting percentage item/
+  // order Promotion's own adjustment was reduced by attaching the ephemeral
+  // voucher Promotion (Medusa `computeActions` processes promotions in
+  // `application_method.value DESC` order, so the voucher's money value
+  // ~always sorts before a percentage promo's rate). Diagnostic only: same
+  // customer-facing envelope as VOUCHER_CALCULATION_FAILED (SPEC §23.4) —
+  // do not invent a new customer-facing code without an approved contract
+  // change; this exists so logs/metrics can tell a Rule-11 stacking break
+  // apart from a generic total mismatch.
+  VOUCHER_STACKING_UNSUPPORTED: {
+    code: "VOUCHER_STACKING_UNSUPPORTED",
+    http_status: 400,
+    message:
+      "verify-cart-totals: coexisting percentage item/order promotion shrank — safe-fail, cart reverted",
+    customer_message: "Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.",
+  },
   VOUCHER_CART_CHANGED: {
     code: "VOUCHER_CART_CHANGED",
     http_status: 409,
