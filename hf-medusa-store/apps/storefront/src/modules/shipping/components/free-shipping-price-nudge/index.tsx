@@ -13,12 +13,18 @@ import { Button, clx } from "@modules/common/components/ui"
 import { useState } from "react"
 import { StoreFreeShippingPrice } from "types/global"
 
+// Only surface the free-shipping nudge once the cart is within 15% of the
+// threshold (i.e. ≥85% of the way there). Mirrors the backend CR-02
+// `threshold_near` band (CR02_THRESHOLD_PCT = 0.15) so the popup and the
+// server-side nudge appear at the same point.
+const NUDGE_VISIBILITY_PCT = 85
+
 const computeTarget = (
   cart: HttpTypes.StoreCart,
-  price: HttpTypes.StorePrice
+  price: HttpTypes.StorePrice,
 ) => {
   const priceRule = (price.price_rules || []).find(
-    (pr) => pr.attribute === "item_total"
+    (pr) => pr.attribute === "item_total",
   )!
 
   const currentAmount = cart.item_total
@@ -101,8 +107,8 @@ export default function ShippingPriceNudge({
         (price) =>
           price.currency_code === cart.currency_code &&
           (price.price_rules || []).some(
-            (priceRule) => priceRule.attribute === "item_total"
-          )
+            (priceRule) => priceRule.attribute === "item_total",
+          ),
       )
 
       return validCurrencyPrices.map((price) => {
@@ -120,6 +126,15 @@ export default function ShippingPriceNudge({
     .find((price) => price?.amount === 0)
 
   if (!freeShippingPrice) {
+    return
+  }
+
+  // Hide until the cart is within 15% of the threshold (≥85% of the way there).
+  // Once reached (>100%) it still shows briefly to confirm the unlock.
+  if (
+    !freeShippingPrice.target_reached &&
+    freeShippingPrice.remaining_percentage < NUDGE_VISIBILITY_PCT
+  ) {
     return
   }
 
@@ -178,7 +193,7 @@ function FreeShippingInline({
               "bg-gradient-to-r from-zinc-400 to-zinc-500 h-1 rounded-full max-w-full duration-500 ease-in-out",
               {
                 "from-green-400 to-green-500": price.target_reached,
-              }
+              },
             )}
             style={{ width: `${price.remaining_percentage}%` }}
           ></div>
@@ -206,7 +221,7 @@ function FreeShippingPopup({
           "opacity-0 invisible delay-1000": price.target_reached,
           "opacity-0 invisible": isClosed,
           "opacity-100 visible": !price.target_reached && !isClosed,
-        }
+        },
       )}
     >
       <div>
@@ -254,7 +269,7 @@ function FreeShippingPopup({
                   "bg-gradient-to-r from-zinc-400 to-zinc-500 h-1.5 rounded-full max-w-full duration-500 ease-in-out",
                   {
                     "from-green-400 to-green-500": price.target_reached,
-                  }
+                  },
                 )}
                 style={{ width: `${price.remaining_percentage}%` }}
               ></div>

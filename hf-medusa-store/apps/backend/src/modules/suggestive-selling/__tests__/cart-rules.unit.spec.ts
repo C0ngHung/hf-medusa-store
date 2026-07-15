@@ -19,6 +19,9 @@ import type { EnrichedProduct } from "../types";
 function context(overrides: Partial<CartRuleContext> = {}): CartRuleContext {
   return {
     subtotal: 0,
+    // Engine resolves this from the shipping price rule at runtime; tests pin it
+    // to the fallback so CR-02 firing math matches the D5 fixtures.
+    freeShippingThreshold: FREE_SHIPPING_THRESHOLD,
     categoryIds: [],
     brands: [],
     lines: [],
