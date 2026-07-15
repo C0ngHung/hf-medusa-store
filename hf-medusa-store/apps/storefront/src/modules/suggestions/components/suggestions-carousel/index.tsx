@@ -1,9 +1,9 @@
 "use client"
 
-import { addToCart } from "@lib/data/cart"
 import {
+  addSuggestedItem,
   trackSuggestionEvents,
-  undoAddSuggestedItem,
+  undoSuggestedItem,
 } from "@lib/data/suggestions"
 import { convertToLocale } from "@lib/util/money"
 import {
@@ -43,7 +43,7 @@ const TOAST_MS = 3000 // Undo / error window (4.4.3 / 4.4.3b)
 
 /** Success carries the variant for Undo; error is informational only (4.4.3b). */
 type Toast =
-  | { type: "success"; name: string; variantId: string }
+  | { type: "success"; name: string; lineItemId: string | null }
   | { type: "error"; name: string }
 
 /**
@@ -87,33 +87,40 @@ const SuggestionsCarousel = ({
   // and skips the "Added" state; the error is surfaced as a red toast (4.4.3b).
   const handleAdd = async (item: SuggestionItem): Promise<boolean> => {
     if (!item.variant_id) return false
+    let lineItemId: string | null = null
     try {
-      await addToCart({ variantId: item.variant_id, quantity: 1, countryCode })
+      // Attributed one-tap add (SUGG-003): the endpoint persists attribution onto
+      // the line item + emits the authoritative add_to_cart event server-side
+      // (2.6.10), so we do NOT track it client-side here (would double-count).
+      const res = await addSuggestedItem({
+        productId: item.product_id,
+        variantId: item.variant_id,
+        countryCode,
+        idempotencyKey: crypto.randomUUID(),
+        attribution: {
+          rule_id: item.rule_id,
+          source_context: context,
+          source_product_id: sourceProductId,
+        },
+      })
+      lineItemId = res.lineItemId
     } catch {
+      // 409 stock / 422 attribution·variant·inactive → error toast (4.4.3b).
       showToast({ type: "error", name: item.name })
       return false
     }
-    // add_to_cart tracking (client-side auxiliary; authoritative event is 2.6.10)
-    void trackSuggestionEvents([
-      {
-        action: "add_to_cart",
-        source_context: context,
-        suggested_product_id: item.product_id,
-        rule_id: item.rule_id,
-        source_product_id: sourceProductId,
-        tier: item.tier,
-      },
-    ])
-    showToast({ type: "success", name: item.name, variantId: item.variant_id })
+    showToast({ type: "success", name: item.name, lineItemId })
     return true
   }
 
   const handleUndo = async () => {
-    if (toast?.type !== "success") return
-    const { variantId } = toast
+    if (toast?.type !== "success" || !toast.lineItemId) return
+    const { lineItemId } = toast
     setToast(null)
     if (toastTimer.current) clearTimeout(toastTimer.current)
-    await undoAddSuggestedItem({ variantId })
+    // Undo by the exact line item the add returned (avoids hitting a different
+    // line of the same variant, SF-04).
+    await undoSuggestedItem({ lineId: lineItemId })
   }
 
   const handleDismiss = (item: SuggestionItem) => {
@@ -230,7 +237,7 @@ const SuggestionsCarousel = ({
         )}
       >
         {items.map((item) => (
-          <div key={item.product_id} className="snap-start">
+          <div key={item.product_id} className="snap-start h-full">
             <SuggestionCard
               item={item}
               currencyCode={currencyCode}

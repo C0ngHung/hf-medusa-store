@@ -70,3 +70,17 @@ Backend tests (from `apps/backend/`):
 ## Current work
 
 - `suggestive-selling` module (cross-sell / complementary products) — under active development
+
+
+## Shell command policy
+
+- Prefer Read, Glob, and Grep for source and dependency inspection.
+- Use Bash only when repository tools are insufficient.
+- Use one simple operation per Bash call.
+- Do not combine variable assignment, `$()`, pipes, redirection,
+  semicolons, or `&&` in one inspection command.
+- Split compound inspection commands into separate tool calls.
+- Run `pnpm` directly; never invoke it through `npx pnpm`.
+- Do not pipe test output to `tail` in the same command.
+- Never commit, push, reset, clean, merge, rebase, or cherry-pick
+  without explicit user approval.

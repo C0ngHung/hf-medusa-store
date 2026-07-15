@@ -32,6 +32,8 @@
     "@medusajs/event-bus-redis": "2.16.0",
     "@medusajs/file-s3": "2.16.0",
     "@medusajs/framework": "2.16.0",
+    "@medusajs/icons": "2.16.0",
+    "@medusajs/js-sdk": "2.16.0",
     "@medusajs/medusa": "2.16.0",
     "@medusajs/ui": "4.1.15",
     "@medusajs/workflow-engine-redis": "2.16.0",
@@ -41,6 +43,7 @@
     "zod": "4.2.0"
   },
   "devDependencies": {
+    "@medusajs/core-flows": "2.16.0",
     "@medusajs/test-utils": "2.16.0",
     "@swc/core": "^1.7.28",
     "@swc/jest": "^0.2.36",

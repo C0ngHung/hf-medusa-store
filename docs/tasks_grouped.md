@@ -166,7 +166,13 @@
 - [x] **2.2.10** — Code max result 3-5 products cho product-level suggestions
 
 > **Deliverable:** Product-level suggestion logic đáp ứng SUGG-001. ✅ _(workflow evaluate-product-suggestions + unit test T-SUGG-01/02)_
-> ⚠️ Tier-2 top-seller đang stub newest-first → nhánh riêng `feat/suggestive-selling-topseller-ranking` (phương án B+C).
+> ✅ **Tier-2 top-seller (2026-07-14):** hết stub — job `compute-category-top-sellers` aggregate order → `category_top_seller` (đã fix bug đọc `items.detail.quantity`, commit `c064efa`); fallback newest-first khi snapshot rỗng. Seed order/customer + snapshot chain vào `db:migrate`.
+>
+> **📌 Việc phát sinh 2026-07-14 (ngoài số task, nhánh `feat/one-tap-add-storefront`):**
+>
+> - Data cầu/ống tái cấu trúc: Shuttlecocks = 5 quả cầu; Tubes = 5×"1 ống" (single) + 5×"combo 3 ống" (bulk); xoá 3 combo string/grip/box gây nhầm.
+> - **CR-04 chạy thật**: "1 ống" trong giỏ → gợi "combo 3 ống" (verified `rule=CR-04`). `product_bulk_mapping` = 5 cặp 1ống→3ống.
+> - One-tap add wire qua endpoint attributed `POST /store/carts/:id/suggested-items` (SUGG-003) + backend `addSuggestedItemWorkflow`.
 
 ## Ngày 4
 
@@ -174,11 +180,10 @@
 - [x] **2.5.5** — Code Admin API PUT /admin/suggestion-rules/:id
 - [x] **2.5.6** — Code Admin API DELETE /admin/suggestion-rules/:id bằng soft delete
 - [x] **2.5.7** — Validate input cho suggestion APIs _(zod validators)_
-- [~] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion
-  - 📝 **Quyết định tạm (2026-07-13):** khi không có suggestion → **trả `[]`** (workflow đã tự trả rỗng). Phần chuẩn hóa _vỏ response_ `{suggestions: []}` + degrade-to-empty (BR-10) nằm ở **store route của Sơn (2.5.1)** → **BÀN LẠI SAU** khi có route đó.
+- [x] **2.5.8** — Chuẩn hóa empty/fallback response khi không có suggestion _(✅ 2026-07-14: store route của Sơn (2.5.1/2.5.2) trả `{suggestions: [], count: 0}` + degrade-to-empty 200 BR-10; workflow admin trả rỗng)_
 - [ ] **2.5.9** — Chuẩn hóa error response và message tiếng Việt _(cần `middlewares.ts` — file chung, coordinate cả team, Part C)_
 
-> **Deliverable:** Admin APIs cho rule management. 🟡 CRUD+validate ✅; 2.5.8 chốt tạm (bàn sau), 2.5.9 chờ chuẩn error i18n chung.
+> **Deliverable:** Admin APIs cho rule management. 🟢 CRUD+validate ✅, 2.5.8 ✅ (degrade-to-empty qua route Sơn); 🟡 chỉ còn 2.5.9 chờ chuẩn error i18n chung (`middlewares.ts`, Part C).
 
 ### Category Complement Map — Admin CRUD
 
@@ -192,27 +197,51 @@
 >
 > ✅ Đã có sẵn (qua 2.2.4–2.2.7): model `category_complement_mapping`, migration, và seed 3 map. Phần **thiếu** là Admin CRUD API để quản lý map thay vì chỉ sửa qua seed script.
 
-- [ ] **2.5.10** — Code Admin API `GET /admin/category-complements` — list/filter `source_category_id`, `is_active`; phân trang `limit`(50)/`offset`(0) _(ngoài SRS — G3)_
-- [ ] **2.5.11** — Code Admin API `POST /admin/category-complements` — tạo map (source→complement category, `display_order`); **duplicate pair → 409** _(ngoài SRS — G3)_
-- [ ] **2.5.12** — Code Admin API `PUT /admin/category-complements/:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
-- [ ] **2.5.13** — Code Admin API `DELETE /admin/category-complements/:id` — xoá cứng map _(ngoài SRS — G3)_
-- [ ] **2.5.14** — Zod validators + invalidate cache gợi ý khi map đổi (bump `suggest:cart-rules:version`, xoá `suggest:product:v3:*`) _(ngoài SRS — G3)_
+- [x] **2.5.10** — Code Admin API `GET` list/filter `source_category_id`, `is_active`; phân trang `limit`/`offset` _(ngoài SRS — G3)_ _(⚠️ path thực tế `/admin/category-complement-mappings`, không phải `/admin/category-complements`)_
+- [x] **2.5.11** — Code Admin API `POST` — tạo map (source→complement, `display_order`) _(ngoài SRS — G3)_ _(⚠️ **chưa** có 409 duplicate-pair; validate source≠complement ở UI)_
+- [x] **2.5.12** — Code Admin API `PUT /:id` — cập nhật `display_order`, `is_active` _(ngoài SRS — G3)_
+- [x] **2.5.13** — Code Admin API `DELETE /:id` _(ngoài SRS — G3)_ _(⚠️ **soft-delete** qua MedusaService, không phải xoá cứng như mô tả)_
+- [ ] **2.5.14** — Zod validators ✅ nhưng **cache invalidation chưa làm** (chưa bump `suggest:cart-rules:version` / xoá `suggest:product:v3:*` khi map đổi) _(ngoài SRS — G3)_
 
-> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🔴 Chưa bắt đầu.
-> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; xếp sau các task Must-Have của SRS.
+> **Deliverable:** Quản lý Category Complement Map qua Admin API (thay cho seed-only). 🟢 **CRUD API + UI xong (2026-07-14, commit `4352707`)**; còn tồn: 409-duplicate (2.5.11), hard-delete (2.5.13), cache-invalidation (2.5.14).
+> **Ghi chú ưu tiên:** vì ngoài SRS.pdf và Tier-2 đã chạy được bằng seed → **không phải blocker cho acceptance**; các phần tồn xếp sau các task Must-Have của SRS.
+
+### 🖥️ Admin Dashboard UI — quản lý config (2026-07-14, commit `4352707`)
+
+> ⚠️ **NGOÀI SRS** — SRS §1.2 ghi admin panel là **"API only"** (UI Out of Scope). Đây là UI dashboard bổ sung (quyết định team) consume Admin API sẵn có + mới. Build pass 0 errors; admin tsc + `medusa build` xanh.
+
+Medusa Admin routes (`apps/backend/src/admin/routes/`) + API backing:
+
+- [x] **UI-1** Suggestion rules — list (tab Product/Cart) + create/edit/delete, reuse `/admin/suggestion-rules`. Tier **khoá `manual`** (chỉ tier engine tiêu thụ; `category`/`behavioral` trên rule không được engine dùng — Tier-2 nằm ở bảng riêng). Editor cart-condition **có cấu trúc** (chọn category theo tên, **không lộ `pcat_` id**); khối items/conditions ẩn/hiện theo type.
+- [x] **UI-2** Product bulk mappings (CR-04) — CRUD UI + **API mới** `/admin/product-bulk-mappings` (GET/POST/PUT/DELETE, soft-delete).
+- [x] **UI-3** Category complements (Tier-2) — CRUD UI (dùng API 2.5.10–2.5.14).
+- [x] **UI-4** Category top sellers — UI **read-only** + **API read mới** `/admin/category-top-sellers`.
+- [x] **UI-5** Suggestion events — UI **read-only** + filter (context/action) + **API read mới** `/admin/suggestion-events`.
+
+> Stack: `@medusajs/js-sdk` + `@medusajs/icons` + react-query; product/category picker resolve id→tên. Flat single-table configs resolve module service trực tiếp (không workflow); rule writes dùng lại endpoint workflow-backed sẵn có.
+
+### 🏷️ Kích hoạt CR-03 — product brand data (2026-07-14, commit `484537a`)
+
+> CR-03 (same-brand accessories, Sơn **2.4.5**) trước đây **inert** vì không product nào có `metadata.brand` → `readBrand()` luôn null → distinct brands = 0 ≠ 1, không bao giờ fire.
+
+- [x] Script idempotent `scripts/backfill-product-brands.ts` — suy brand từ handle (`yonex-`/`victor-`/`lining-`) → chạy: **39/39 product có brand**; re-run = **0 updated** (verified idempotent + bền).
+- [x] Seed `initial-data-seed.ts` set `metadata.brand` khi tạo product (seed mới tự có).
+
+> ⚠️ CR-03 chỉ fire khi giỏ **toàn 1 brand**, và ưu tiên **thấp hơn** CR-01/CR-02 (priority 30) → dễ bị CR-01 chiếm hết 3 slot. Cần giỏ single-brand đã "đủ bộ" để thấy rõ.
 
 ## Ngày 5
 
-- [ ] **2.3.7** — Code one-tap add default variant vào cart với quantity 1
-- [ ] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion
-- [ ] **2.3.10** — Code toast message xác nhận add-to-cart
-- [ ] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add
-- [ ] **4.1.1** — Kết nối cart với SuggestiveSelling result
-- [ ] **4.1.4** — Gắn suggested products vào cart/demo response
-- [ ] **4.3.1** — Demo flow product detail → product-level suggestions
-- [ ] **4.3.2** — Demo flow one-tap add suggested product to cart
+- [x] **2.3.7** — Code one-tap add default variant vào cart với quantity 1 _(UI: Sơn `suggestion-card`; add đi qua endpoint attributed)_
+- [x] **2.3.9** — Code Added state trong 3 giây sau khi add suggestion _(Sơn `ADDED_STATE_MS=3000`)_
+- [x] **2.3.10** — Code toast message xác nhận add-to-cart _(Sơn carousel toast)_
+- [x] **2.3.11** — Code Undo action trong 3 giây sau khi one-tap add _(undo theo `line_item.id` sau khi wire attributed)_
+- [x] **4.1.1** — Kết nối cart với SuggestiveSelling result _(templates product/cart nhúng carousel — Sơn)_
+- [x] **4.1.4** — Gắn suggested products vào cart/demo response _(qua `POST /store/carts/:id/suggested-items` → attribution ghi vào `line_item.metadata`)_
+- [x] **4.3.1** — Demo flow product detail → product-level suggestions
+- [x] **4.3.2** — Demo flow one-tap add suggested product to cart
 
-> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart.
+> **Deliverable:** One-tap add và suggestion demo flow tích hợp với cart. ✅
+> **Ghi chú (2026-07-14):** UI storefront do **Sơn** làm (commit `7f84378`, đánh số 4.4.x). **one-tap add đã wire lại qua endpoint attributed** `POST /store/carts/:id/suggested-items` (SUGG-003) để ghi attribution vào line-item metadata + emit `add_to_cart` server-side (nhánh `feat/one-tap-add-storefront`). Chồng lấn ownership Linh↔Sơn — cần coordinate.
 
 ## Ngày 6
 
@@ -229,8 +258,6 @@
 ## Ngày 7
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
-- [ ] **5.5.5** — Hoàn thiện WBS diagramS
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần SuggestiveSelling foundation và WBS diagram.
 
@@ -325,6 +352,7 @@
 - [x] **4.4.7** — Skeleton loader cho khu vực cart suggestion khi async / cart thay đổi _(nối 2.7.5)_
 - [x] **4.4.8** — Empty state: ẩn hoàn toàn section khi API trả `[]` (không để khung trống) _(BR-10 / 2.4.9)_
 - [x] **4.4.9** — Auto-refresh: re-fetch `GET /store/cart/suggestions` khi cart thay đổi _(nối cache invalidation 2.6.6)_
+- [x] **4.4.14** — Seed data for cart _(✅ 2026-07-14, commit `b29e2f7`: seed 4 cart rules CR-01…CR-04 + conditions; verified 4 rules/DB. CR-04 fire khi "1 ống" trong giỏ → gợi combo 3 ống)_
 
 > **Deliverable UI:** PDP + cart suggestion components, one-tap add + toast/undo, badge Freeship, skeleton, empty-state, auto-refresh hoạt động với Store APIs thật.
 
@@ -360,7 +388,6 @@
 
 - [ ] **5.5.2** — Chuẩn bị demo flow SuggestiveSelling
 - [ ] **5.5.4** — Chuẩn bị demo checkout end-to-end
-- [ ] **5.5.9** — Hoàn thiện lessons learned
 
 > **Deliverable:** Demo evidence phần product/cart suggestion, one-tap add và analytics.
 

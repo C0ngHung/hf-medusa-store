@@ -53,7 +53,7 @@ npx medusa db:migrate
 **chain toàn bộ seed theo thứ tự** — một lệnh là xong, không phải chạy từng script:
 
 1. Catalog: Store (VND) + region Vietnam + sales channel + publishable API key + **9 category, 30 sản phẩm** kèm ảnh S3
-2. SuggestiveSelling: 6 mapping Tier-2 (`Rackets→Strings/Grips/Bags`, `Shoes→Socks/Insoles`, `Shuttlecocks→Tubes`) + Tier-1 rules + bulk mapping
+2. SuggestiveSelling: 6 mapping Tier-2 (`Rackets→Strings/Grips/Bags`, `Shoes→Socks/Insoles`, `Shuttlecocks→Tubes`) + Tier-1 product rules + bulk mapping + **4 cart rule CR-01…CR-04** kèm điều kiện (chạy section "Bạn có thể cần thêm" trên giỏ — thiếu chúng thì giỏ không hiện gợi ý)
 3. VoucherEngine: voucher configs + global cap 50%
 4. Customers: 3 account demo (xem [DEMO_SCENARIOS.md](./DEMO_SCENARIOS.md))
 5. Orders: đơn mẫu cho 3 account

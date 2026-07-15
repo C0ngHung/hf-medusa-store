@@ -8,6 +8,7 @@
  * The boundary layer (apply-voucher workflow / errorHandler middleware, out of Day 3
  * scope) maps a failing ValidationResult → BusinessError using this catalog.
  */
+import { MedusaError } from "@medusajs/framework/utils";
 import type { ValidationResult, VoucherErrorCode } from "./types";
 
 export interface VoucherErrorDef {
@@ -93,6 +94,31 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     customer_message:
       "Mã này không dùng chung với ưu đãi hiện có. Bạn gỡ ưu đãi kia trước nhé!",
   },
+  // Day 4 (Thức) additions — apply/remove/replace/redemption-time codes (SPEC §8.4).
+  VOUCHER_REPLACE_REQUIRED: {
+    code: "VOUCHER_REPLACE_REQUIRED",
+    http_status: 409,
+    message: "cart already has another active voucher, replace not confirmed",
+    customer_message: "Bạn đang dùng mã {current_code}. Thay bằng mã mới chứ?",
+  },
+  VOUCHER_CALCULATION_FAILED: {
+    code: "VOUCHER_CALCULATION_FAILED",
+    http_status: 400,
+    message: "verify-cart-totals mismatch — safe-fail, cart reverted",
+    customer_message: "Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.",
+  },
+  VOUCHER_CART_CHANGED: {
+    code: "VOUCHER_CART_CHANGED",
+    http_status: 409,
+    message: "concurrency conflict (EC-04)",
+    customer_message: "Giỏ hàng đã thay đổi, cần tính lại. Bạn thử lại nhé!",
+  },
+  VOUCHER_AUTO_REMOVED: {
+    code: "VOUCHER_AUTO_REMOVED",
+    http_status: 200,
+    message: "revalidation failed — voucher auto-removed (async notification)",
+    customer_message: "Mã giảm giá {code} đã được tự động xóa vì {reason}.",
+  },
 };
 
 /**
@@ -115,3 +141,166 @@ export function fail(
 
 /** Shared success sentinel. */
 export const PASS: ValidationResult = { ok: true };
+
+/**
+ * Workflow-level error thrown when the V1-V8 chain returns a failure — bridges
+ * `validateVoucher`'s pure `ValidationResult` to a real thrown error so
+ * `validateVoucherStep` can abort the workflow (task: Phase-3 item 6, "no eligible
+ * items produces the approved business failure"). Also thrown directly (not via
+ * `validateVoucher`) for Day 4 apply/remove-time business errors — see
+ * `throwVoucherError` below. Carries the catalog fields far enough for a workflow
+ * caller/test, or the route-boundary mapper (`toErrorEnvelope`), to build the
+ * full HTTP response without parsing message text.
+ */
+export class VoucherValidationError extends MedusaError {
+  code: VoucherErrorCode;
+  http_status: number;
+  customer_message: string;
+  details?: Record<string, unknown>;
+
+  constructor(result: Extract<ValidationResult, { ok: false }>) {
+    super(
+      medusaErrorTypeForStatus(result.http_status),
+      result.customer_message,
+    );
+    this.name = "VoucherValidationError";
+    this.code = result.code;
+    this.http_status = result.http_status;
+    this.customer_message = result.customer_message;
+    this.details = result.details;
+  }
+}
+
+/** Maps a catalog HTTP status to the closest native `MedusaError.Types` member. */
+function medusaErrorTypeForStatus(http_status: number): string {
+  switch (http_status) {
+    case 404:
+      return MedusaError.Types.NOT_FOUND;
+    case 409:
+      return MedusaError.Types.CONFLICT;
+    case 429:
+      return MedusaError.Types.NOT_ALLOWED; // `[NEEDS_VERIFICATION #8]` — no native 429 type in 2.16.
+    case 400:
+      return MedusaError.Types.INVALID_DATA;
+    default:
+      return MedusaError.Types.NOT_ALLOWED;
+  }
+}
+
+/** Throw a `VoucherValidationError` directly from a catalog code (Day 4 apply/remove flows). */
+export function throwVoucherError(
+  code: VoucherErrorCode,
+  details?: Record<string, unknown>,
+): never {
+  throw new VoucherValidationError(
+    fail(code, details) as Extract<ValidationResult, { ok: false }>,
+  );
+}
+
+/**
+ * API_CONTRACT §4 error envelope — the ONE shape every VoucherEngine store-route
+ * error response uses (SPEC §8.3, Decision A). `type` is derived from
+ * `http_status`; `message` (EN) is for logs only; `customer_message` (VI) is
+ * what the customer sees; `details` is optional structured data for the FE.
+ * `request_id` is threaded from the route's own request id (Day 4 §23.5) —
+ * never generated here, since only the route knows the true request id.
+ */
+export interface ErrorEnvelope {
+  type:
+    | "invalid_data"
+    | "not_found"
+    | "conflict"
+    | "rate_limited"
+    | "unauthorized"
+    | "not_allowed"
+    | "server_error";
+  code: string;
+  message: string;
+  customer_message: string;
+  details?: Record<string, unknown>;
+  request_id?: string;
+}
+
+const STATUS_TO_TYPE: Record<number, ErrorEnvelope["type"]> = {
+  400: "invalid_data",
+  401: "unauthorized",
+  403: "not_allowed",
+  404: "not_found",
+  409: "conflict",
+  422: "invalid_data",
+  429: "rate_limited",
+};
+
+/** Fills `{placeholder}` tokens in a customer message from `details` (e.g. `{current_code}` -> `FIRSTVOUCHER`). */
+function fillPlaceholders(
+  template: string,
+  details?: Record<string, unknown>,
+): string {
+  if (!details) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key) =>
+    key in details ? String(details[key]) : match,
+  );
+}
+
+/**
+ * Duck-typed shape of a `VoucherValidationError` once it has crossed the
+ * Medusa workflow-step boundary. Verified empirically this session: a step
+ * that throws a `VoucherValidationError` is caught at the route as a PLAIN
+ * OBJECT carrying all the same fields (`code`, `http_status`,
+ * `customer_message`, `details`, `__isMedusaError: true`) but WITHOUT the
+ * original prototype chain — `err instanceof VoucherValidationError` is
+ * `false` even though every field survived. Duck-typing on field presence
+ * (not `instanceof`) is therefore required at this boundary.
+ */
+function isVoucherErrorLike(err: unknown): err is {
+  code: string;
+  http_status: number;
+  customer_message: string;
+  message?: string;
+  details?: Record<string, unknown>;
+} {
+  if (!err || typeof err !== "object") return false;
+  const candidate = err as Record<string, unknown>;
+  return (
+    typeof candidate.code === "string" &&
+    typeof candidate.http_status === "number" &&
+    typeof candidate.customer_message === "string"
+  );
+}
+
+/**
+ * Route-boundary mapper: turns any thrown error into the §8.3 envelope + the
+ * HTTP status to send. Never leaks raw exception text/stack traces to the
+ * customer (§12.5) — an unrecognized error becomes a generic 500 `server_error`
+ * with no internal detail in the response body (the real message is only ever
+ * logged by the caller, not returned here).
+ */
+export function toErrorEnvelope(
+  err: unknown,
+  request_id?: string,
+): { status: number; body: ErrorEnvelope } {
+  if (err instanceof VoucherValidationError || isVoucherErrorLike(err)) {
+    return {
+      status: err.http_status,
+      body: {
+        type: STATUS_TO_TYPE[err.http_status] ?? "invalid_data",
+        code: err.code,
+        message: err.message ?? err.code,
+        customer_message: fillPlaceholders(err.customer_message, err.details),
+        ...(err.details ? { details: err.details } : {}),
+        ...(request_id ? { request_id } : {}),
+      },
+    };
+  }
+
+  return {
+    status: 500,
+    body: {
+      type: "server_error",
+      code: "INTERNAL_ERROR",
+      message: "internal error",
+      customer_message: "Có lỗi xảy ra, bạn thử lại sau ít phút nhé!",
+      ...(request_id ? { request_id } : {}),
+    },
+  };
+}
