@@ -308,6 +308,52 @@ moduleIntegrationTestRunner<VoucherEngineService>({
           const reloaded = await service.retrieveVoucherConfig(voucher.id);
           expect(reloaded.usage_count).toBe(1);
         });
+
+        // Task 3.6.6 — anti-over-redemption under CONCURRENT orders (SPEC §14.3
+        // "conditional WHERE prevents the read-check-write race", §16.5). The
+        // sequential tests above prove the guard fires; this proves it holds
+        // when many orders redeem the SAME voucher AT ONCE near its limit.
+        it("never exceeds usage_limit under concurrent redemptions (3.6.6, §14.3/§16.5)", async () => {
+          const LIMIT = 3;
+          const CONCURRENT = 8; // more than the limit, all firing at once
+          const voucher = await service.createVoucherConfigs({
+            code: "CONCURRENT10",
+            discount_type: "percentage",
+            discount_value: 1000,
+            usage_limit: LIMIT,
+            valid_from: new Date("2020-01-01T00:00:00Z"),
+            valid_to: new Date("2999-01-01T00:00:00Z"),
+          });
+
+          // Distinct order_ids so the (voucher_id, order_id) idempotency guard
+          // never fires — this isolates the usage_limit race from idempotency.
+          const results = await Promise.all(
+            Array.from({ length: CONCURRENT }, (_, i) =>
+              service.redeemVoucherAtomic(
+                voucher.id,
+                usageLogEntry({
+                  voucher_id: voucher.id,
+                  customer_id: `cus_concurrent_${i}`,
+                  order_id: `order_concurrent_${i}`,
+                }) as any,
+              ),
+            ),
+          );
+
+          // EXACTLY `LIMIT` redemptions may succeed; the rest fail closed.
+          const succeeded = results.filter((r) => r.incremented).length;
+          expect(succeeded).toBe(LIMIT);
+
+          // The authoritative counter never overshoots the limit.
+          const reloaded = await service.retrieveVoucherConfig(voucher.id);
+          expect(reloaded.usage_count).toBe(LIMIT);
+
+          // Exactly `LIMIT` immutable usage logs were written (one per success).
+          const [, logCount] = await service.listAndCountVoucherUsageLogs({
+            voucher_id: voucher.id,
+          });
+          expect(logCount).toBe(LIMIT);
+        });
       });
     });
   },
