@@ -53,6 +53,11 @@ import {
   VOUCHER_METADATA_KEY,
   generateEphemeralPromotionCode,
 } from "./lib/ephemeral-promotion";
+import {
+  VOUCHER_NOTICE_METADATA_KEY,
+  VoucherAutoRemoveNotice,
+  buildAutoRemoveNotice,
+} from "./lib/auto-remove-notice";
 
 export const revalidateVoucherWorkflowId = "revalidate-voucher-on-cart-change";
 
@@ -61,32 +66,42 @@ export interface RevalidateVoucherWorkflowInput {
 }
 
 /**
- * Clears the `voucher` key from `cart.metadata` (auto-remove path).
+ * Auto-remove path (tasks 3.5.7/3.5.8/3.5.9/3.5.10): clears the `voucher`
+ * snapshot from `cart.metadata` AND writes the `VOUCHER_AUTO_REMOVED`
+ * notification (with the specific reason) under `cart.metadata.voucher_notice`
+ * so the storefront can tell the customer WHY on its next cart refetch (§11.3
+ * step 3b / §8.4; PD-09 = MVP refetch/polling, no real-time push). Both changes
+ * are one merge-patch write.
  *
- * **Framework finding (this session):** `CartModuleService.updateCarts`'s
- * `metadata` patch is a MERGE-PATCH, not a replace — verified via
- * `@medusajs/utils/dist/common/merge-metadata.js` (`mergeMetadata`, used by
- * every `MedusaService`-based module's generic update path, `dist/modules-sdk/
- * medusa-internal-service.js:238`): keys absent from the patch are preserved
- * from the existing metadata untouched. Passing `{}` (or any object simply
- * omitting the `voucher` key) is therefore a NO-OP for that key, not a clear
- * — confirmed empirically: an update with `metadata: {}` left
- * `cart.metadata.voucher` completely unchanged. Per `mergeMetadata`'s own
- * documented rule, a key is deleted ONLY when the patch explicitly sets it to
- * the empty string `""` — so the key must be set to `""`, never just omitted.
+ * **Framework finding (Day 4 session, still load-bearing here):**
+ * `CartModuleService.updateCarts`'s `metadata` patch is a MERGE-PATCH, not a
+ * replace — verified via `@medusajs/utils/dist/common/merge-metadata.js`
+ * (`mergeMetadata`, used by every `MedusaService`-based module's generic update
+ * path, `dist/modules-sdk/medusa-internal-service.js:238`): keys absent from
+ * the patch are preserved untouched; a key is DELETED only when the patch sets
+ * it to the empty string `""`; any other value overwrites. So in one patch:
+ * `voucher: ""` deletes the stale snapshot, `voucher_notice: <object>` writes
+ * the reason, and every other metadata key is preserved. Passing `{}` or simply
+ * omitting `voucher` would be a NO-OP for that key (confirmed empirically Day 4),
+ * so `""` is required to actually clear it.
  */
-const clearVoucherMetadataOnAutoRemoveStepId =
-  "clear-voucher-metadata-on-auto-remove";
-const clearVoucherMetadataOnAutoRemoveStep = createStep(
-  clearVoucherMetadataOnAutoRemoveStepId,
-  async (input: { cart_id: string }, { container }) => {
+const removeAndNotifyStepId = "remove-voucher-and-notify-auto-removed";
+const removeAndNotifyStep = createStep(
+  removeAndNotifyStepId,
+  async (
+    input: { cart_id: string; notice: VoucherAutoRemoveNotice },
+    { container },
+  ) => {
     const cartModuleService: ICartModuleService = container.resolve(
       Modules.CART,
     );
     await cartModuleService.updateCarts(input.cart_id, {
-      metadata: { [VOUCHER_METADATA_KEY]: "" },
+      metadata: {
+        [VOUCHER_METADATA_KEY]: "", // merge-patch delete of the stale snapshot
+        [VOUCHER_NOTICE_METADATA_KEY]: input.notice, // async reason (3.5.9/3.5.10)
+      },
     });
-    return new StepResponse({ cleared: true });
+    return new StepResponse({ cleared: true, notified: true });
   },
 );
 
@@ -281,7 +296,20 @@ export const revalidateVoucherWorkflow = createWorkflow(
         }) as any
       ).config({ name: "delete-invalid-ephemeral-promotion" });
 
-      clearVoucherMetadataOnAutoRemoveStep({ cart_id: input.cart_id });
+      // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
+      // (min-order → 3.5.9, no-eligible-items → 3.5.10, …). `revalidation` always
+      // carries `failure_code` on this branch (still_valid === false); the pure
+      // builder defaults defensively if it were ever missing.
+      const notice = transform(
+        { existing, revalidation },
+        ({ existing, revalidation }) =>
+          buildAutoRemoveNotice({
+            voucher_code: existing.active!.code,
+            failure_code: revalidation.failure_code,
+          }),
+      );
+
+      removeAndNotifyStep({ cart_id: input.cart_id, notice });
     });
 
     return new WorkflowResponse(

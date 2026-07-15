@@ -1,61 +1,69 @@
 # VoucherEngine Implementation Progress
 
-## Current summary (latest authoritative verification: 2026-07-14, session 5 — see dated entry below)
+## Current summary (latest authoritative verification: 2026-07-15, session 6 — see dated entry below)
 
 - **Day 1:** Done (Solution Define / SPEC / API contract / Redis-usage decisions).
-- **Day 2:** Done — foundation (models, service, migrations, module registration) + pricing-calculation runtime,
-  independently re-verified 2026-07-14 (session 2).
-- **Day 3:** Done — V1–V8 validation chain + full discount-cap/stacking math, independently re-verified 2026-07-14
-  (session 2).
-- **Day 4 (Thức's 18 tasks):** **Done.** Session 5 (2026-07-14) resolved three SPEC decisions (E/F/G — store
-  route shape, `/store/customers/me/vouchers`, ephemeral cart-specific Promotion mechanism) via
-  `voucher-spec-advisor`, then implemented apply/remove/revalidate/record-usage workflows, the store voucher
-  route, the my-vouchers route, subscribers, and the redemption-time atomic usage step — all 18 of Thức's Day 4
-  task IDs (3.4.1–3.4.10, 3.4.14, 3.5.1, 3.5.7, 3.5.8, 3.6.1, 3.6.4, 3.6.5, 3.6.7). Hùng's Day 4 rate-limiting
-  scope (3.7.x) was explicitly NOT touched.
-- **Days 5–7:** Not started.
-- **Lessons infrastructure:** `.claude/lessons/voucher-engine/INDEX.md` now lists 8 lessons — the original 4
-  (cart-totals computed fields, MikroORM date normalization, the SPEC-advisor handoff pattern, the Redis/BullMQ
-  teardown race — the last one updated in session 5 with a new cross-file manifestation) plus 4 new from session 5
-  (workflow-composer `when()`/step-collision limits, thrown-error-loses-class-identity-across-step-boundary,
-  voucher-replace-detach-before-verify ordering, cart-metadata merge-patch semantics). Read
-  `references/lessons.md` before Day 5 work begins — the 4 new lessons are directly relevant to any further
-  Promotion-attach/detach or `cart.metadata`-mutating workflow work.
-- **Current production workflow entry points:** `resolveVoucherDiscountWorkflow` (Day 2/3, unchanged),
-  `applyVoucherWorkflow` (`apps/backend/src/workflows/voucher-engine/apply-voucher.ts`),
-  `removeVoucherWorkflow` (`remove-voucher.ts`), `revalidateVoucherWorkflow`
-  (`revalidate-voucher-on-cart-change.ts`, invoked by the `cart.updated` subscriber),
-  `recordVoucherUsageWorkflow` (`record-voucher-usage.ts`, invoked by the `order.placed` subscriber — the
-  PRIMARY redemption trigger per Decision G/§13.3, not a fallback).
-- **Unit-test result:** 174/174 passed, 11 suites (session 5; +12 tests / +2 suites over session 2's 162/9 —
-  `revalidate-voucher.unit.spec.ts`, `ephemeral-promotion.unit.spec.ts`).
-- **Module-integration result:** 56/56 passed, 3 suites (session 5; +3 tests over session 2's 53 —
-  `redeemVoucherAtomic` real-DB-transaction tests replacing the old `recordUsage`/`incrementUsageAtomic` tests).
-- **Full-app/HTTP integration result:** each of the 3 spec files passes 100% of the time when run ALONE
-  (`voucher-engine-resolve-workflow.spec.ts` 6/6, `apply-remove-voucher.spec.ts` 5/5 — new, `revalidate-voucher-
-workflow.spec.ts` 2/2 — new). Running all 3 together in one `pnpm test:integration:http` invocation hits a
-  KNOWN, PRE-EXISTING infra flake (documented in the Redis/BullMQ-teardown lesson, now updated with this exact
-  cross-file manifestation): one of the files randomly fails to even boot (`Loaders for module <X> failed: Method
-Map.prototype.set called on incompatible receiver #<Map>`) when 2+ heavy `medusaIntegrationTestRunner` full-app
-  boots share one Jest process — confirmed NOT a correctness regression (each file is deterministic and 100%
-  green alone, verified 2–3× each).
-- **Typecheck result:** 0 errors (session 5, `npx tsc --noEmit` via `pnpm exec tsc`).
-- **Lint result:** 0 errors, 9 warnings (8 pre-existing + 1 pre-existing-since-session-4 —
-  `@medusajs/use-inject-manager-on-public-methods` on `service.ts:103`, a lint-rule limitation not recognizing
-  `@InjectTransactionManager` as satisfying the Context-parameter check; unchanged this session).
-- **Build result:** `pnpm exec medusa build` — backend + frontend both completed successfully (session 5).
-- **Migration result:** session 5 added no new migration (the `voucher_config.promotion_id` field and the
-  `voucher_usage_log` full-audit-snapshot schema were both already migrated in session 4's work, re-verified
-  applied and idempotent this session via the module-integration + `db:migrate` re-run).
-- **Unresolved blockers:** none for Day 1–4 (Thức's scope). The known cross-file HTTP-suite infra flake above is
-  tracked (not a Day 4 defect) — see the lesson for the proposed real fix (per-file/process test isolation) if it
-  worsens in Day 5+. Pre-existing `[NEEDS_VERIFICATION]` items not touched this session:
-  `#7` (auth identity source — resolved for store routes via `MedusaStoreRequest.auth_context?.actor_id`, kept
-  for any other remaining call sites), `#9` (Redis atomic-ops client — N/A, redemption atomicity was solved via a
-  real Postgres transaction + unique index, not Redis, per Decision D/session-5 implementation).
-- **Next allowed scope:** Hùng's Day 4 rate-limiting tasks (3.7.x, `docs/tasks_grouped.md`) — additive, slots in
-  before `checkActiveVoucherStep` in `applyVoucherWorkflow` per that file's own header comment — or Day 5 for any
-  member, per `docs/tasks_grouped.md`.
+- **Day 2:** Done — foundation + pricing-calculation runtime.
+- **Day 3:** Done — V1–V8 validation chain + full discount-cap/stacking math.
+- **Day 4 (Thức's 18 tasks):** Done (session 5, 2026-07-14) — apply/remove/revalidate/record-usage workflows,
+  store voucher route, my-vouchers route, subscribers, redemption-time atomic usage step (3.4.1–3.4.10, 3.4.14,
+  3.5.1, 3.5.7, 3.5.8, 3.6.1, 3.6.4, 3.6.5, 3.6.7).
+- **Day 5 (Hùng's 13 tasks):** **Done (session 6, 2026-07-15).** Scope = 3.5.2–3.5.6, 3.5.9–3.5.12, 3.6.2, 3.6.3,
+  3.6.6, 3.6.11. Most were already COVERED-by-code from Thức's Day-4 revalidate/record-usage workflows; this
+  session (a) implemented the ONE real gap — the async auto-remove **notification reason** (3.5.9/3.5.10:
+  `VOUCHER_MIN_ORDER_NOT_MET` / `VOUCHER_NO_ELIGIBLE_ITEMS` surfaced to `cart.metadata.voucher_notice` on
+  auto-remove, per §11.3 step 3b / §8.4 / PD-09 refetch-polling), (b) added the test coverage that turns the
+  covered-by-code tasks into Done-with-tests (per-case revalidation, latest-state recompute, order-redemption
+  identity+amount, apply-does-not-increment, and a genuine CONCURRENCY test for anti-over-redemption 3.6.6), and
+  (c) **deprecated the dead `lib/voucher-usage-counter.ts`** (the Redis-authority branch SPEC §14.3 explicitly did
+  NOT choose — DB-atomic `redeemVoucherAtomic` is the sole guard). No SPEC change, no advisor handoff needed.
+- **Day 5 (Thức's tasks 4.1.x/4.2.x/4.3.x checkout integration):** Not started (Thức's scope).
+- **Days 6–7:** Not started.
+- **Lessons infrastructure:** `.claude/lessons/voucher-engine/INDEX.md` now lists 9 lessons — the 8 from session 5
+  plus 1 new (session 6): scoped-voucher + multi-item cart `fixed`/`across` fractional-adjustment gap at
+  `verify-cart-totals` (a latent APPLY-path bug in Thức's 3.4.x, surfaced while testing 3.5.x — flagged as a
+  handoff, not fixed here).
+- **Current production workflow entry points:** `resolveVoucherDiscountWorkflow`, `applyVoucherWorkflow`,
+  `removeVoucherWorkflow`, `revalidateVoucherWorkflow` (`revalidate-voucher-on-cart-change.ts`, invoked by the
+  `cart.updated` subscriber — now ALSO writes `cart.metadata.voucher_notice` with the auto-remove reason),
+  `recordVoucherUsageWorkflow` (`record-voucher-usage.ts`, invoked by the `order.placed` subscriber — PRIMARY
+  redemption trigger).
+- **Unit-test result:** 214/214 passed, 17 suites (session 6; +6 tests / +1 suite over session 5 —
+  `auto-remove-notice.unit.spec.ts`; the rest of the delta over session 5's 174 is teammate suggestion unit
+  suites landed on develop).
+- **Module-integration result:** `service.integration.spec.ts` 14/14 passed run ALONE (session 6; +1 test — the
+  concurrent-redemption anti-over-redemption test, 3.6.6). NOTE: the full `pnpm test:integration:modules` run
+  (both module suites in one `--runInBand` process) hits the known cross-suite infra flake — verify each suite
+  alone (see lesson `2026-07-14-redis-bullmq-teardown-race.md` + `integration-test-runinband-isolation`).
+- **Full-app/HTTP integration result:** each spec file passes 100% run ALONE — `revalidate-voucher-workflow.spec.ts`
+  **5/5** (session 6; +3: item-added recompute 3.5.2, no-eligible auto-remove 3.5.3/3.5.10, apply-no-increment
+  3.6.11, plus the min-order test strengthened with 3.5.9 notice assertions), `record-voucher-usage-workflow.spec.ts`
+  **3/3** (new, session 6 — 3.6.2/3.6.3/3.6.4), and the session-5 files unchanged. The combined
+  `pnpm test:integration:http` run still hits the KNOWN pre-existing multi-`medusaIntegrationTestRunner`/`--runInBand`
+  flake (2+ full-app boots in one Jest process) — NOT a correctness regression; each file is deterministic alone.
+- **Typecheck result:** the files changed this session are clean. `npx tsc --noEmit` reports 2 PRE-EXISTING errors
+  in files NOT touched this session and unrelated to Day 5 — `integration-tests/http/helpers/create-admin-user.ts`
+  (missing `jsonwebtoken` dep) and `src/admin/lib/sdk.ts` (`import.meta` under CommonJS). Neither blocks
+  `medusa build` (0 errors). Flagged for the repo owner; not a Day-5 regression.
+- **Lint result (via `pnpm build`):** 0 errors, 23 warnings — all pre-existing/teammate-owned (category-complement
+  & product-bulk service-mutation-in-route, zod-import-source, prices-in-major-units, logger magic-string, the
+  session-4 `@InjectTransactionManager` false-positive on `service.ts:103`). No new warnings from this session's files.
+- **Build result:** `pnpm build` — backend + frontend both completed successfully, 0 errors (session 6).
+- **Migration result:** session 6 added NO new migration (no model changed — the auto-remove reason lives in
+  `cart.metadata`, not a new column).
+- **Test env:** created `apps/backend/.env.test` (gitignored) from the `.env.test.template` develop added, pointing
+  `DB_*` at the docker-compose Postgres (`hfmedusa`@5433) — required by `@medusajs/test-utils` (reads `DB_*`, not
+  `DATABASE_URL`; missing it → `SASL: client password must be a string` / `ORM not configured`). See
+  `docs/team/RUNNING_TESTS.md`.
+- **Unresolved blockers:** none for Hùng's Day 1–5. Dependencies/handoffs (NOT absorbed — out of Day-5 scope):
+  (1) rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on
+  `/store/carts/:id/voucher` (Hùng's Day-4 3.7.x lane — separate branch); (2) `recordFailedAttempt`/
+  `resetFailedAttempts` have no production caller in the apply flow yet (Hùng 3.7.x); (3) scoped-voucher + multi-item
+  `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức's 3.4.x/§23.4 — see new lesson);
+  (4) `cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful (re)apply —
+  a storefront/apply-flow lifecycle concern (Thức's apply / PD-09 refetch-polling).
+- **Next allowed scope:** Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware) or Day 6 test/evidence
+  tasks (5.2.x/5.3.x), per `docs/tasks_grouped.md`.
 
 > Older entries are historical snapshots and may contain findings corrected by later sessions. The latest
 > authoritative summary and latest dated verification section are the current source of truth.
@@ -2064,3 +2072,128 @@ Postgres/HTTP/workflow execution (not mocks), 4 real bugs found and fixed by thi
 left latent), 4 new reusable lessons captured + 1 existing lesson updated, 3 SPEC decisions resolved via the
 advisor before implementation, 0 typecheck errors, 0 new lint warnings, successful build, and an honest record of
 the one known (pre-existing, non-regressing) test-infra flake.
+
+## 2026-07-15 — VoucherEngine Day 5 (Hùng): revalidation notices, redemption verification, anti-over-redemption (session 6)
+
+**Scope:** Hùng's Day-5 rows only (`docs/tasks_grouped.md` §Hùng/Ngày 5): 3.5.2, 3.5.3, 3.5.4, 3.5.5, 3.5.6,
+3.5.9, 3.5.10, 3.5.11, 3.5.12, 3.6.2, 3.6.3, 3.6.6, 3.6.11. Deliverable: "Voucher revalidation, usage recording
+và anti-overredemption sẵn sàng." Branch `feat/voucher-revalidation-usage` off develop `e117130`. Not committed/pushed.
+
+**Audit finding (before coding):** the Day-4 session (Thức) already shipped `revalidateVoucherWorkflow`,
+`recordVoucherUsageWorkflow`, both subscribers, and `redeemVoucherAtomic`, so most of these 13 tasks were
+COVERED-by-code and needed test coverage rather than new implementation; the ONE genuine gap was the async
+auto-remove notification reason (3.5.9/3.5.10), which the revalidate workflow computed in `revalidateStep` but
+then discarded. SPEC-consistency gate: no divergence requiring the `voucher-spec-advisor` — the notice is
+"implement the SPEC" (§11.3 step 3b) and the counter deprecation is "make code follow SPEC" (§14.3); no SPEC text
+changed.
+
+### Per-task status
+
+- **3.5.2 revalidate on item added** — Done. Covered by the uniform `cart.updated → revalidateVoucherWorkflow`
+  path (SPEC §11.5); new HTTP test adds a line item → discount recomputes (2,700,000). SPEC §11.3/§11.5.
+- **3.5.3 revalidate on item removed** — Done. New HTTP test removes the only eligible line → V6 fails →
+  auto-remove. SPEC §11.3/§9.2 (V6).
+- **3.5.4 revalidate on quantity updated** — Done. Existing HTTP test (qty 1→2 → recompute) retained. §11.3.
+- **3.5.5 revalidate on suggested product added / 3.5.6 removed** — Done (by construction). A suggestive-selling
+  add/remove IS a cart line-item add/remove emitting `cart.updated`; VoucherEngine's revalidation does not branch
+  on the mutation source, so 3.5.2/3.5.3's tests cover this path identically (documented in the test comment).
+- **3.5.9 notification: cart below minimum / 3.5.10 no eligible items** — **Done (the real gap, implemented).**
+  On auto-remove the revalidate workflow now writes `cart.metadata.voucher_notice` = `{ code:
+"VOUCHER_AUTO_REMOVED", reason_code, voucher_code, reason_vi, customer_message }` from the specific failure
+  (`VOUCHER_MIN_ORDER_NOT_MET` → 3.5.9, `VOUCHER_NO_ELIGIBLE_ITEMS` → 3.5.10). SPEC §11.3 step 3b / §8.4 /
+  PD-09 (MVP refetch-polling, no push). Unit + HTTP tests assert reason_code + filled VI message.
+- **3.5.11 cart total recalculation after auto-remove** — Done (by construction; Rule 18/INT-03). Auto-remove
+  does `updateCartPromotionsWorkflow REMOVE` + delete ephemeral promotion → Cart module recomputes from source
+  (no stale write-back); HTTP test asserts total reverts (1,800,000 → 1,000,000). No verify-cart-totals read-back
+  is added on revalidation — the SPEC does not call for one there (it is an apply-time integrity check).
+- **3.5.12 latest cart state, no stale data** — Done. `checkVoucherExistsStep` + `loadCartContextStep` read the
+  cart fresh via `query.graph` on each run (§14.2-C/§14.4); the recompute HTTP test proves the new quantity/subtotal
+  drives the recomputed discount.
+- **3.6.2 verify order contains applied voucher / 3.6.3 discount in final order total** — Done. New HTTP test
+  (`record-voucher-usage-workflow.spec.ts`) creates a real order with `order.metadata.voucher`, runs
+  `recordVoucherUsageWorkflow`, and asserts identity is resolved from `order.metadata.voucher` (Decision G,
+  §11.4/§13.3) and `VoucherUsageLog.discount_applied === snapshot.discount_amount`.
+- **3.6.6 anti-over-redemption under concurrent orders** — Done. New MODULE test fires 8 concurrent
+  `redeemVoucherAtomic` calls (distinct order_ids) at a voucher with `usage_limit=3` → exactly 3 succeed,
+  `usage_count === 3`, 3 usage logs. Proves the conditional `UPDATE … WHERE usage_count < usage_limit` in one
+  transaction serializes correctly (SPEC §14.3 / §16.5). No Redis involved — DB is the sole authoritative guard.
+- **3.6.11 apply does NOT increment usage_count** — Done. New HTTP test: after `applyVoucherWorkflow`,
+  `voucher_config.usage_count === 0` and zero usage logs (Rule 12/13; §9.0 apply-time context). Only
+  `order.placed` redemption increments.
+
+### Implementation completed
+
+- **Auto-remove notification (3.5.9/3.5.10):** new pure builder + wired into the revalidate workflow's auto-remove
+  branch, replacing the clear-only step with a clear+notify step (one `cart.metadata` merge-patch: `voucher: ""`
+  deletes the snapshot, `voucher_notice: <object>` writes the reason — merge-patch semantics per the Day-4 lesson).
+- **Deprecated `lib/voucher-usage-counter.ts`:** docstring rewritten to mark it DEAD/NOT-WIRED and point to
+  `redeemVoucherAtomic` as the SPEC §14.3 authority; documented the forward-looking (not-now) Redis
+  NON-authoritative pre-filter option should flash-sale scale ever require it. No behavior change (it had zero
+  importers); not deleted, to preserve history.
+
+**Files created:**
+
+- `apps/backend/src/workflows/voucher-engine/lib/auto-remove-notice.ts` (`buildAutoRemoveNotice`,
+  `VoucherAutoRemoveNotice`, `VOUCHER_NOTICE_METADATA_KEY`).
+- `apps/backend/src/workflows/voucher-engine/__tests__/auto-remove-notice.unit.spec.ts`.
+- `apps/backend/integration-tests/http/record-voucher-usage-workflow.spec.ts`.
+- `apps/backend/.env.test` (gitignored; test-harness DB\_\* config from the develop-added template).
+
+**Files modified:**
+
+- `apps/backend/src/workflows/voucher-engine/revalidate-voucher-on-cart-change.ts` (clear→clear+notify step;
+  build notice from `revalidation.failure_code`).
+- `apps/backend/src/lib/voucher-usage-counter.ts` (deprecation docstring only).
+- `apps/backend/src/modules/voucher-engine/__tests__/service.integration.spec.ts` (+concurrency test 3.6.6).
+- `apps/backend/integration-tests/http/revalidate-voucher-workflow.spec.ts` (+3 tests; +3.5.9 notice assertions).
+
+**Important symbols:** `buildAutoRemoveNotice`, `VoucherAutoRemoveNotice`, `VOUCHER_NOTICE_METADATA_KEY`,
+`removeAndNotifyStep` (replaces `clearVoucherMetadataOnAutoRemoveStep`).
+
+**Migrations:** none (no model changed — the reason lives in `cart.metadata`).
+
+**Integration wiring:** the notice is written by `revalidateVoucherWorkflow`, invoked by the existing
+`voucher-cart-updated.ts` subscriber on `cart.updated` — real runtime path, unchanged trigger.
+
+**Commands executed & actual results:**
+
+- `pnpm test:unit` → **214/214 passed, 17 suites** (incl. new `auto-remove-notice.unit.spec.ts` 6/6).
+- `pnpm test:integration:modules -- service.integration` → **14/14 passed** (incl. concurrency 3.6.6).
+- `pnpm test:integration:http -- revalidate-voucher-workflow` → **5/5 passed**.
+- `pnpm test:integration:http -- record-voucher-usage-workflow` → **3/3 passed**.
+- `npx tsc --noEmit -p tsconfig.json` → 2 PRE-EXISTING errors in untouched files (`create-admin-user.ts` missing
+  `jsonwebtoken`; `admin/lib/sdk.ts` `import.meta`); files changed this session are clean.
+- `pnpm build` → backend + frontend completed successfully, **0 errors**, 23 pre-existing warnings.
+
+**Conflicts / SPEC-update history:** none. SPEC-consistency gate passed with no advisor invocation (all changes
+are "code follows SPEC").
+
+**Lessons captured this session:**
+
+- Lesson action: Created
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-scoped-voucher-across-split-fractional-adjustment.md`
+  Title: Scoped voucher + multi-item cart: the `fixed`/`across` ephemeral promotion (no `target_rules`) splits the
+  discount into FRACTIONAL per-line adjustments, and `verify-cart-totals`' per-adjustment `toInt` throws
+  Related tasks: surfaced under 3.5.3/3.5.10; root cause in 3.4.x apply / §23.4 (Thức)
+  One-sentence finding: assert the integer-money invariant on the SUMMED voucher adjustment, never per individual
+  `items.adjustments[].amount`, because Medusa's `fixed`/`across` allocation legitimately produces fractional
+  per-line splits whose sum is the intended integer.
+
+**Blockers & remaining work (dependencies/handoffs, NOT absorbed — out of Day-5 scope):**
+
+- Rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on the store
+  voucher route (Hùng Day-4 3.7.x lane — separate branch).
+- `recordFailedAttempt`/`resetFailedAttempts` have no production caller in the apply flow yet (Hùng 3.7.x).
+- Scoped-voucher + multi-item `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức 3.4.x/§23.4 —
+  see the new lesson; the Day-5 no-eligible test was structured to avoid tripping it).
+- `cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful (re)apply — a
+  storefront/apply-flow lifecycle concern (Thức apply / PD-09 refetch-polling); FE should dismiss the notice after
+  displaying it.
+
+**Out of scope, explicitly NOT touched:** Thức's Day-5 checkout-integration rows (4.1.x/4.2.x/4.3.x); the apply
+`verify-cart-totals` fractional bug; the rate-limit middleware wiring; any suggestive-selling code.
+
+**Overall session status:** Complete. All 13 of Hùng's Day-5 tasks Done (1 real gap implemented, the rest brought
+to Done-with-tests), 1 new lesson captured, dead code deprecated per the user-approved DB-atomic decision, each new
+test suite green in isolation, build 0 errors, and an honest record of 2 pre-existing typecheck errors + the known
+combined-run test-infra flake (neither a Day-5 regression).

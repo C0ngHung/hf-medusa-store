@@ -3,21 +3,38 @@ import { cache } from "./voucher-cache";
 import { VOUCHER_ENGINE_MODULE } from "../modules/voucher-engine";
 
 /**
- * VoucherEngine usage-count foundation (3.7.6, INT-02).
+ * ⚠️ DEPRECATED / NOT WIRED (Day 5 reconciliation, 2026-07-15) — do NOT use for
+ * anti-over-redemption. Kept for history + a documented future optimization
+ * path only.
  *
- * Global redemption limit (V3) is enforced against `voucher_config.usage_count`.
- * REDIS_USAGE.md §3 keeps a fast Redis counter that is synced to the DB and
- * re-checked immediately before finalizing at order.placed (anti-over-redemption,
- * EC-03/INT-02), idempotent per voucher+order.
+ * This Day-4 foundation implemented the "Redis fast counter synced to DB"
+ * branch of SRS INT-02 (which allows *either* "Redis INCR **or** UPDATE…WHERE").
+ * The APPROVED design in SPEC §14.3 selected the OTHER branch: the sole
+ * authoritative over-redemption guard is the DB conditional
+ * `UPDATE voucher_config SET usage_count = usage_count + 1 WHERE
+ * usage_count < usage_limit` inside one transaction, plus the unique
+ * `(voucher_id, order_id)` index for idempotency — "Redis never authoritative …
+ * needs no Redis". That path shipped as
+ * `VoucherEngineService.redeemVoucherAtomic` (`modules/voucher-engine/
+ * service.ts`), invoked by `recordVoucherUsageWorkflow` on `order.placed`.
  *
- * DAY 4 SCOPE = FOUNDATION ONLY. This module provides the read/increment helpers;
- * the atomic increment + DB sync + idempotency + V3 re-check are wired by the
- * order.placed workflow in DAY 5 (Hùng). Applying a voucher to a cart MUST NOT
- * increment usage_count — only a placed order does (3.6.11, Day 5).
+ * These helpers are therefore **dead code**: nothing imports them, and wiring
+ * them in would create a SECOND source of truth for `usage_count` that
+ * contradicts §14.3. Use `redeemVoucherAtomic` for the real guarantee.
  *
- * The hard guarantee is the DB (atomic UPDATE … WHERE + optimistic locking,
- * EC-04); the Redis counter here is a fast-read cache that degrades safely when
- * Redis is absent (3.7.7).
+ * **Forward-looking (only if flash-sale scale is ever hit):** a hot single
+ * voucher whose redemption rate exceeds what one Postgres row can serialize
+ * could add a Redis pre-filter — a NON-authoritative "probably-full → reject
+ * early" fast check IN FRONT of the DB conditional UPDATE, which stays the final
+ * authority. That is an additive change (it never replaces the DB guard, so it
+ * cannot reintroduce the double-source-of-truth risk) and does not exist today
+ * because the DB path handles current and foreseeable load. Redemption runs at
+ * order-placement rate (not a hot read path), so the row hotspot is not a real
+ * bottleneck at this scale.
+ *
+ * Rule reminder (still enforced by the shipped path): applying a voucher to a
+ * cart MUST NOT increment usage_count — only a placed order does (Rule 12/13,
+ * 3.6.11).
  */
 
 /** Fast-read usage counter key for a voucher. */

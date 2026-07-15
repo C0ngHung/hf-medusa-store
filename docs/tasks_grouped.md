@@ -78,19 +78,19 @@
 
 ## Ngày 5
 
-- [ ] **3.5.2** — Code revalidate voucher khi item added
-- [ ] **3.5.3** — Code revalidate voucher khi item removed
-- [ ] **3.5.4** — Code revalidate voucher khi quantity updated
-- [ ] **3.5.5** — Code revalidate voucher khi suggested product added
-- [ ] **3.5.6** — Code revalidate voucher khi suggested product removed
-- [ ] **3.5.9** — Code notification reason: cart không còn đạt minimum amount
-- [ ] **3.5.10** — Code notification reason: không còn eligible items trong cart
-- [ ] **3.5.11** — Code cart total recalculation sau auto-remove
-- [ ] **3.5.12** — Đảm bảo voucher luôn tính bằng latest cart state, không dùng stale cart data
-- [ ] **3.6.2** — Code verify order chứa applied voucher
-- [ ] **3.6.3** — Code verify voucher discount đã nằm trong final order total
-- [ ] **3.6.6** — Code chống over-redemption khi nhiều order đồng thời
-- [ ] **3.6.11** — Đảm bảo apply voucher vào cart chưa làm tăng usage_count
+- [x] **3.5.2** — Code revalidate voucher khi item added
+- [x] **3.5.3** — Code revalidate voucher khi item removed
+- [x] **3.5.4** — Code revalidate voucher khi quantity updated
+- [x] **3.5.5** — Code revalidate voucher khi suggested product added
+- [x] **3.5.6** — Code revalidate voucher khi suggested product removed
+- [x] **3.5.9** — Code notification reason: cart không còn đạt minimum amount
+- [x] **3.5.10** — Code notification reason: không còn eligible items trong cart
+- [x] **3.5.11** — Code cart total recalculation sau auto-remove
+- [x] **3.5.12** — Đảm bảo voucher luôn tính bằng latest cart state, không dùng stale cart data
+- [x] **3.6.2** — Code verify order chứa applied voucher
+- [x] **3.6.3** — Code verify voucher discount đã nằm trong final order total
+- [x] **3.6.6** — Code chống over-redemption khi nhiều order đồng thời
+- [x] **3.6.11** — Đảm bảo apply voucher vào cart chưa làm tăng usage_count
 
 > **Deliverable:** Voucher revalidation, usage recording và anti-overredemption sẵn sàng.
 

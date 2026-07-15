@@ -25,6 +25,7 @@ import type VoucherEngineService from "../../src/modules/voucher-engine/service"
 import { applyVoucherWorkflow } from "../../src/workflows/voucher-engine/apply-voucher";
 import { revalidateVoucherWorkflow } from "../../src/workflows/voucher-engine/revalidate-voucher-on-cart-change";
 import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/ephemeral-promotion";
+import { VOUCHER_NOTICE_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/auto-remove-notice";
 
 jest.setTimeout(60_000);
 // Known infra flake (not an assertion failure) — see
@@ -131,7 +132,55 @@ medusaIntegrationTestRunner({
         expect(snapshot?.discount_amount).toBe(400_000);
       });
 
-      it("auto-removes the voucher when a cart mutation makes it no longer eligible (task 3.5.8, VOUCHER_AUTO_REMOVED)", async () => {
+      it("recomputes the discount when a new line item is added to the cart (task 3.5.2; 3.5.5 suggested-add shares this path)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_additem",
+          },
+        ]);
+        await createVoucher({
+          code: "ADDITEM10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10% — unscoped, applies to all items
+          min_order_value: null,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id, code: "ADDITEM10", customer_id: null },
+        });
+        expect(Number((await retrieveCartWithTotal(cart.id)).total)).toBe(
+          1_800_000,
+        ); // 2,000,000 - 10%
+
+        // Add a second line item (the mutation a "suggested product added" /
+        // one-tap-add would emit as `cart.updated`, task 3.5.5 — identical path).
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        await cartModuleService.addLineItems({
+          cart_id: cart.id,
+          title: "Grip",
+          unit_price: 1_000_000,
+          quantity: 1,
+          product_id: "prod_grip_added",
+        } as any);
+
+        await revalidateVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id },
+        });
+
+        const afterCart = await retrieveCartWithTotal(cart.id);
+        expect(Number(afterCart.total)).toBe(2_700_000); // 3,000,000 - 10%
+        const snapshot = (
+          afterCart.metadata as Record<string, unknown> | null
+        )?.[VOUCHER_METADATA_KEY] as { discount_amount: number } | undefined;
+        expect(snapshot?.discount_amount).toBe(300_000);
+      });
+
+      it("auto-removes the voucher + writes the min-order reason notice when the cart drops below min (tasks 3.5.8/3.5.9, VOUCHER_AUTO_REMOVED)", async () => {
         const cart = await createCart([
           {
             title: "Racket",
@@ -168,12 +217,118 @@ medusaIntegrationTestRunner({
         });
 
         const afterCart = await retrieveCartWithTotal(cart.id);
-        expect(Number(afterCart.total)).toBe(1_000_000); // no discount — auto-removed
-        expect(
-          (afterCart.metadata as Record<string, unknown> | null)?.[
-            VOUCHER_METADATA_KEY
-          ],
-        ).toBeUndefined();
+        expect(Number(afterCart.total)).toBe(1_000_000); // no discount — auto-removed (3.5.11 recalc from source)
+        const metadata = afterCart.metadata as Record<string, unknown> | null;
+        // Voucher snapshot cleared…
+        expect(metadata?.[VOUCHER_METADATA_KEY]).toBeUndefined();
+        // …and the async min-order reason surfaced for the storefront (task 3.5.9).
+        const notice = metadata?.[VOUCHER_NOTICE_METADATA_KEY] as
+          | {
+              code: string;
+              reason_code: string;
+              voucher_code: string;
+              customer_message: string;
+            }
+          | undefined;
+        expect(notice?.code).toBe("VOUCHER_AUTO_REMOVED");
+        expect(notice?.reason_code).toBe("VOUCHER_MIN_ORDER_NOT_MET");
+        expect(notice?.voucher_code).toBe("AUTOREMOVE10");
+        expect(notice?.customer_message).toContain("AUTOREMOVE10");
+        expect(notice?.customer_message).not.toMatch(/\{code\}|\{reason\}/);
+      });
+
+      it("auto-removes + writes the no-eligible-items reason when the last eligible item is removed (tasks 3.5.3/3.5.10)", async () => {
+        // Scoped voucher: only the racket product is eligible. Apply on a cart
+        // that has ONLY the eligible item (a fixed/across ephemeral promotion
+        // over a single line stays integer — the multi-item across-split is an
+        // apply-time concern outside this revalidation task's scope).
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_scoped",
+          },
+        ]);
+        await createVoucher({
+          code: "RACKETONLY10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+          min_order_value: null,
+          applicable_product_ids: ["prod_racket_scoped"],
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id, code: "RACKETONLY10", customer_id: null },
+        });
+
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        // Add a non-eligible item, then remove the ONLY eligible one (task
+        // 3.5.3) → the cart still has items, but none in scope → V6 fails.
+        await cartModuleService.addLineItems({
+          cart_id: cart.id,
+          title: "Shoes (not in scope)",
+          unit_price: 1_500_000,
+          quantity: 1,
+          product_id: "prod_shoes_other",
+        } as any);
+        const cartWithItems = await cartModuleService.retrieveCart(cart.id, {
+          relations: ["items"],
+          select: ["id", "items.id", "items.product_id"],
+        });
+        const racketLine = (
+          cartWithItems.items as unknown as { id: string; product_id: string }[]
+        ).find((i) => i.product_id === "prod_racket_scoped")!;
+        await cartModuleService.deleteLineItems(racketLine.id);
+
+        await revalidateVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id },
+        });
+
+        const afterCart = await retrieveCartWithTotal(cart.id);
+        const metadata = afterCart.metadata as Record<string, unknown> | null;
+        expect(metadata?.[VOUCHER_METADATA_KEY]).toBeUndefined();
+        const notice = metadata?.[VOUCHER_NOTICE_METADATA_KEY] as
+          | { code: string; reason_code: string; voucher_code: string }
+          | undefined;
+        expect(notice?.code).toBe("VOUCHER_AUTO_REMOVED");
+        expect(notice?.reason_code).toBe("VOUCHER_NO_ELIGIBLE_ITEMS");
+        expect(notice?.voucher_code).toBe("RACKETONLY10");
+      });
+
+      it("does NOT increment usage_count when a voucher is applied to a cart (task 3.6.11, Rule 12)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_noincrement",
+          },
+        ]);
+        const voucher = await createVoucher({
+          code: "NOINCREMENT10",
+          discount_type: "percentage",
+          discount_value: 1000,
+          min_order_value: null,
+          usage_limit: 100,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id, code: "NOINCREMENT10", customer_id: null },
+        });
+
+        const service = container().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        // Applying to a cart must not consume usage — only order.placed does.
+        const reloaded = await service.retrieveVoucherConfig(voucher.id);
+        expect(reloaded.usage_count).toBe(0);
+        const [, logCount] = await service.listAndCountVoucherUsageLogs({
+          voucher_id: voucher.id,
+        });
+        expect(logCount).toBe(0);
       });
     });
   },
