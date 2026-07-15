@@ -20,6 +20,7 @@ import {
   linkSalesChannelsToStockLocationWorkflow,
 } from "@medusajs/medusa/core-flows";
 import { S3_IMAGES } from "../data/product-images.generated";
+import { FREE_SHIPPING_THRESHOLD } from "../modules/suggestive-selling/constants";
 import seedSuggestiveSelling from "../scripts/seed-suggestive-selling";
 import seedVoucherEngine from "../scripts/seed-voucher-engine";
 import seedCustomers from "../scripts/seed-customers";
@@ -654,6 +655,32 @@ export default async function initial_data_seed({
         prices: [
           { currency_code: "vnd", amount: 30_000 },
           { region_id: region.id, amount: 30_000 },
+          // OI-04: free standard shipping once the cart subtotal reaches the
+          // FREE_SHIPPING_THRESHOLD (single-sourced with the CR-02 nudge). The
+          // item_total price rule zeroes the flat rate above the threshold; the
+          // storefront ShippingPriceNudge reads exactly this rule.
+          {
+            currency_code: "vnd",
+            amount: 0,
+            rules: [
+              {
+                attribute: "item_total",
+                operator: "gte",
+                value: FREE_SHIPPING_THRESHOLD,
+              },
+            ],
+          },
+          {
+            region_id: region.id,
+            amount: 0,
+            rules: [
+              {
+                attribute: "item_total",
+                operator: "gte",
+                value: FREE_SHIPPING_THRESHOLD,
+              },
+            ],
+          },
         ],
         rules: [
           { attribute: "enabled_in_store", value: "true", operator: "eq" },
@@ -674,6 +701,31 @@ export default async function initial_data_seed({
         prices: [
           { currency_code: "vnd", amount: 60_000 },
           { region_id: region.id, amount: 60_000 },
+          // OI-04: above the free-shipping threshold only the standard portion
+          // (30.000₫) is waived — the customer still pays the express premium
+          // (60.000₫ − 30.000₫ = 30.000₫). Adjustable independently later.
+          {
+            currency_code: "vnd",
+            amount: 30_000,
+            rules: [
+              {
+                attribute: "item_total",
+                operator: "gte",
+                value: FREE_SHIPPING_THRESHOLD,
+              },
+            ],
+          },
+          {
+            region_id: region.id,
+            amount: 30_000,
+            rules: [
+              {
+                attribute: "item_total",
+                operator: "gte",
+                value: FREE_SHIPPING_THRESHOLD,
+              },
+            ],
+          },
         ],
         rules: [
           { attribute: "enabled_in_store", value: "true", operator: "eq" },

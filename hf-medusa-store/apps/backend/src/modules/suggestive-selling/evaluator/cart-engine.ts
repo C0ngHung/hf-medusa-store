@@ -190,9 +190,13 @@ export class CartEvaluationEngine {
       ),
     ];
     const subtotal = resolveSubtotal(cart, items);
+    // OI-04: threshold is the configured shipping "free" price rule, not a
+    // hard-coded constant — so CR-02 nudges exactly when free shipping unlocks.
+    const freeShippingThreshold = await this.resolveFreeShippingThreshold();
 
     const context: CartRuleContext = {
       subtotal,
+      freeShippingThreshold,
       categoryIds: [...cartCategoryIds],
       brands,
       lines: lines.map(({ quantity, categoryIds, categoryNames }) => ({
@@ -237,13 +241,13 @@ export class CartEvaluationEngine {
             const pct = params.percentage;
             if (
               typeof pct !== "number" ||
-              !cr02Fires(subtotal, FREE_SHIPPING_THRESHOLD, pct)
+              !cr02Fires(subtotal, freeShippingThreshold, pct)
             ) {
               break;
             }
-            const remaining = FREE_SHIPPING_THRESHOLD - subtotal;
+            const remaining = freeShippingThreshold - subtotal;
             threshold_info ??= {
-              target: FREE_SHIPPING_THRESHOLD,
+              target: freeShippingThreshold,
               current: subtotal,
               remaining,
             };
@@ -586,6 +590,49 @@ export class CartEvaluationEngine {
       filters: { id: cartId },
     });
     return data?.[0] ?? null;
+  }
+
+  /**
+   * OI-04: resolve the free-shipping threshold from the configured shipping-option
+   * price rules — the lowest `item_total` value whose price drops shipping to 0
+   * (i.e. FREE shipping). This is the same rule the storefront ShippingPriceNudge
+   * reads, so nudge + actual discount stay in lockstep. Falls back to the
+   * FREE_SHIPPING_THRESHOLD constant when no such rule exists (or the query fails),
+   * so CR-02 still behaves in a fresh/un-configured environment.
+   */
+  private async resolveFreeShippingThreshold(): Promise<number> {
+    try {
+      const { data } = await this.deps.query.graph<any>({
+        entity: "shipping_option",
+        fields: [
+          "prices.amount",
+          "prices.price_rules.attribute",
+          "prices.price_rules.operator",
+          "prices.price_rules.value",
+        ],
+      });
+
+      let threshold: number | null = null;
+      for (const option of data ?? []) {
+        for (const price of option?.prices ?? []) {
+          // Only prices that make shipping FREE (amount 0) define the threshold.
+          if (toAmount(price?.amount) !== 0) continue;
+          for (const rule of price?.price_rules ?? []) {
+            if (rule?.attribute !== "item_total") continue;
+            const value = toAmount(rule?.value);
+            if (value === null || value <= 0) continue;
+            threshold = threshold === null ? value : Math.min(threshold, value);
+          }
+        }
+      }
+
+      return threshold ?? FREE_SHIPPING_THRESHOLD;
+    } catch (err) {
+      this.deps.logger.warn(
+        `[suggestive] resolveFreeShippingThreshold failed, using fallback: ${errMessage(err)}`,
+      );
+      return FREE_SHIPPING_THRESHOLD;
+    }
   }
 
   private async safeListCartRules(): Promise<any[]> {

@@ -55,9 +55,11 @@ export const CR02_PRICE_BAND_MULT = 2;
 export const CR02_THRESHOLD_PCT = 0.15;
 
 /**
- * Free-shipping threshold used by CR-02 (SPEC A.6 / API Contract §1.1). Phase-1
- * fallback constant — the SRS says the real value lives in the Promotion subsystem
- * (OI-04); until that is wired, CR-02 fires against this fixed 7.000.000₫ ceiling.
+ * Free-shipping threshold FALLBACK for CR-02 (SPEC A.6 / API Contract §1.1).
+ * The live threshold is now read from the configured shipping-option price rule
+ * (`item_total` → free) by the cart engine (OI-04, `resolveFreeShippingThreshold`)
+ * so the nudge and the real discount share one source of truth. This constant is
+ * used only when no such shipping rule is configured (fresh DB / query failure).
  * Integer VND (INT-01).
  */
 export const FREE_SHIPPING_THRESHOLD = 7_000_000;

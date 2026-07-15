@@ -2,7 +2,6 @@ import {
   CART_LIMIT,
   CR02_PRICE_BAND_MULT,
   CR04_DEFAULT_MAX_QUANTITY,
-  FREE_SHIPPING_THRESHOLD,
 } from "../constants";
 import type { CartRuleCode, CartSuggestion, EnrichedProduct } from "../types";
 
@@ -26,6 +25,13 @@ export interface CartLine {
 export interface CartRuleContext {
   /** Post-item-promo subtotal (voucher excluded) — CR-02 base (D5). */
   subtotal: number;
+  /**
+   * Free-shipping threshold in VND for CR-02 (D5). Resolved by the engine from
+   * the configured shipping-option price rule (`item_total` → free), so the nudge
+   * and the actual free-shipping discount share one source of truth; the engine
+   * falls back to FREE_SHIPPING_THRESHOLD when no rule is configured (OI-04).
+   */
+  freeShippingThreshold: number;
   /** Distinct category ids present across all cart lines (CR-01). */
   categoryIds: string[];
   /** Distinct product brands present in the cart (CR-03). */
@@ -108,10 +114,12 @@ export function matchesCartCondition(
     }
 
     // CR-02 (2.4.3): subtotal within 15% below the free-shipping threshold (D5).
+    // Threshold comes from the cart context (resolved from the shipping price
+    // rule by the engine), not a hard-coded constant.
     case "threshold_near": {
       const pct = params.percentage;
       if (typeof pct !== "number" || pct < 0 || pct > 1) return false;
-      return cr02Fires(context.subtotal, FREE_SHIPPING_THRESHOLD, pct);
+      return cr02Fires(context.subtotal, context.freeShippingThreshold, pct);
     }
 
     // CR-03 (2.4.5): every item shares a single brand (distinct non-empty brand = 1).

@@ -46,6 +46,30 @@ function formatAddress(address: HttpTypes.StoreCartAddress) {
   return ret
 }
 
+/**
+ * Base (undiscounted) amount for a flat shipping option in the cart currency:
+ * the highest price that carries NO `item_total` threshold rule. When the cart
+ * clears the free-shipping threshold (OI-04) the resolved `option.amount` drops
+ * below this base, so we can strike the base out and show the reduced price.
+ * Returns null when no base can be resolved (falls back to a plain price).
+ */
+function getBaseShippingAmount(
+  option: HttpTypes.StoreCartShippingOption,
+  currencyCode?: string,
+): number | null {
+  const prices = (option.prices || []).filter(
+    (p) =>
+      (!currencyCode || p.currency_code === currencyCode) &&
+      !(p.price_rules || []).some((r) => r.attribute === "item_total"),
+  )
+
+  if (!prices.length) {
+    return null
+  }
+
+  return prices.reduce((max, p) => Math.max(max, p.amount), 0)
+}
+
 const Shipping: React.FC<ShippingProps> = ({
   cart,
   availableShippingMethods,
@@ -60,7 +84,7 @@ const Shipping: React.FC<ShippingProps> = ({
   >({})
   const [error, setError] = useState<string | null>(null)
   const [shippingMethodId, setShippingMethodId] = useState<string | null>(
-    cart.shipping_methods?.at(-1)?.shipping_option_id || null
+    cart.shipping_methods?.at(-1)?.shipping_option_id || null,
   )
 
   const searchParams = useSearchParams()
@@ -70,11 +94,31 @@ const Shipping: React.FC<ShippingProps> = ({
   const isOpen = searchParams.get("step") === "delivery"
 
   const _shippingMethods = availableShippingMethods?.filter(
-    (sm) => (sm as unknown as { service_zone?: { fulfillment_set?: { type?: string; location?: { address: HttpTypes.StoreCartAddress } } } }).service_zone?.fulfillment_set?.type !== "pickup"
+    (sm) =>
+      (
+        sm as unknown as {
+          service_zone?: {
+            fulfillment_set?: {
+              type?: string
+              location?: { address: HttpTypes.StoreCartAddress }
+            }
+          }
+        }
+      ).service_zone?.fulfillment_set?.type !== "pickup",
   )
 
   const _pickupMethods = availableShippingMethods?.filter(
-    (sm) => (sm as unknown as { service_zone?: { fulfillment_set?: { type?: string; location?: { address: HttpTypes.StoreCartAddress } } } }).service_zone?.fulfillment_set?.type === "pickup"
+    (sm) =>
+      (
+        sm as unknown as {
+          service_zone?: {
+            fulfillment_set?: {
+              type?: string
+              location?: { address: HttpTypes.StoreCartAddress }
+            }
+          }
+        }
+      ).service_zone?.fulfillment_set?.type === "pickup",
   )
 
   const hasPickupOptions = !!_pickupMethods?.length
@@ -119,7 +163,7 @@ const Shipping: React.FC<ShippingProps> = ({
 
   const handleSetShippingMethod = async (
     id: string,
-    variant: "shipping" | "pickup"
+    variant: "shipping" | "pickup",
   ) => {
     setError(null)
 
@@ -161,7 +205,7 @@ const Shipping: React.FC<ShippingProps> = ({
             {
               "opacity-50 pointer-events-none select-none":
                 !isOpen && cart.shipping_methods?.length === 0,
-            }
+            },
           )}
         >
           Delivery
@@ -202,7 +246,7 @@ const Shipping: React.FC<ShippingProps> = ({
                     value={showPickupOptions}
                     onChange={(_value) => {
                       const id = _pickupMethods.find(
-                        (option) => !option.insufficient_inventory
+                        (option) => !option.insufficient_inventory,
                       )?.id
 
                       if (id) {
@@ -218,7 +262,7 @@ const Shipping: React.FC<ShippingProps> = ({
                         {
                           "border-ui-border-interactive":
                             showPickupOptions === PICKUP_OPTION_ON,
-                        }
+                        },
                       )}
                     >
                       <div className="flex items-center gap-x-4">
@@ -262,7 +306,7 @@ const Shipping: React.FC<ShippingProps> = ({
                               option.id === shippingMethodId,
                             "hover:shadow-brders-none cursor-not-allowed":
                               isDisabled,
-                          }
+                          },
                         )}
                       >
                         <div className="flex items-center gap-x-4">
@@ -275,10 +319,39 @@ const Shipping: React.FC<ShippingProps> = ({
                         </div>
                         <span className="justify-self-end text-ui-fg-base">
                           {option.price_type === "flat" ? (
-                            convertToLocale({
-                              amount: option.amount!,
-                              currency_code: cart?.currency_code,
-                            })
+                            (() => {
+                              const baseAmount = getBaseShippingAmount(
+                                option,
+                                cart?.currency_code,
+                              )
+                              const isDiscounted =
+                                baseAmount !== null &&
+                                baseAmount > option.amount!
+
+                              if (!isDiscounted) {
+                                return convertToLocale({
+                                  amount: option.amount!,
+                                  currency_code: cart?.currency_code,
+                                })
+                              }
+
+                              return (
+                                <span className="flex items-center gap-x-2">
+                                  <span className="text-ui-fg-muted line-through">
+                                    {convertToLocale({
+                                      amount: baseAmount!,
+                                      currency_code: cart?.currency_code,
+                                    })}
+                                  </span>
+                                  <span className="text-ui-fg-base">
+                                    {convertToLocale({
+                                      amount: option.amount!,
+                                      currency_code: cart?.currency_code,
+                                    })}
+                                  </span>
+                                </span>
+                              )
+                            })()
                           ) : calculatedPricesMap[option.id] ? (
                             convertToLocale({
                               amount: calculatedPricesMap[option.id],
@@ -332,7 +405,7 @@ const Shipping: React.FC<ShippingProps> = ({
                                 option.id === shippingMethodId,
                               "hover:shadow-brders-none cursor-not-allowed":
                                 option.insufficient_inventory,
-                            }
+                            },
                           )}
                         >
                           <div className="flex items-start gap-x-4">
@@ -345,8 +418,18 @@ const Shipping: React.FC<ShippingProps> = ({
                               </span>
                               <span className="text-base-regular text-ui-fg-muted">
                                 {formatAddress(
-                                  (option as unknown as { service_zone?: { fulfillment_set?: { location?: { address: HttpTypes.StoreCartAddress } } } }).service_zone?.fulfillment_set?.location
-                                    ?.address as HttpTypes.StoreCartAddress
+                                  (
+                                    option as unknown as {
+                                      service_zone?: {
+                                        fulfillment_set?: {
+                                          location?: {
+                                            address: HttpTypes.StoreCartAddress
+                                          }
+                                        }
+                                      }
+                                    }
+                                  ).service_zone?.fulfillment_set?.location
+                                    ?.address as HttpTypes.StoreCartAddress,
                                 )}
                               </span>
                             </div>
