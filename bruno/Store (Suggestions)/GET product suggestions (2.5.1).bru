@@ -1,0 +1,36 @@
+meta {
+  name: GET product suggestions (2.5.1)
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/store/products/{{sourceProductId}}/suggestions?limit=5
+  body: none
+  auth: none
+}
+
+params:query {
+  limit: 5
+  ~cart_id: {{cartId}}
+}
+
+headers {
+  x-publishable-api-key: {{publishableKey}}
+  x-session-id: {{sessionId}}
+}
+
+tests {
+  test("200 OK (never 5xx — BR-10)", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("suggestions is an array", function () {
+    expect(res.getBody().suggestions).to.be.an('array');
+  });
+  test("count matches length", function () {
+    expect(res.getBody().count).to.equal(res.getBody().suggestions.length);
+  });
+  test("at most PRODUCT_LIMIT=5", function () {
+    expect(res.getBody().suggestions.length).to.be.at.most(5);
+  });
+}

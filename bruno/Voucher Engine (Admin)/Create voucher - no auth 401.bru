@@ -1,0 +1,34 @@
+meta {
+  name: Create voucher — no auth → 401
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/admin/vouchers
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "discount_type": "percentage",
+    "discount_value": 1000,
+    "valid_from": "2026-01-01T00:00:00.000Z",
+    "valid_to": "2026-12-31T23:59:59.000Z"
+  }
+}
+
+tests {
+  test("401 unauthorized", function () {
+    expect(res.getStatus()).to.equal(401);
+  });
+}
+
+docs {
+  SEC-04 — `/admin/*` yêu cầu admin. Không gửi bearer token → 401.
+}

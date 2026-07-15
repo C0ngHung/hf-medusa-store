@@ -1,0 +1,13 @@
+meta {
+  name: Store (Suggestions)
+  seq: 4
+}
+
+docs {
+  Store-facing suggestion endpoints (SUGG-001 / SUGG-004, API Contract §1.1), implemented by Sơn.
+
+  Public [C]: không cần {{token}}. Store route Medusa v2 yêu cầu header `x-publishable-api-key`
+  (`{{publishableKey}}`). Customer auth (nếu có) lấy từ auth context, không lấy từ body (SEC-04).
+  Degrade contract (BR-10 / §4.3): mọi lỗi nội bộ vẫn trả HTTP 200 + list rỗng để FE ẩn section —
+  các route này không bao giờ trả 5xx.
+}

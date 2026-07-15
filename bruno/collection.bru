@@ -1,0 +1,28 @@
+auth {
+  mode: bearer
+}
+
+auth:bearer {
+  token: {{token}}
+}
+
+docs {
+  # HF Medusa — Suggestive Selling + Voucher (Bruno)
+
+  Admin + Store API collection cho HF Medusa. 4 nhóm:
+  - **Auth** — login admin (emailpass) → tự lưu `{{token}}`.
+  - **Suggestion Rules (Admin)** (SRS §6.1) — track suggestive-selling.
+  - **Voucher Engine (Admin)** (Day 4, 3.4.11–3.4.13) — tạo voucher + analytics.
+  - **Store (Suggestions)** (API Contract §1.1) — endpoint gợi ý phía store (public).
+
+  ## Cách dùng
+  1. Chọn environment **local** (góc trên phải).
+  2. Chạy **Auth › Login** trước — script lưu `{{token}}` (mọi request Admin kế thừa bearer này).
+  3. Suggestion: **Create rule** lưu `{{ruleId}}` cho List/Get/Update/Delete.
+  4. Voucher: **Create voucher — percentage** lưu `{{voucherId}}`/`{{voucherCode}}` cho **Get analytics**.
+  5. Store là public: không cần `{{token}}` nhưng cần header `x-publishable-api-key` (`{{publishableKey}}`);
+     set `{{cartId}}` trước khi gọi cart suggestions.
+
+  Sửa biến trong **environments/local.bru** cho khớp môi trường (baseUrl, adminEmail/Password,
+  publishableKey, product ids theo seed…). Product ids đổi sau mỗi lần reseed.
+}

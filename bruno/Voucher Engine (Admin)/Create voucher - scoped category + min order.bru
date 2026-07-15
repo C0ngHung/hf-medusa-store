@@ -1,0 +1,47 @@
+meta {
+  name: Create voucher — code + scoped category + min order
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/admin/vouchers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "code": "shuttle20",
+    "discount_type": "percentage",
+    "discount_value": 2000,
+    "min_order_value": 200000,
+    "max_discount_amount": 500000,
+    "applicable_category_ids": ["{{categoryId}}"],
+    "stackable_with_promotions": false,
+    "per_user_limit": 2,
+    "valid_from": "2026-01-01T00:00:00.000Z",
+    "valid_to": "2026-12-31T23:59:59.000Z",
+    "is_active": true
+  }
+}
+
+tests {
+  test("201 created", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("code normalized to UPPERCASE", function () {
+    expect(res.getBody().voucher.code).to.equal('SHUTTLE20');
+  });
+}
+
+docs {
+  3.4.11 / 3.4.13 — `code` chữ thường `shuttle20` → normalize SHUTTLE20 (SEC-03); scope theo category
+  (V6); `min_order_value` (V5); `max_discount_amount` chặn trần voucher. `discount_value: 2000` = 20%.
+  Điền {{categoryId}} (từ `pnpm backend:seed`) hoặc xoá `applicable_category_ids` để tạo unscoped.
+  Nếu SHUTTLE20 đã tồn tại (unique) → lỗi; đổi code hoặc xoá voucher cũ.
+}

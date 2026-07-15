@@ -1,0 +1,17 @@
+meta {
+  name: Suggestion Rules (Admin)
+  seq: 2
+}
+
+docs {
+  # Suggestion Rules (Admin)
+
+  CRUD rule gợi ý (SRS §6.1, track suggestive-selling). Auth: admin (kế thừa `{{token}}` — chạy
+  **Auth › Login** trước).
+
+  ## Thứ tự chạy
+  **Create rule** (lưu `{{ruleId}}`) → **List** → **Get by id** → **Update** → **Delete (soft)**.
+
+  `source_product_ids` / `suggested_product_id` dùng `{{sourceProductId}}` / `{{suggestedProductId}}`
+  từ environment — product ids đổi sau mỗi lần reseed, refresh sau `pnpm backend:seed`.
+}

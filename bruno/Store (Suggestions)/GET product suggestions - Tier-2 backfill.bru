@@ -1,0 +1,44 @@
+meta {
+  name: GET product suggestions — Tier-2 backfill (T-SUGG-02 / 2.2.4)
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/store/products/{{tier2ProductId}}/suggestions?limit=5
+  body: none
+  auth: none
+}
+
+params:query {
+  limit: 5
+}
+
+headers {
+  x-publishable-api-key: {{publishableKey}}
+  x-session-id: {{sessionId}}
+}
+
+tests {
+  test("200 OK", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("has suggestions", function () {
+    expect(res.getBody().suggestions.length).to.be.above(0);
+  });
+  test("Tier-2 backfill fired (>=1 tier=category)", function () {
+    const tiers = res.getBody().suggestions.map(function (s) { return s.tier; });
+    expect(tiers).to.include('category');
+  });
+  test("Tier-1 manual shown first", function () {
+    const tiers = res.getBody().suggestions.map(function (s) { return s.tier; });
+    const firstCat = tiers.indexOf('category');
+    const lastManual = tiers.lastIndexOf('manual');
+    if (firstCat !== -1 && lastManual !== -1) expect(lastManual).to.be.below(firstCat);
+  });
+}
+
+docs {
+  lining-axforce-80 chỉ có 2 Tier-1 manual → evaluator backfill các slot còn lại từ complement
+  categories dùng snapshot category_top_seller. Kỳ vọng mix tier='manual' + tier='category'.
+}
