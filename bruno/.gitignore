@@ -1,0 +1,7 @@
+# Bruno stores secret env var VALUES here (publishableKey, etc.) — never commit
+.env
+environments/*.bru.secret
+*.bru.secret
+
+# ...but DO track the sample (root .gitignore's ".env.*" would otherwise exclude it)
+!.env.sample

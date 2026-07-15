@@ -1,0 +1,32 @@
+meta {
+  name: Voucher Engine (Admin)
+  seq: 3
+}
+
+docs {
+  # Voucher Engine (Admin) — Hùng
+
+  2 endpoint Day 4 (3.4.11–3.4.13, SRS §6.4). Auth: **admin** (SEC-04) — kế thừa bearer `{{token}}`
+  của collection; chạy **Auth › Login** trước.
+
+  ## Quy ước tiền (INT-01)
+  Tất cả tiền là **integer VND** (1 = 1₫), không float.
+  - `discount_value`: khi `percentage` → **basis-points** (1000 = 10%, 2000 = 20%); khi `fixed_amount` → VND.
+  - `min_order_value`, `max_discount_amount`: VND.
+
+  ## POST /admin/vouchers — field chính
+  - `code` (không bắt buộc): bỏ → auto-gen ≥6 A-Z0-9; nhập → normalize UPPERCASE (SEC-03).
+  - `discount_type` (bắt buộc): `percentage` | `fixed_amount`.
+  - `discount_value` (bắt buộc): int ≥ 1; percentage ≤ 10000 (100%).
+  - `valid_from` / `valid_to` (bắt buộc): ISO date, `valid_to` > `valid_from`.
+  - Tuỳ chọn: `min_order_value` (V5), `max_discount_amount`, `applicable_product_ids`/
+    `applicable_category_ids` (V6), `stackable_with_promotions` (V8, default true),
+    `per_user_limit` (V4, default 1), `usage_limit` (V3, null=∞), `user_segment_conditions` (V7, chưa bật).
+
+  ## Thứ tự chạy
+  Login → **Create voucher — percentage** (lưu {{voucherId}}) → **Get analytics**.
+
+  ## Ngoài phạm vi test tay
+  Cache 30s (3.7.1/2) + rate-limit 5/15m → 429 + cooldown 30m (3.7.3–5) là hạ tầng nội bộ bọc quanh
+  store validate/apply endpoint (Thức) → phủ bởi integration test, không test trực tiếp ở đây.
+}

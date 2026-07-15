@@ -1,0 +1,15 @@
+meta {
+  name: Auth
+  seq: 1
+}
+
+docs {
+  # Auth
+
+  Đăng nhập admin bằng emailpass (`POST /auth/user/emailpass`). Script post-response lưu `{{token}}`
+  vào biến collection → mọi request Admin (Suggestion Rules, Voucher) kế thừa bearer này (`auth: inherit`).
+
+  Creds mặc định `{{adminEmail}}` / `{{adminPassword}}` = tài khoản seed test. Sửa trong
+  **environments/local.bru** nếu DB của bạn khác. Nếu login 401 → tạo admin user
+  (`integration-tests/http/helpers/create-admin-user.ts` hoặc seed) rồi thử lại.
+}

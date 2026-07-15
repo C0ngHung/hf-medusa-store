@@ -48,19 +48,33 @@
 
 ## Ngày 4
 
-- [ ] **3.4.11** — Code Admin API POST /admin/vouchers
-- [ ] **3.4.12** — Code Admin API GET /admin/vouchers/:id/analytics
-- [ ] **3.4.13** — Validate input cho Voucher APIs
-- [ ] **3.7.1** — Code voucher validation cache TTL 30 giây
-- [ ] **3.7.2** — Code cache scope an toàn, tránh stale cart-dependent validation
-- [ ] **3.7.3** — Code failed-attempt counter theo customer/session
-- [ ] **3.7.4** — Code rule 5 failed attempts trong 15 phút
-- [ ] **3.7.5** — Code 30-minute cooldown sau khi vượt failed attempts
-- [ ] **3.7.6** — Code Redis coordination cho atomic checks nếu được chọn trong SPEC
-- [ ] **3.7.7** — Code Redis fallback behavior khi Redis unavailable
-- [ ] **3.7.8** — Log failed attempts phục vụ monitoring/demo evidence
+- [x] **3.4.11** — Code Admin API POST /admin/vouchers
+- [x] **3.4.12** — Code Admin API GET /admin/vouchers/:id/analytics
+- [x] **3.4.13** — Validate input cho Voucher APIs
+- [x] **3.7.1** — Code voucher validation cache TTL 30 giây
+- [x] **3.7.2** — Code cache scope an toàn, tránh stale cart-dependent validation
+- [x] **3.7.3** — Code failed-attempt counter theo customer/session
+- [x] **3.7.4** — Code rule 5 failed attempts trong 15 phút
+- [x] **3.7.5** — Code 30-minute cooldown sau khi vượt failed attempts
+- [x] **3.7.6** — Code Redis coordination cho atomic checks nếu được chọn trong SPEC
+- [x] **3.7.7** — Code Redis fallback behavior khi Redis unavailable
+- [x] **3.7.8** — Log failed attempts phục vụ monitoring/demo evidence
 
 > **Deliverable:** Voucher admin APIs, Redis/rate-limit và usage foundation hoàn thành.
+>
+> **Ghi chú Day 4 (Hùng) — HANDOFF/CHỜ track khác:**
+>
+> - Store voucher validate/apply endpoint = consumer thật của cache 30s + rate-limit middleware →
+>   **Thức** (3.4.x store). Day 4 giao building blocks + middleware `api/middlewares/voucher-rate-limit.ts`
+>   (đã test); **wiring lên route store chờ Thức**.
+> - `was_capped`/`original_discount` trong `voucher_usage_log` do **StackingEngine (Thức, VOUCH-003)** ghi
+>   → `capped_count` trong analytics = 0 tới khi Thức xong.
+> - `3.7.6` mới là **foundation** (Redis fast-read + DB source-of-truth); atomic INCR + idempotency
+>   (voucher+order) + re-check V3 ở `order.placed` = **Day 5**. Áp voucher vào cart KHÔNG tăng usage_count
+>   (3.6.11, Day 5).
+> - `conversion_rate`/`avg_order_value` cần nguồn impressions/order-value chưa định SRS → best-effort.
+> - Infra test: thêm devDep `pg-god`; `medusa-config.ts` dùng event-bus/workflow-engine in-memory khi
+>   `TEST_TYPE` set (cache vẫn Redis thật). Test: unit 100/100, module 48/48 (Redis 6380), HTTP 5/5.
 
 ## Ngày 5
 

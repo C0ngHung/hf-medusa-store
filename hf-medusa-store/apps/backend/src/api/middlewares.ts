@@ -6,6 +6,7 @@ import {
   CreateSuggestionRuleSchema,
   UpdateSuggestionRuleSchema,
 } from "./admin/suggestion-rules/validators";
+import { CreateVoucherSchema } from "./admin/vouchers/validators";
 import {
   ApplyVoucherSchema,
   RemoveVoucherSchema,
@@ -20,12 +21,18 @@ import {
 } from "./admin/category-complement-mappings/validators";
 
 /**
- * API middlewares. Body validation for admin config writes (SRS §6.1) and the
- * store voucher apply/remove routes (SPEC §12/§23.5, Decision E):
+ * API middlewares. Body validation for admin config writes (SRS §6.1, §6.4) and
+ * the store voucher apply/remove routes (SPEC §12/§23.5, Decision E):
  * validateAndTransformBody parses with the zod schema and sets req.validatedBody.
  * The `?replace=true` query flag is validated inline in the route handler
  * (validateAndTransformQuery needs a list/retrieve QueryConfig, not suited to
  * a single boolean flag).
+ *
+ * NOTE (Day 4/5): the voucher rate-limit middleware
+ * (api/middlewares/voucher-rate-limit.ts, 3.7.3–3.7.5) is built and unit/module
+ * tested. The store voucher route (/store/carts/:id/voucher) now exists, so wire
+ * the rate-limiter onto it in Day 5 (reconcile with SEC-02/EC-10). Admin writes
+ * need only body validation below.
  */
 export default defineMiddlewares({
   routes: [
@@ -38,6 +45,11 @@ export default defineMiddlewares({
       matcher: "/admin/suggestion-rules/:id",
       method: "PUT",
       middlewares: [validateAndTransformBody(UpdateSuggestionRuleSchema)],
+    },
+    {
+      matcher: "/admin/vouchers",
+      method: "POST",
+      middlewares: [validateAndTransformBody(CreateVoucherSchema)],
     },
     {
       matcher: "/store/carts/:id/voucher",

@@ -1,0 +1,53 @@
+meta {
+  name: Create voucher — percentage (unscoped)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/admin/vouchers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "discount_type": "percentage",
+    "discount_value": 1000,
+    "stackable_with_promotions": true,
+    "per_user_limit": 1,
+    "usage_limit": 100,
+    "valid_from": "2026-01-01T00:00:00.000Z",
+    "valid_to": "2026-12-31T23:59:59.000Z",
+    "is_active": true
+  }
+}
+
+script:post-response {
+  const j = res.getBody();
+  if (j && j.voucher) {
+    bru.setVar('voucherId', j.voucher.id);
+    bru.setVar('voucherCode', j.voucher.code);
+  }
+}
+
+tests {
+  test("201 created", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("has voucher.id", function () {
+    expect(res.getBody().voucher.id).to.be.a('string');
+  });
+  test("code is UPPERCASE alphanumeric >=6", function () {
+    expect(res.getBody().voucher.code).to.match(/^[A-Z0-9]{6,}$/);
+  });
+}
+
+docs {
+  3.4.11 — Tạo voucher giảm % không giới hạn scope. Bỏ `code` → server auto-gen ≥6 A-Z0-9 (SEC-03).
+  `discount_value: 1000` = 10.00% (basis-points). Test script lưu {{voucherId}} + {{voucherCode}}.
+}
