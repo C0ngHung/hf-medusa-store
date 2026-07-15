@@ -1,8 +1,14 @@
-import { loadEnv, defineConfig, Modules } from '@medusajs/framework/utils'
+import { loadEnv, defineConfig, Modules } from "@medusajs/framework/utils";
 
-loadEnv(process.env.NODE_ENV || 'development', process.cwd())
+loadEnv(process.env.NODE_ENV || "development", process.cwd());
 
-const REDIS_URL = process.env.REDIS_URL
+const REDIS_URL = process.env.REDIS_URL;
+// Integration test runs set TEST_TYPE. During tests we keep the Redis CACHE
+// module (the voucher cache/rate-limit suites exercise real Redis), but let the
+// event bus + workflow engine fall back to Medusa's built-in in-memory versions:
+// the Redis (bullmq) workflow engine leaves a connection that emits "Connection
+// is closed" as an unhandled rejection on test teardown. No effect on dev/prod.
+const IS_TEST = !!process.env.TEST_TYPE;
 
 module.exports = defineConfig({
   projectConfig: {
@@ -24,17 +30,21 @@ module.exports = defineConfig({
       ? [
           {
             key: Modules.CACHE,
-            resolve: '@medusajs/cache-redis',
+            resolve: "@medusajs/cache-redis",
             options: { redisUrl: REDIS_URL },
           },
+        ]
+      : []),
+    ...(REDIS_URL && !IS_TEST
+      ? [
           {
             key: Modules.EVENT_BUS,
-            resolve: '@medusajs/event-bus-redis',
+            resolve: "@medusajs/event-bus-redis",
             options: { redisUrl: REDIS_URL },
           },
           {
             key: Modules.WORKFLOW_ENGINE,
-            resolve: '@medusajs/workflow-engine-redis',
+            resolve: "@medusajs/workflow-engine-redis",
             options: { redis: { redisUrl: REDIS_URL } },
           },
         ]
@@ -43,12 +53,12 @@ module.exports = defineConfig({
     ...(process.env.S3_BUCKET
       ? [
           {
-            resolve: '@medusajs/medusa/file',
+            resolve: "@medusajs/medusa/file",
             options: {
               providers: [
                 {
-                  resolve: '@medusajs/file-s3',
-                  id: 's3',
+                  resolve: "@medusajs/file-s3",
+                  id: "s3",
                   options: {
                     file_url: process.env.S3_FILE_URL,
                     access_key_id: process.env.S3_ACCESS_KEY_ID,
@@ -64,10 +74,10 @@ module.exports = defineConfig({
       : []),
     // ── Custom domain modules ──
     {
-      resolve: './src/modules/suggestive-selling',
+      resolve: "./src/modules/suggestive-selling",
     },
     {
-      resolve: './src/modules/voucher-engine',
+      resolve: "./src/modules/voucher-engine",
     },
   ],
-})
+});

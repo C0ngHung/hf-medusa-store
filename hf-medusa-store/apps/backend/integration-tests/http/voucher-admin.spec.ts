@@ -1,0 +1,123 @@
+import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
+import { createAdminUser } from "./helpers/create-admin-user";
+
+jest.setTimeout(120_000);
+
+/**
+ * HTTP integration — admin voucher APIs (3.4.11–3.4.13, SRS §6.4).
+ * POST /admin/vouchers (create, code auto-gen/normalize, input validation) and
+ * GET /admin/vouchers/:id/analytics (aggregation shape). Auth: admin only (SEC-04).
+ */
+medusaIntegrationTestRunner({
+  testSuite: ({ api, getContainer }) => {
+    let adminHeaders: { headers: { authorization: string } };
+
+    beforeAll(async () => {
+      adminHeaders = await createAdminUser(getContainer());
+    });
+
+    const validBody = () => ({
+      discount_type: "percentage",
+      discount_value: 1000, // 10.00%
+      stackable_with_promotions: true,
+      per_user_limit: 1,
+      valid_from: "2026-01-01T00:00:00.000Z",
+      valid_to: "2026-12-31T23:59:59.000Z",
+      is_active: true,
+    });
+
+    describe("POST /admin/vouchers (3.4.11/3.4.13)", () => {
+      it("requires admin auth (SEC-04)", async () => {
+        const err = await api
+          .post("/admin/vouchers", validBody())
+          .catch((e) => e.response);
+        expect(err.status).toBe(401);
+      });
+
+      it("creates a voucher and auto-generates an UPPERCASE code", async () => {
+        const res = await api.post(
+          "/admin/vouchers",
+          validBody(),
+          adminHeaders,
+        );
+        expect(res.status).toBe(201);
+        expect(res.data.voucher.id).toBeTruthy();
+        expect(res.data.voucher.code).toMatch(/^[A-Z0-9]{6,}$/);
+      });
+
+      it("normalizes a supplied lowercase code to UPPERCASE (SEC-03)", async () => {
+        const res = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "spring24" },
+          adminHeaders,
+        );
+        expect(res.status).toBe(201);
+        expect(res.data.voucher.code).toBe("SPRING24");
+      });
+
+      it("rejects invalid input with 400 (window inverted)", async () => {
+        const err = await api
+          .post(
+            "/admin/vouchers",
+            {
+              ...validBody(),
+              valid_from: "2026-12-31T00:00:00.000Z",
+              valid_to: "2026-01-01T00:00:00.000Z",
+            },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+
+      it("rejects discount_value = 0 with 400 (meaningless voucher)", async () => {
+        const err = await api
+          .post(
+            "/admin/vouchers",
+            { ...validBody(), discount_value: 0 },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+
+      it("rejects percentage > 100% (10000 bps) with 400", async () => {
+        const err = await api
+          .post(
+            "/admin/vouchers",
+            { ...validBody(), discount_value: 9_999_999 },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+    });
+
+    describe("GET /admin/vouchers/:id/analytics (3.4.12)", () => {
+      it("returns the analytics shape for a fresh voucher (all zeros)", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          validBody(),
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const res = await api.get(
+          `/admin/vouchers/${id}/analytics`,
+          adminHeaders,
+        );
+        expect(res.status).toBe(200);
+        expect(res.data.analytics).toEqual(
+          expect.objectContaining({
+            voucher_id: id,
+            total_uses: 0,
+            total_discount_given: 0,
+            avg_order_value: 0,
+            capped_count: 0,
+            conversion_rate: 0,
+          }),
+        );
+      });
+    });
+  },
+});
