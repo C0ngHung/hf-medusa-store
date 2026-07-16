@@ -16,6 +16,14 @@ export interface CheckVoucherExistsInput {
 }
 
 export interface CheckVoucherExistsOutput {
+  /**
+   * Not derivable-for-free at the call site — `revalidateVoucherWorkflow`
+   * reads this 3 times (`shouldRecompute`/`shouldRemove`/the final
+   * `revalidated` output) inside `transform()` callbacks that don't have
+   * `active` in scope unless it's explicitly destructured each time.
+   * Intentional, not redundant with `active` — do not remove (code-review
+   * Task 6.6).
+   */
   has_voucher: boolean;
   active: VoucherCartMetadata | null;
   previous_metadata: Record<string, unknown> | null;
