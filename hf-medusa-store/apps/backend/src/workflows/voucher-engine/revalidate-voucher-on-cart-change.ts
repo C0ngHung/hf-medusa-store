@@ -35,7 +35,6 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  createPromotionsWorkflow,
   deletePromotionsWorkflow,
   releaseLockStep,
   updateCartPromotionsWorkflow,
@@ -49,10 +48,8 @@ import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { revalidateStep } from "./steps/revalidate-voucher";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
-import {
-  VOUCHER_METADATA_KEY,
-  generateEphemeralPromotionCode,
-} from "./lib/ephemeral-promotion";
+import { createAndAttachEphemeralPromotion } from "./lib/create-and-attach-ephemeral-promotion";
+import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import {
   VOUCHER_NOTICE_METADATA_KEY,
   VoucherAutoRemoveNotice,
@@ -154,51 +151,13 @@ export const revalidateVoucherWorkflow = createWorkflow(
       () => {
         const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
-        const newPromotionInput = transform(
-          { input, cart, discount, lookup },
-          ({ input, cart, discount, lookup }) => ({
-            promotionsData: [
-              {
-                code: generateEphemeralPromotionCode(
-                  input.cart_id,
-                  lookup.voucher!.id,
-                ),
-                type: "standard" as const,
-                status: "active" as const,
-                is_automatic: false,
-                application_method: {
-                  type: "fixed" as const,
-                  target_type: "items" as const,
-                  allocation: "across" as const,
-                  value: discount.final_voucher_discount,
-                  currency_code: cart.currency_code,
-                },
-              },
-            ],
-          }),
-        );
-
-        const created = createPromotionsWorkflow.runAsStep({
-          input: newPromotionInput,
+        const newPromotion = createAndAttachEphemeralPromotion({
+          cart_id: input.cart_id,
+          voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
+          cart,
+          discount,
+          attachStepName: "add-recomputed-ephemeral-promotion",
         });
-
-        const newPromotion = transform({ created }, ({ created }) => ({
-          id: created[0].id,
-          code: created[0].code as string,
-        }));
-
-        updateCartPromotionsWorkflow
-          .runAsStep({
-            input: transform(
-              { input, newPromotion },
-              ({ input, newPromotion }) => ({
-                cart_id: input.cart_id,
-                promo_codes: [newPromotion.code],
-                action: PromotionActions.ADD,
-              }),
-            ),
-          })
-          .config({ name: "add-recomputed-ephemeral-promotion" });
 
         writeVoucherCartMetadataStep({
           cart_id: input.cart_id,
