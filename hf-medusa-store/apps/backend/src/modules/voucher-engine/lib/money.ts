@@ -30,7 +30,7 @@ export class MoneyError extends Error {
  * Never uses parseFloat/toFixed — rejects non-finite/non-integer/unsafe values.
  */
 export function toInt(value: unknown, label: string): number {
-  const numeric = unwrapNumeric(value, label);
+  const numeric = toRawNumber(value, label);
 
   if (typeof numeric !== "number" || !Number.isFinite(numeric)) {
     throw new MoneyError(
@@ -50,7 +50,7 @@ export function toInt(value: unknown, label: string): number {
 }
 
 /** Unwrap BigNumberValue-shaped inputs to a raw JS number, without parseFloat/toFixed. */
-function unwrapNumeric(value: unknown, label: string): number {
+export function toRawNumber(value: unknown, label: string): number {
   if (typeof value === "number") return value;
 
   if (typeof value === "string") {
@@ -77,7 +77,7 @@ function unwrapNumeric(value: unknown, label: string): number {
       (typeof candidate.value === "number" ||
         typeof candidate.value === "string")
     ) {
-      return unwrapNumeric(candidate.value, label);
+      return toRawNumber(candidate.value, label);
     }
 
     // BigNumberJS-like instance duck-typed via valueOf()/toNumber()
@@ -138,4 +138,39 @@ export function sumInts(values: number[], label: string): number {
     assertSafeInt(next, `${label} running total`);
     return next;
   }, 0);
+}
+
+/**
+ * Sum possibly-fractional per-line monetary values and round the AGGREGATE to
+ * the nearest integer VND. Medusa's `fixed`/`across` promotion allocation
+ * spreads one whole-VND value proportionally over every discountable line, so
+ * each individual line adjustment can be fractional even though the intended
+ * total is a clean integer (see
+ * .claude/lessons/voucher-engine/2026-07-15-scoped-voucher-across-split-fractional-adjustment.md).
+ * INT-01's integer invariant applies to the aggregate, not each line — this
+ * tolerates floating-point noise up to 1 VND (the repeating-decimal splits
+ * never drift further than that) but still rejects a genuinely fractional
+ * total, which would be a real bug rather than an allocation artifact.
+ */
+export function sumRawToInt(values: unknown[], label: string): number {
+  const rawTotal = values.reduce<number>((total, value, index) => {
+    const numeric = toRawNumber(value, `${label}[${index}]`);
+    if (!Number.isFinite(numeric)) {
+      throw new MoneyError(
+        `${label}[${index}]`,
+        `expected a finite numeric value, got ${JSON.stringify(value)}`,
+      );
+    }
+    return total + numeric;
+  }, 0);
+
+  const rounded = Math.round(rawTotal);
+  if (Math.abs(rawTotal - rounded) > 1e-6) {
+    throw new MoneyError(
+      label,
+      `expected an integer monetary value after summation, got ${rawTotal}`,
+    );
+  }
+  assertSafeInt(rounded, label);
+  return rounded;
 }
