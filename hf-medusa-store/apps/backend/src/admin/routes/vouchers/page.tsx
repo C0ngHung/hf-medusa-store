@@ -347,7 +347,7 @@ const VouchersPage = () => {
 
         <div className="border-ui-border-base flex items-end gap-x-2 border-t px-6 py-4">
           <div className="flex flex-1 flex-col gap-y-2">
-            <Label size="small">Voucher id</Label>
+            <Label size="small">Voucher code</Label>
             <Input
               placeholder="vconf_..."
               value={analyticsId}
