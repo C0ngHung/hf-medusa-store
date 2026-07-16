@@ -32,6 +32,7 @@ import {
 import { PromotionActions } from "@medusajs/framework/utils";
 import { toVoucherScope } from "./lib/mappers";
 import { generateEphemeralPromotionCode } from "./lib/ephemeral-promotion";
+import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
@@ -148,6 +149,14 @@ export const applyVoucherWorkflow = createWorkflow(
       lines: resolved.lines,
       voucher: voucherTerms,
       global_cap_bps: lookup.global_cap_bps,
+    });
+
+    // EC-04: verify no concurrent mutation (e.g. an item removal) changed the
+    // cart between loadCartContextStep's read and this point, right before we
+    // commit the computed discount.
+    assertCartUnchangedStep({
+      cart_id: input.cart_id,
+      expected_concurrency_marker: cart.concurrency_marker,
     });
 
     // Decision G — carry the capped amount via a fresh, cart-specific,
