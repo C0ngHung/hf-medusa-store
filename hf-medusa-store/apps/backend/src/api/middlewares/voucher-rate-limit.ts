@@ -28,10 +28,11 @@ export async function voucherRateLimitMiddleware(
   const customerId =
     (req as { auth_context?: { actor_id?: string } }).auth_context?.actor_id ??
     null;
-  const ip =
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
-    req.ip ||
-    null;
+  // Never trust a client-controlled header (X-Forwarded-For) for a
+  // security-sensitive rate-limit key — `req.ip` is Express's own
+  // trust-proxy-aware resolution (defaults to the raw socket address when no
+  // proxy is configured), so it cannot be spoofed by an arbitrary header.
+  const ip = req.ip || null;
 
   const blocked = await isRateLimited(req.scope, customerId, ip);
   if (blocked) {
