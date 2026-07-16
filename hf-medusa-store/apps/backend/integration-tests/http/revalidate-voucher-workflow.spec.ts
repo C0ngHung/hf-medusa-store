@@ -237,6 +237,73 @@ medusaIntegrationTestRunner({
         expect(notice?.customer_message).not.toMatch(/\{code\}|\{reason\}/);
       });
 
+      it("clears a stale auto-remove notice once a new voucher is successfully (re-)applied", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_noticecleared",
+          },
+        ]);
+        await createVoucher({
+          code: "NOTICECLEAR10",
+          discount_type: "percentage",
+          discount_value: 1000,
+          min_order_value: 1_500_000,
+        });
+        await createVoucher({
+          code: "NOTICECLEAR20",
+          discount_type: "percentage",
+          discount_value: 2000,
+          min_order_value: null,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: {
+            cart_id: cart.id,
+            code: "NOTICECLEAR10",
+            customer_id: null,
+          },
+        });
+
+        // Drop the item price under the first voucher's min_order_value so
+        // revalidation auto-removes it and writes the stale notice.
+        const lineItemId = await firstLineItemId(cart.id);
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        await cartModuleService.updateLineItems(lineItemId, {
+          unit_price: 1_000_000,
+        });
+        await revalidateVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id },
+        });
+
+        const withStaleNotice = await retrieveCartWithTotal(cart.id);
+        expect(
+          (withStaleNotice.metadata as Record<string, unknown> | null)?.[
+            VOUCHER_NOTICE_METADATA_KEY
+          ],
+        ).toBeDefined();
+
+        // Now successfully apply a different (unscoped) voucher.
+        await applyVoucherWorkflow(container()).run({
+          input: {
+            cart_id: cart.id,
+            code: "NOTICECLEAR20",
+            customer_id: null,
+          },
+        });
+
+        const afterCart = await retrieveCartWithTotal(cart.id);
+        expect(
+          (afterCart.metadata as Record<string, unknown> | null)?.[
+            VOUCHER_NOTICE_METADATA_KEY
+          ],
+        ).toBeUndefined();
+      });
+
       it("auto-removes + writes the no-eligible-items reason when the last eligible item is removed (tasks 3.5.3/3.5.10)", async () => {
         // Scoped voucher: only the racket product is eligible. Apply on a cart
         // that has ONLY the eligible item (a fixed/across ephemeral promotion

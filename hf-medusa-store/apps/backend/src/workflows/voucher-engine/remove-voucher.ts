@@ -27,6 +27,7 @@ import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import { assertActiveVoucherStep } from "./steps/assert-active-voucher";
 import { refetchCartTotalStep } from "./steps/refetch-cart-total";
 import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
+import { VOUCHER_NOTICE_METADATA_KEY } from "./lib/auto-remove-notice";
 
 export const removeVoucherWorkflowId = "remove-voucher";
 
@@ -56,7 +57,10 @@ const clearVoucherCartMetadataStep = createStep(
       Modules.CART,
     );
     await cartModuleService.updateCarts(input.cart_id, {
-      metadata: { [VOUCHER_METADATA_KEY]: "" },
+      metadata: {
+        [VOUCHER_METADATA_KEY]: "",
+        [VOUCHER_NOTICE_METADATA_KEY]: "",
+      },
     });
     return new StepResponse({ cleared: true });
   },
