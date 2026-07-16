@@ -10,11 +10,17 @@ import type { ExecArgs } from "@medusajs/framework/types";
  * item-level promotion → the voucher (if any) recalculates on the new post-promo
  * subtotal → global 50% cap re-checked (VOUCH-003 / SRS §8 EC-08).
  *
- * The threshold is expressed as a promotion rule on `item_total` (the cart
- * subtotal). NOTE: the Admin create-wizard does NOT expose `item_total` in its
- * "Who can use this code?" dropdown, so this tier can only be configured via the
- * Promotion module API (this script) — verified live: fires at ≥ 5,000,000,
- * stays off below it.
+ * STANDALONE / on-demand — intentionally NOT chained into initial-data-seed.ts:
+ * it's an always-on automatic promotion, so leaving it seeded would silently
+ * give every cart ≥ 5,000,000 a 5% discount and skew unrelated demos. Run it
+ * only when demoing EC-08, and remove it afterwards (Admin → Promotions, or a
+ * Promotion-module delete script).
+ *
+ * The threshold is a promotion rule on `item_total` (the cart subtotal). NOTE:
+ * the Admin UI cannot create OR edit a promotion with an `item_total` rule — the
+ * admin rule-attribute whitelist (Medusa v2.16) omits it, so this tier is only
+ * manageable via the Promotion module API (this script). Verified live: fires at
+ * ≥ 5,000,000, stays off below it.
  *
  * Idempotent: re-running replaces the existing TIER5M5 promotion.
  * Run: `npx medusa exec ./src/scripts/seed-tier-promo.ts`
@@ -59,6 +65,6 @@ export default async function ({ container }: ExecArgs) {
   });
 
   logger.info(
-    `[seed:tier] ${TIER_CODE} — automatic ${PERCENT_OFF}% off order when item_total >= ${THRESHOLD_VND.toLocaleString("vi-VN")}₫ (EC-08).`,
+    `[seed:tier] ${TIER_CODE} — automatic ${PERCENT_OFF}% off order when item_total >= ${THRESHOLD_VND.toLocaleString("vi-VN")}₫ (EC-08). Standalone — not in the master seed; remove after demo.`,
   );
 }
