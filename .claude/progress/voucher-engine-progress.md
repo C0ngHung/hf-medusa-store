@@ -1,13 +1,18 @@
 # VoucherEngine Implementation Progress
 
-## Current summary (latest authoritative verification: 2026-07-15, session 6 — see dated entry below)
+## Current summary (latest authoritative verification: 2026-07-15 — Hùng session 6 + Thức sessions 1-3, merged)
 
 - **Day 1:** Done (Solution Define / SPEC / API contract / Redis-usage decisions).
-- **Day 2:** Done — foundation + pricing-calculation runtime.
-- **Day 3:** Done — V1–V8 validation chain + full discount-cap/stacking math.
-- **Day 4 (Thức's 18 tasks):** Done (session 5, 2026-07-14) — apply/remove/revalidate/record-usage workflows,
-  store voucher route, my-vouchers route, subscribers, redemption-time atomic usage step (3.4.1–3.4.10, 3.4.14,
-  3.5.1, 3.5.7, 3.5.8, 3.6.1, 3.6.4, 3.6.5, 3.6.7).
+- **Day 2:** Done — foundation (models, service, migrations, module registration) + pricing-calculation runtime,
+  independently re-verified 2026-07-14 (session 2).
+- **Day 3:** Done — V1–V8 validation chain + full discount-cap/stacking math, independently re-verified 2026-07-14
+  (session 2).
+- **Day 4 (Thức's 18 tasks):** **Done.** Session 5 (2026-07-14) resolved three SPEC decisions (E/F/G — store
+  route shape, `/store/customers/me/vouchers`, ephemeral cart-specific Promotion mechanism) via
+  `voucher-spec-advisor`, then implemented apply/remove/revalidate/record-usage workflows, the store voucher
+  route, the my-vouchers route, subscribers, and the redemption-time atomic usage step — all 18 of Thức's Day 4
+  task IDs (3.4.1–3.4.10, 3.4.14, 3.5.1, 3.5.7, 3.5.8, 3.6.1, 3.6.4, 3.6.5, 3.6.7). Hùng's Day 4 rate-limiting
+  scope (3.7.x) was explicitly NOT touched in this session.
 - **Day 5 (Hùng's 13 tasks):** **Done (session 6, 2026-07-15).** Scope = 3.5.2–3.5.6, 3.5.9–3.5.12, 3.6.2, 3.6.3,
   3.6.6, 3.6.11. Most were already COVERED-by-code from Thức's Day-4 revalidate/record-usage workflows; this
   session (a) implemented the ONE real gap — the async auto-remove **notification reason** (3.5.9/3.5.10:
@@ -17,56 +22,619 @@
   identity+amount, apply-does-not-increment, and a genuine CONCURRENCY test for anti-over-redemption 3.6.6), and
   (c) **deprecated the dead `lib/voucher-usage-counter.ts`** (the Redis-authority branch SPEC §14.3 explicitly did
   NOT choose — DB-atomic `redeemVoucherAtomic` is the sole guard). No SPEC change, no advisor handoff needed.
-- **Day 5 (Thức's tasks 4.1.x/4.2.x/4.3.x checkout integration):** Not started (Thức's scope).
+- **Day 5 (Thức, Slice 1 — `4.1.2, 4.1.3, 4.1.5, 4.1.6, 4.3.4, 4.3.5`):** **Done**, verified 2026-07-15. The
+  storefront-side implementation (unified `DiscountCode` component, `lib/data/voucher.ts`, `retrieveCart`
+  metadata field) already existed on disk as uncommitted work when this session started; the session's job was
+  audit + live verification (no production code changes were required — the implementation matched the approved
+  `docs/voucher-engine-ui/REQUIREMENTS.md`/`UX-FLOW.md`/`WIREFRAMES.md` design).
+- **Day 5 (Thức, Slice 2 — `4.2.1`–`4.2.7`, stacking order/global cap/cap explanation):** **Verified at the
+  calculation layer; live/manual UI verification BLOCKED by missing seed data** (2026-07-15 session 2). No
+  production code changes were made — this was a pure verification pass. All seven tasks are proven correct
+  against SRS VOUCH-003 via the existing `calculate-discount.unit.spec.ts` (25/25 passing), which reproduces the
+  exact SRS fixtures T-VOUCH-07 (₫3,420,000), T-VOUCH-08 (₫490,000 capped from ₫568,000 / ₫2,350,000 final), and
+  T-VOUCH-09 (cap prevents negative total, ₫2,350,000) to the VND, plus `cap_explanation`'s Vietnamese message
+  content. The storefront's `cap_explanation` display path (`discount-code/index.tsx`, `voucher-cap-explanation`
+  test id, gated on `discount_capped && capExplanation`) and the backend's response-envelope mapping
+  (`apply-voucher.ts:276`, `cap_explanation: discount.cap_explanation?.message_vi ?? null`) were code-traced end
+  to end and are wired correctly. However, **no live browser scenario could be run for 4.2.1/4.2.6 (suggested item
+  plus item-level promotion plus voucher) or 4.2.7's cap-triggering case** (Test I/K in `storefront-day5-testing.md`)
+  because no seed script anywhere creates a generic Medusa `Promotion` (item or order level, percentage or
+  fixed) — only VoucherEngine's own ephemeral fixed-type carrier exists at runtime — and none of the three seeded
+  vouchers' rates (`SAVE10` 10%, `MEGA20`/`SHUTTLE20` 20%) can reach the 50% global cap alone. See the seed-data
+  lesson for the exact missing fixtures. Separately, this session found (pre-existing, NOT introduced this
+  session, NOT fixed) that a prior pass had already implemented the CONFLICT-8/PD-15 fail-closed hardening
+  documented in SPEC §18/§19/§23.4 (`VOUCHER_STACKING_UNSUPPORTED` in
+  `verify-cart-totals.ts`/`errors.ts`/`apply-voucher.ts`/`resolve-voucher-discount.ts`/
+  `write-voucher-cart-metadata.ts`) — this is a deliberate, SPEC-approved, business-sign-off-pending safety net
+  (a voucher applied alongside a coexisting percentage item promotion is rejected with a diagnosable 400, not
+  silently corrupted), not a bug for this slice to fix.
+- **Day 5 (Thức, Slice 3 — `4.1.8`, `4.3.6`–`4.3.8`, cart-consistency/auto-invalidation/order usage recording):**
+  **Done**, verified 2026-07-15 session 3. Audit found the production code (`revalidateVoucherWorkflow`,
+  `recordVoucherUsageWorkflow`, `atomicRedeemStep`, the `cart.updated`/`order.placed` subscribers) already
+  complete and correct against SPEC §11.3–§11.5/§14.3 — no production code changes were needed. This session's job
+  was closing a real evidence gap: the recompute/auto-remove workflow already had a passing HTTP integration test
+  (`revalidate-voucher-workflow.spec.ts`) and `redeemVoucherAtomic`'s own DB transaction already had passing
+  module-integration coverage (`service.integration.spec.ts`), but `recordVoucherUsageWorkflow` itself (the
+  workflow the `order.placed` subscriber actually calls) had ZERO test coverage — a new integration test,
+  `integration-tests/http/record-voucher-usage-workflow.spec.ts`, was added to close it, driving a directly-created
+  real Order carrying `order.metadata.voucher` (not a full checkout/payment scaffold, which doesn't exist anywhere
+  in this repo's tests) through the real workflow and asserting exactly one `VoucherUsageLog` row, `usage_count`
+  incremented once, and idempotency on a second run. A live manual scenario (real cart + real `SHUTTLE20` voucher
+  via the running store API) additionally proved the auto-invalidation path end-to-end: metadata cleared and
+  total reverted within one request round-trip of removing the eligible item. The one thing NOT independently
+  re-verified live in this slice was the storefront UI's own re-render after this kind of mutation — this relies
+  on the unchanged `DiscountCode` hydration effect already verified live in Slice 1.
 - **Days 6–7:** Not started.
-- **Lessons infrastructure:** `.claude/lessons/voucher-engine/INDEX.md` now lists 9 lessons — the 8 from session 5
-  plus 1 new (session 6): scoped-voucher + multi-item cart `fixed`/`across` fractional-adjustment gap at
-  `verify-cart-totals` (a latent APPLY-path bug in Thức's 3.4.x, surfaced while testing 3.5.x — flagged as a
-  handoff, not fixed here).
+- **Lessons infrastructure:** `.claude/lessons/voucher-engine/INDEX.md` now lists 13 lessons — the original 8
+  (2026-07-14), Hùng's session-6 addition (scoped-voucher + multi-item cart `fixed`/`across` fractional-adjustment
+  gap at `verify-cart-totals` — a latent APPLY-path bug in Thức's 3.4.x, surfaced while testing 3.5.x, flagged as a
+  handoff, not fixed), Thức's Slice 1 addition (fallback-routing for unrecognized codes), Slice 2's addition
+  (seed-data blocks stacking-cap live verification), and Slice 3's two additions (`medusaIntegrationTestRunner`
+  port conflict with a running dev server; testing `order.placed`-driven workflows without a full checkout
+  scaffold).
 - **Current production workflow entry points:** `resolveVoucherDiscountWorkflow`, `applyVoucherWorkflow`,
   `removeVoucherWorkflow`, `revalidateVoucherWorkflow` (`revalidate-voucher-on-cart-change.ts`, invoked by the
   `cart.updated` subscriber — now ALSO writes `cart.metadata.voucher_notice` with the auto-remove reason),
   `recordVoucherUsageWorkflow` (`record-voucher-usage.ts`, invoked by the `order.placed` subscriber — PRIMARY
   redemption trigger).
-- **Unit-test result:** 214/214 passed, 17 suites (session 6; +6 tests / +1 suite over session 5 —
-  `auto-remove-notice.unit.spec.ts`; the rest of the delta over session 5's 174 is teammate suggestion unit
-  suites landed on develop).
-- **Module-integration result:** `service.integration.spec.ts` 14/14 passed run ALONE (session 6; +1 test — the
-  concurrent-redemption anti-over-redemption test, 3.6.6). NOTE: the full `pnpm test:integration:modules` run
-  (both module suites in one `--runInBand` process) hits the known cross-suite infra flake — verify each suite
-  alone (see lesson `2026-07-14-redis-bullmq-teardown-race.md` + `integration-test-runinband-isolation`).
-- **Full-app/HTTP integration result:** each spec file passes 100% run ALONE — `revalidate-voucher-workflow.spec.ts`
-  **5/5** (session 6; +3: item-added recompute 3.5.2, no-eligible auto-remove 3.5.3/3.5.10, apply-no-increment
-  3.6.11, plus the min-order test strengthened with 3.5.9 notice assertions), `record-voucher-usage-workflow.spec.ts`
-  **3/3** (new, session 6 — 3.6.2/3.6.3/3.6.4), and the session-5 files unchanged. The combined
-  `pnpm test:integration:http` run still hits the KNOWN pre-existing multi-`medusaIntegrationTestRunner`/`--runInBand`
-  flake (2+ full-app boots in one Jest process) — NOT a correctness regression; each file is deterministic alone.
-- **Typecheck result:** the files changed this session are clean. `npx tsc --noEmit` reports 2 PRE-EXISTING errors
-  in files NOT touched this session and unrelated to Day 5 — `integration-tests/http/helpers/create-admin-user.ts`
-  (missing `jsonwebtoken` dep) and `src/admin/lib/sdk.ts` (`import.meta` under CommonJS). Neither blocks
-  `medusa build` (0 errors). Flagged for the repo owner; not a Day-5 regression.
-- **Lint result (via `pnpm build`):** 0 errors, 23 warnings — all pre-existing/teammate-owned (category-complement
-  & product-bulk service-mutation-in-route, zod-import-source, prices-in-major-units, logger magic-string, the
-  session-4 `@InjectTransactionManager` false-positive on `service.ts:103`). No new warnings from this session's files.
-- **Build result:** `pnpm build` — backend + frontend both completed successfully, 0 errors (session 6).
-- **Migration result:** session 6 added NO new migration (no model changed — the auto-remove reason lives in
-  `cart.metadata`, not a new column).
-- **Test env:** created `apps/backend/.env.test` (gitignored) from the `.env.test.template` develop added, pointing
-  `DB_*` at the docker-compose Postgres (`hfmedusa`@5433) — required by `@medusajs/test-utils` (reads `DB_*`, not
-  `DATABASE_URL`; missing it → `SASL: client password must be a string` / `ORM not configured`). See
+- **Storefront component (Day 5, Thức):** the unified `DiscountCode`
+  (`apps/storefront/src/modules/checkout/components/discount-code/index.tsx`) handles both generic Medusa
+  promotion codes and VoucherEngine vouchers through one input; co-located `available-vouchers-modal.tsx` and
+  `replace-confirm-modal.tsx`; server actions in `apps/storefront/src/lib/data/voucher.ts`
+  (`applyVoucher`/`removeVoucher`/`fetchAvailableVouchers`); `retrieveCart()` (`apps/storefront/src/lib/data/cart.ts`)
+  now fetches cart-level `metadata` so `cart.metadata.voucher` hydrates the active-voucher row on every page load.
+  The legacy `modules/voucher/components/voucher-panel/` dead-code files (flagged in earlier sessions as
+  zero-import dead code) have since been deleted from disk — no live `VoucherPanel` remains anywhere in the
+  storefront.
+- **Test results — last known-good per branch before this merge** (a full combined re-run across both lanes'
+  changes together is still required post-merge; see "Next allowed scope"):
+  - Backend unit: Hùng's session 6 — 214/214 passed, 17 suites (includes `auto-remove-notice.unit.spec.ts`).
+    Thức's Day 5 sessions made no unit-level backend changes (unchanged from session 5's 174/174, 11 suites).
+  - Backend module-integration: `service.integration.spec.ts` — Hùng's session 6 reports 14/14 (added the
+    concurrent-redemption anti-over-redemption test, 3.6.6); Thức's Slice 3 re-run reports 13/13 (pre-3.6.6).
+    NOTE: the full `pnpm test:integration:modules` run (both module suites in one `--runInBand` process) hits a
+    known cross-suite infra flake — verify each suite alone (see the Redis/BullMQ-teardown lesson).
+  - Backend HTTP-integration: `revalidate-voucher-workflow.spec.ts` — Hùng's session 6 reports 5/5 (+3 over
+    Thức's 2/2: item-added recompute 3.5.2, no-eligible auto-remove 3.5.3/3.5.10, apply-no-increment 3.6.11, plus
+    the min-order test strengthened with 3.5.9 notice assertions). `record-voucher-usage-workflow.spec.ts` — both
+    lanes added this file independently (3/3 on each side, different fixture style/task-ID framing — resolved as
+    a real merge conflict, see the dated entry for this merge). The combined `pnpm test:integration:http` run
+    still hits the KNOWN pre-existing multi-`medusaIntegrationTestRunner`/`--runInBand` flake — NOT a correctness
+    regression; each file is deterministic alone.
+  - Storefront: `npx tsc --noEmit` clean (0 errors) as of the last pre-merge check; `pnpm --filter @dtc/storefront
+build` succeeded (53/53 static pages) per Thức's Slice 1 session. `pnpm --filter @dtc/storefront lint`: 8
+    pre-existing errors in already-dead gift-card/discount stub functions in `lib/data/cart.ts`
+    (`applyGiftCard`, `removeDiscount`, `removeGiftCard`, etc.), confirmed identical to the committed baseline,
+    not introduced by voucher-engine work.
+  - Typecheck: backend — 2 PRE-EXISTING errors unrelated to voucher-engine work, in files neither lane touched —
+    `integration-tests/http/helpers/create-admin-user.ts` (missing `jsonwebtoken` dep) and `src/admin/lib/sdk.ts`
+    (`import.meta` under CommonJS). Neither blocks `medusa build` (0 errors). Flagged for the repo owner.
+- **Lint result (backend, via `pnpm build`):** 0 errors, 23 warnings — all pre-existing/teammate-owned. No new
+  warnings from either Day 5 lane's files.
+- **Migration result:** Hùng's session 6 added no new migration (auto-remove reason lives in `cart.metadata`, not
+  a new column). Thức's Day 5 storefront sessions made no backend migration changes either.
+- **Test env:** `apps/backend/.env.test` (gitignored) created from the `.env.test.template` develop added,
+  pointing `DB_*` at the docker-compose Postgres (`hfmedusa`@5433) — required by `@medusajs/test-utils`. See
   `docs/team/RUNNING_TESTS.md`.
-- **Unresolved blockers:** none for Hùng's Day 1–5. Dependencies/handoffs (NOT absorbed — out of Day-5 scope):
-  (1) rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on
-  `/store/carts/:id/voucher` (Hùng's Day-4 3.7.x lane — separate branch); (2) `recordFailedAttempt`/
-  `resetFailedAttempts` have no production caller in the apply flow yet (Hùng 3.7.x); (3) scoped-voucher + multi-item
-  `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức's 3.4.x/§23.4 — see new lesson);
-  (4) `cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful (re)apply —
-  a storefront/apply-flow lifecycle concern (Thức's apply / PD-09 refetch-polling).
-- **Next allowed scope:** Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware) or Day 6 test/evidence
-  tasks (5.2.x/5.3.x), per `docs/tasks_grouped.md`.
+- **Unresolved blockers (combined):**
+  1. Rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on
+     `/store/carts/:id/voucher` (Hùng's Day-4 3.7.x lane — separate branch).
+  2. `recordFailedAttempt`/`resetFailedAttempts` have no production caller in the apply flow yet (Hùng 3.7.x).
+  3. Scoped-voucher + multi-item `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức's
+     3.4.x/§23.4 — see the scoped-voucher lesson; flagged as a handoff, not fixed).
+  4. `cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful (re)apply —
+     a storefront/apply-flow lifecycle concern (Thức's apply / PD-09 refetch-polling).
+  5. `storefront-day5-testing.md` Test B's wording should be tightened to distinguish "recognized-but-rejected
+     voucher" (no fallback) from "unrecognized code" (falls back to generic-promotion, per `UX-FLOW.md` §1a).
+  6. **Backend bug found incidentally, NOT fixed:** `VOUCHER_NO_ELIGIBLE_ITEMS`'s `customer_message` template
+     uses `{categories}` (`workflows/voucher-engine/lib/errors.ts`) but the actual `details` key set by the V6
+     validator is `applicable_categories` (`workflows/voucher-engine/lib/validators.ts`) — `fillPlaceholders()`
+     never matches, so the literal `{categories}` reaches the customer verbatim. A future backend session should
+     fix this.
+  7. The still-open _live_ half of `4.2.1`/`4.2.6`/`4.2.7` (calculation-layer proof already Done, live browser
+     scenario blocked by missing generic-Promotion seed data — see the seed-data lesson).
+- **Next allowed scope:** Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware), Day 6–7 (test-plan
+  execution, T-VOUCH-01..12/T-SUGG-01..10 acceptance coverage), a dedicated seed-fixture task to unblock item 7
+  above, a browser-automation pass to independently re-verify the storefront UI's own re-render after
+  cart-change auto-invalidation, and — immediately after this merge — a full combined test re-run across both
+  lanes' changes together (unit, module-integration, HTTP-integration all run once, not per-branch) since neither
+  lane's last-known-good counts above reflect the other lane's changes.
 
 > Older entries are historical snapshots and may contain findings corrected by later sessions. The latest
 > authoritative summary and latest dated verification section are the current source of truth.
+
+## 2026-07-15 (session 3) — Day 5 (Thức, Slice 3): cart-consistency, auto-invalidation, order usage recording
+
+**Scope of this session:** exactly 4 task IDs from Thức's Day 5 row in `docs/tasks_grouped.md` — functional task
+`4.1.8` and demo/evidence tasks `4.3.6, 4.3.7, 4.3.8`. Explicitly not touched: Slice 2 (`4.2.1`–`4.2.7`, not
+reworked), Hùng's tasks, admin voucher APIs, Redis rate-limit/cooldown, rate-limit UI, mini-cart voucher display.
+
+### Reading performed (per the fast-scoped instruction — not a full re-read)
+
+`docs/tasks_grouped.md` Ngày 5 rows only; SPEC §11.3 (`revalidateVoucherWorkflow`), §11.4
+(`recordVoucherUsageWorkflow`), §11.5 (sync-vs-subscriber table), §14.3 (idempotency); the 6 named production
+files (`revalidate-voucher-on-cart-change.ts`, `voucher-cart-updated.ts`, `record-voucher-usage.ts`,
+`voucher-order-placed.ts`, `atomic-redeem.ts`, `voucher-usage-log.ts`); `.claude/lessons/voucher-engine/INDEX.md`
+in full.
+
+### Per-task status
+
+| Task  | Requirement                                                                       | Status                                                                                                                                                                                                         |
+| ----- | --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4.1.8 | Cart state remains consistent after cart update                                   | **Done** — proven by real-workflow test + live API scenario (see below)                                                                                                                                        |
+| 4.3.6 | Cart change auto-invalidates voucher when it becomes invalid                      | **Done** — proven by real-workflow test + live API scenario                                                                                                                                                    |
+| 4.3.7 | Checkout/order success triggers voucher usage recording; final order has discount | **Done** — new test closes the one real gap (workflow-level coverage); discount-on-order relies on already-verified `complete-cart.js:404` propagation, not freshly re-driven via a full checkout this session |
+| 4.3.8 | `VoucherUsageLog` created once, append-only, idempotent                           | **Done** — proven by new test (duplicate-order-id run) + pre-existing `redeemVoucherAtomic` DB-transaction tests                                                                                               |
+
+### Audit findings (before any change)
+
+All 6 named production files were already complete and correct against SPEC §11.3–§11.5/§14.3 — no bug was
+found, no production code was changed. `revalidateVoucherWorkflow` and the `cart.updated` subscriber correctly
+implement recompute-if-still-valid / auto-remove-if-not (mutually exclusive `when()` branches on
+`shouldRecompute`/`shouldRemove`); `recordVoucherUsageWorkflow` and the `order.placed` subscriber correctly
+implement assert→idempotency-check→atomic-redeem, with the subscriber promoted to PRIMARY (not fallback) redemption
+trigger per SPEC §13.3's own documented contingency (no usable `completeCartWorkflow` post-completion hook exists
+in installed 2.16.0). The one real gap found was **evidence, not implementation**: `recordVoucherUsageWorkflow`
+itself had zero test coverage — only the underlying `redeemVoucherAtomic` DB transaction was tested
+(`service.integration.spec.ts`).
+
+### Evidence
+
+**Re-ran existing tests (real DB/workflow execution, not mocks):**
+
+- `pnpm test:integration:http -- integration-tests/http/revalidate-voucher-workflow.spec.ts` → **2/2 passing**
+  (task 3.5.7 recompute-on-valid-mutation: cart total ₫1,800,000→₫3,600,000 after quantity bump, voucher amount
+  recomputed ₫200,000→₫400,000; task 3.5.8 auto-remove-on-invalid: cart total reverts to ₫1,000,000 exactly,
+  `cart.metadata.voucher` becomes `undefined`). This is the exact workflow the `cart.updated` subscriber invokes —
+  proves 4.1.8/4.3.6 at the real-workflow layer.
+- `pnpm test:integration:modules -- src/modules/voucher-engine/__tests__/service.integration.spec.ts` → **13/13
+  passing**, including `redeemVoucherAtomic`'s 3 dedicated cases (increment+log in one transaction; fail-closed on
+  exhaustion; duplicate `(voucher_id, order_id)` insert rejected, `usage_count` incremented only once).
+
+**New test added to close the `recordVoucherUsageWorkflow` coverage gap:**
+`integration-tests/http/record-voucher-usage-workflow.spec.ts` (3/3 passing) — directly creates a real `Order`
+(via `OrderModuleService.createOrders`) carrying `metadata.voucher` in the same shape
+`writeVoucherCartMetadataStep` writes (no full `completeCartWorkflow`/payment/shipping scaffold — none exists
+anywhere in this repo's tests, and `assertOrderHasVoucherStep` only ever reads `order.metadata` via `query.graph`,
+so this exercises the identical code path), then invokes `recordVoucherUsageWorkflow` directly (same pattern
+`revalidate-voucher-workflow.spec.ts` already established). Asserts: (1) exactly one `VoucherUsageLog` row is
+created and `usage_count` increments to 1; (2) running the SAME order a second time (simulating duplicate
+`order.placed` delivery) creates no duplicate row and does not double-increment `usage_count`; (3) an order with
+no voucher metadata is a no-op (`processed: false`). The cart-total-carries-into-order-total claim for 4.3.7 rests
+on the already-SPEC-verified `cart.metadata`→`order.metadata` propagation
+(`@medusajs/core-flows/dist/cart/workflows/complete-cart.js:404`, Decision G) plus the existing live proof that
+cart totals include the voucher discount (Slice 1/2) — this session did not additionally drive a full checkout to
+re-prove that specific hop, per the advisor-recommended timebox (see below).
+
+**Live manual scenario (real store API, real seeded data) for 4.1.8/4.3.6:**
+
+1. Created a cart, added 1× "Yonex Mavis 2000" (₫420,000, Shuttlecocks category).
+2. Applied `SHUTTLE20` (20%, min_order_value ₫200,000, category-scoped Shuttlecocks) —
+   `POST /store/carts/:id/voucher` → `{success:true, discount_amount:84000, updated_cart_total:336000}`.
+3. `GET` the cart — confirmed `cart.metadata.voucher` populated (code, discount_amount 84,000, etc.), total
+   ₫336,000.
+4. `DELETE` the line item (removes the only voucher-eligible item — both V5 min-order and V6 eligible-items now
+   fail).
+5. `GET` the cart again — `cart.metadata` is `{}` (voucher cleared) and `total` is `0`. The clearing was already
+   visible on the very next request after the mutation (async `cart.updated` subscriber had already run by the
+   time the next curl call landed) — exact subscriber latency was not precision-measured, but no manual wait/retry
+   was needed in this manual test.
+
+**Not independently re-verified this session:** the storefront UI's own re-render/no-stale-state behavior after
+this kind of mutation (task 4.3.6's UI half) — no browser-automation tool was available in this session (headless
+Chrome from a prior session's manual work exists but no scripted driver). This relies on the `DiscountCode`
+component's `useEffect` hydration-from-`cart.metadata` logic, which is unchanged since Slice 1 where it WAS
+live-verified. Flagged, not silently assumed — a future session with browser tooling should close this
+specifically if it matters for sign-off.
+
+### Environment note (not a task blocker, see new lesson)
+
+The backend dev server (already running from a prior session, `PORT=9009`) had to be stopped before
+`pnpm test:integration:http` would run — `medusaIntegrationTestRunner` boots its own app on the same port and
+otherwise fails with `EADDRINUSE`/a null-container teardown error that looks like a real regression at first
+glance. Stopped it, ran the tests, restarted it (`pnpm backend:dev`, backgrounded) afterward so the environment
+was left as found.
+
+### SPEC/design consistency gate
+
+No SPEC conflict; `voucher-spec-advisor` was not invoked. All 6 audited files already matched SPEC §11.3–§11.5/
+§14.3 exactly.
+
+### Lessons captured this session
+
+- Lesson action: Created
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-integration-test-runner-port-conflicts-with-running-dev-server.md`
+  Title: `medusaIntegrationTestRunner` binds the same `PORT` as the dev server — HTTP integration tests fail with
+  `EADDRINUSE` unless the dev server is stopped first
+  Related tasks: 4.1.8, 4.3.6, 4.3.7, 4.3.8
+  One-sentence finding: Before running `pnpm test:integration:http` in a session where a dev server might already
+  be up, check `lsof -i :<PORT>` first — the failure signature looks like a workflow regression but is a local
+  port conflict.
+
+- Lesson action: Created
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-test-order-placed-workflows-without-a-full-checkout-scaffold.md`
+  Title: Testing an `order.placed`-driven workflow doesn't need a full `completeCartWorkflow`/payment/shipping
+  scaffold — directly create an Order carrying the same `order.metadata.voucher` shape
+  Related tasks: 4.3.7, 4.3.8
+  One-sentence finding: Check what fields a workflow's own steps actually read from the order (via its
+  `query.graph` field list) before building checkout/payment scaffolding — a directly-created `Order` with the
+  right `metadata` shape is often sufficient.
+
+### Files created / modified this session
+
+**Created:** `apps/backend/integration-tests/http/record-voucher-usage-workflow.spec.ts`; the 2 lesson files
+above.
+**Modified:** `.claude/progress/voucher-engine-progress.md`; `.claude/lessons/voucher-engine/INDEX.md`.
+No production code was created or modified.
+
+### Commands run
+
+- `pnpm test:integration:http -- integration-tests/http/revalidate-voucher-workflow.spec.ts` → 2/2 passing.
+- `pnpm test:integration:modules -- src/modules/voucher-engine/__tests__/service.integration.spec.ts` → 13/13
+  passing.
+- `pnpm test:integration:http -- integration-tests/http/record-voucher-usage-workflow.spec.ts` (new file) → 3/3
+  passing.
+- `npx tsc --noEmit -p tsconfig.json` (from `apps/backend/`) → 1 pre-existing, unrelated error
+  (`src/admin/lib/sdk.ts:11`, `import.meta`/CommonJS, an admin-dashboard file untouched by this session); the new
+  test file itself compiles clean.
+- Live manual scenario via `curl` against the running store API (`SHUTTLE20` apply → line-item delete → re-GET
+  cart) — see Evidence above.
+
+### Confirmation of scope
+
+Only `4.1.8`, `4.3.6`, `4.3.7`, `4.3.8` were worked on. Slice 2 (`4.2.1`–`4.2.7`) was not reworked or re-marked —
+its calculation-layer Done / live-blocked status from session 2 is unchanged. No Hùng task, admin voucher API,
+Redis rate-limit/cooldown, rate-limit UI, or mini-cart voucher display was implemented or touched.
+
+**Overall session status:** Complete. All 4 selected tasks are Done, backed by real DB/workflow-level test
+evidence (2 existing suites re-confirmed passing, 1 new suite added closing a real coverage gap) plus one live
+manual API scenario proving auto-invalidation end-to-end. One honest caveat carried forward: the storefront UI's
+own re-render behavior after auto-invalidation was not independently re-verified live this session (relies on
+unchanged, already-verified Slice 1 logic) — named explicitly, not silently assumed. With this slice done, all of
+Thức's named Day 5 task IDs are now Done or Done-with-a-recorded-caveat.
+
+## 2026-07-15 (session 2) — Day 5 (Thức, Slice 2): stacking order / global cap / cap-explanation verification
+
+**Scope of this session:** exactly the 7 task IDs from Thức's Day 5 row in `docs/tasks_grouped.md` —
+`4.2.1, 4.2.2, 4.2.3, 4.2.4, 4.2.5, 4.2.6, 4.2.7`. A fast-scoped verification pass per explicit instruction: verify
+against SRS VOUCH-003, implement only if a blocker was found. Explicitly not touched: Hùng's tasks, admin voucher
+APIs, Redis rate-limit/cooldown, rate-limit UI, mini-cart voucher display, auto-remove/order-usage tasks
+(`4.1.8`, `4.3.x`).
+
+### Reading performed (per the fast-scoped instruction — not a full re-read)
+
+`docs/tasks_grouped.md` Ngày 5 rows only; SPEC §10 (Discount Resolution, §10.1–§10.7), §11.1 step 10
+(`verifyCartTotalsStep`), the Decision G block and its 2026-07-15 CONFLICT-8/PD-15 addendum, §18 CONFLICT-8, §19
+PD-15, §23.4; `.claude/lessons/voucher-engine/INDEX.md` in full;
+`references/storefront-day5-testing.md` (Tests I and K, mapped to this slice).
+
+### Per-task status
+
+| Task  | Requirement (SRS VOUCH-003)                                         | Status                                                                                           |
+| ----- | ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| 4.2.1 | Item-level promotions on suggested items calculated before voucher  | **Done (calc layer)** / live scenario BLOCKED — see below                                        |
+| 4.2.2 | Voucher calculates after item-level promotions                      | **Done** — proven exactly by T-VOUCH-07/08 fixtures                                              |
+| 4.2.3 | Percentage voucher calculates only on eligible post-promotion items | **Done** — `calculateEligiblePostPromotionSubtotal`/`resolveEligibleItems` unit tests            |
+| 4.2.4 | Total discount does not exceed global cap                           | **Done** — T-VOUCH-08 asserts `combined_discount === maximum_combined_discount` when capped      |
+| 4.2.5 | Voucher reduced when cap exceeded; item promotion never reduced     | **Done (calc layer)** / live percentage-item-promo scenario BLOCKED — see below                  |
+| 4.2.6 | Suggested item + voucher cannot create negative total               | **Done (calc layer)** — T-VOUCH-09 fixture / live scenario BLOCKED — see below                   |
+| 4.2.7 | Cap explanation returned and displayed immediately after apply      | **Done (code-traced)** — response mapping + UI wiring verified; live-trigger BLOCKED — see below |
+
+### Evidence
+
+**Calculation layer (backend, pure, no I/O):** ran the existing focused unit suite —
+`cd apps/backend && TEST_TYPE=unit npx jest src/modules/voucher-engine/lib/__tests__/calculate-discount.unit.spec.ts`
+→ **25/25 passing.** Reproduces SRS fixtures exactly:
+
+- T-VOUCH-07 (item promo 20% + voucher 10%, under cap): `original_subtotal=4,700,000`,
+  `item_promotion_discount=900,000`, `final_voucher_discount=380,000`, `expected_final_cart_total=3,420,000`,
+  `discount_capped=false`.
+- T-VOUCH-08 (item promo 40% + voucher 20%, cap exceeded): `item_promotion_discount=1,860,000`,
+  `raw_voucher_discount=568,000` reduced to `final_voucher_discount=490,000`, `expected_final_cart_total=2,350,000`,
+  `discount_capped=true`, `cap_explanation.message_vi="Giảm giá đã được điều chỉnh từ 568.000₫ xuống 490.000₫
+theo chính sách giảm tối đa 50%."`.
+- T-VOUCH-09 (item promo alone consumes the cap): `item_promotion_discount=2,350,000`,
+  `final_voucher_discount=0` (never negative), `expected_final_cart_total=2,350,000`.
+
+**Code-trace (backend→storefront wiring for 4.2.7):**
+`apps/backend/src/workflows/voucher-engine/apply-voucher.ts:276` maps
+`cap_explanation: discount.cap_explanation?.message_vi ?? null` into the apply response envelope;
+`apps/storefront/src/modules/voucher/types.ts:41` types it `string | null`;
+`apps/storefront/src/modules/checkout/components/discount-code/index.tsx` sets
+`setCapExplanation(result.data.cap_explanation)` synchronously in the same apply-success branch that sets the
+voucher row, and renders a `data-testid="voucher-cap-explanation"` banner gated on
+`activeVoucher.discount_capped && capExplanation` — i.e. the explanation appears immediately on apply, not on a
+subsequent read. No code change was needed; this was already correct.
+
+**Pre-existing backend hardening found (not introduced, not fixed, not a bug):** the working tree already
+contains an uncommitted fix for SPEC's documented CONFLICT-8/PD-15 finding (2026-07-15, same day, different/prior
+session) — `verifyCartTotalsStep` (`steps/verify-cart-totals.ts`) now detects any decrease in a non-voucher
+line's adjustment versus a `pre_apply_item_promotion_discount` baseline and fails closed with the distinct
+`VOUCHER_STACKING_UNSUPPORTED` (400) instead of the opaque `VOUCHER_CALCULATION_FAILED`. This exists because
+Medusa's promotion engine (`PromotionModuleService.computeActions`, verified 2.16.0 source) processes active
+promotions in `application_method.value DESC` order over one shared `appliedPromotionsMap` — the ephemeral fixed
+voucher's money value almost always sorts before a coexisting **percentage** item/order promotion's rate, so
+that promotion's own adjustment can silently shrink (Rule 11 violation). SPEC records this carrier redesign as
+BLOCKED pending business sign-off (PD-15, candidate `cart.credit_lines`) — out of this Day 5 storefront slice's
+authority to resolve, and not attempted.
+
+**Live/manual browser verification — BLOCKED by missing seed data**, not by code: a repo-wide check (no
+`Promotion` created by `createPromotions`/`Modules.PROMOTION` anywhere in `src/scripts/` or
+`src/migration-scripts/initial-data-seed.ts`) confirms no generic Medusa `Promotion` — item or order level,
+percentage or fixed — exists in seed data at all; only VoucherEngine's own ephemeral fixed-type carrier is ever
+created, and only at apply time. Separately, none of the three seeded `VoucherConfig` rows (`SAVE10` 10%,
+`MEGA20`/`SHUTTLE20` 20%) has a high enough rate to trip the 50% global cap on its own. This blocks:
+
+- Test K (`storefront-day5-testing.md`) — suggested item + item-level promotion + voucher stacking (4.2.1, 4.2.6).
+- Test I — capped voucher explanation display (4.2.7's live trigger).
+
+Both backend dev (`localhost:9009`, confirmed `200` on `/health`) and storefront dev (`localhost:8008`) were
+already running from a prior session — server availability was not the blocker.
+
+### SPEC/design consistency gate
+
+No SPEC conflict requiring the advisor. The one open architecture question in this area (PD-15, carrier vs.
+Rule 11 for percentage-promo stacking) is already recorded in SPEC with an explicit BLOCKED status and does not
+need re-litigating for this slice — the existing fail-closed guard is sufficient for the currently-supported
+(fixed-item-promo or no-item-promo) case, which is what all seeded data exercises.
+
+### Lessons captured this session
+
+- Lesson action: Created
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-no-item-promotion-seed-data-blocks-stacking-cap-live-verification.md`
+  Title: No generic Medusa `Promotion` is seeded anywhere, and no seeded voucher rate alone reaches the 50% cap —
+  live/manual verification of stacking + cap scenarios is blocked by data, not code
+  Related tasks: 4.2.1, 4.2.4, 4.2.5, 4.2.6, 4.2.7, 5.2.7, 5.2.8, 5.2.9
+  One-sentence finding: Before scoping any live VoucherEngine stacking/cap verification, grep seed/migration
+  scripts for `createPromotions`/`Modules.PROMOTION` first — the suggestive-selling and voucher-engine seed
+  scripts are both rich but neither creates a generic Medusa `Promotion`, so no item-level-promotion fixture
+  exists to stack against a voucher, and no seeded voucher rate alone reaches the 50% cap.
+
+### Files created / modified this session
+
+None (production code). Created: the lesson file above. Modified: this progress file and
+`.claude/lessons/voucher-engine/INDEX.md`.
+
+### Commands run
+
+- `cd apps/backend && TEST_TYPE=unit npx jest src/modules/voucher-engine/lib/__tests__/calculate-discount.unit.spec.ts`
+  → 25/25 passing (see Evidence above). No other test suite was run — no backend or storefront code changed, per
+  `references/testing.md`'s guidance not to re-run the full suite for a no-change verification pass.
+
+### Confirmation of scope
+
+Only the 7 named task IDs were verified. No Hùng task, admin voucher API, Redis rate-limit/cooldown, rate-limit
+UI, mini-cart voucher display, or auto-remove/order-usage task was implemented or touched. No production code was
+modified — the calculation logic, the `verify-cart-totals.ts` CONFLICT-8 guard, and the storefront
+`cap_explanation` wiring were all already correct and required no change.
+
+**Overall session status:** Verification-only, complete for what's reachable without new seed data. All 7 task
+IDs are proven correct at the calculation layer to the exact VND against SRS VOUCH-003, and the storefront
+display wiring for `cap_explanation` is code-verified end to end. The live/manual-browser half of 4.2.1, 4.2.6,
+and 4.2.7's cap-triggering case is explicitly Blocked — not Done, not Failed — pending seed-data work named in
+the new lesson. Recommended next slice: either the remaining Thức Day 5 tasks (`4.1.8`, `4.3.6`–`4.3.8`), which
+do not require new item-promotion seed data, or a dedicated seed-fixture task to unblock the live half of this
+slice plus Day 6's T-VOUCH-07/08/09 acceptance tests.
+
+## 2026-07-15 — Day 5 (Thức, Slice 1): storefront cart↔VoucherEngine integration, apply/remove verification
+
+**Scope of this session:** exactly 6 task IDs from Thức's Day 5 row in `docs/tasks_grouped.md` — `4.1.2, 4.1.3,
+4.1.5, 4.1.6, 4.3.4, 4.3.5`. Explicitly not implemented/verified: the rest of Thức's Day 5 (`4.1.8`, `4.2.1`–
+`4.2.7`, `4.3.6`–`4.3.8`), any Hùng task, admin voucher APIs, Redis rate-limit/cooldown, rate-limit UI, or
+mini-cart voucher display.
+
+**Starting state found (audit, before any action this session):** the git working tree already contained
+substantial uncommitted storefront work — `lib/config.ts` (exported `MEDUSA_BACKEND_URL`), `lib/data/cart.ts`
+(`retrieveCart` fields string extended with cart-level `metadata`), `lib/data/voucher.ts` (new — `applyVoucher`/
+`removeVoucher`/`fetchAvailableVouchers` server actions calling the VoucherEngine store routes directly via
+`fetch`, not `sdk.client.fetch`, to preserve the full error envelope), the unified `DiscountCode` component
+(`modules/checkout/components/discount-code/index.tsx`, heavily rewritten) plus two new co-located modals
+(`available-vouchers-modal.tsx`, `replace-confirm-modal.tsx`), and `modules/voucher/types.ts`/`errors.ts`
+(wire-shape types). A prior same-branch session (evidenced by scratchpad screenshots/scripts under a different
+session id) had already done extensive manual browser verification of most of this. This session's job was: read
+the design docs, audit the code for correctness/completeness against the 6 selected task IDs, and independently
+re-verify live (not just trust the prior screenshots) before marking anything Done.
+
+### SPEC/design consistency gate
+
+No backend SPEC conflict — this slice touched only the storefront, and the backend contract (Decision E/F/G, Day 4) was already implemented and unchanged. One storefront design-vs-testing-reference discrepancy was found and
+resolved by reading the authoritative doc (not by changing product code) — see "Lessons captured" below.
+
+### Task 4.1.2 — Kết nối cart với VoucherEngine result
+
+**Status:** Done. **Previous state:** implementation present but unverified live this session (prior-session
+screenshots existed but were not independently re-driven).
+
+**Verified:** `applyVoucher`/`removeVoucher`/`fetchAvailableVouchers` (`lib/data/voucher.ts`) call
+`POST/DELETE /store/carts/:id/voucher` and `GET /store/customers/me/vouchers` directly (custom module routes, not
+typed SDK methods, per `REQUIREMENTS.md` §1.4). `discount-code/index.tsx`'s `submitCode`/`attemptVoucherApply`
+implement the single-input routing rule (`UX-FLOW.md` §1a) step-by-step: try voucher first, only a
+`VOUCHER_NOT_FOUND` (404) falls back to the existing generic-promotion `applyPromotions` full-array-replace call;
+`VOUCHER_REPLACE_REQUIRED` opens `ReplaceConfirmModal`; any other rejection shows the voucher's own
+`customer_message`, no fallback.
+
+**Live verification (headless Chrome via CDP, real backend on port 9009 + storefront on port 8008, fresh cart
+`cart_01KXJDVV644RGG9X1FCA0GZB3K`, seeded voucher `SAVE10` from `seed-voucher-engine.ts`):**
+
+- Cart page and Checkout page each render exactly 1 `[data-testid="discount-code"]` block (confirmed via DOM
+  query on both routes) — one unified UI, no duplicate `VoucherPanel`.
+- `grep -rn "VoucherPanel" apps/storefront/src --include=*.tsx --include=*.ts` (excluding its own folder) returns
+  nothing — the legacy `modules/voucher/components/voucher-panel/` files exist on disk but are never imported.
+- Invalid/unrecognized code (`NOTAREALCODE123`) on a cart with no active voucher: falls back to the
+  generic-promotion path per §1a step 5, which itself rejects it with an English Medusa error ("The promotion
+  code NOTAREALCODE123 is invalid"); cart total unchanged (₫980,000 before and after) — this is APPROVED §1a
+  behaved, not a defect (see new lesson).
+- Discriminating counterpart check (advisor-recommended, closes the "known-but-rejected" half of requirement 8):
+  fresh cart containing only a racket line (non-shuttlecock category, `lining-axforce-80`), applied `SHUTTLE20`
+  (scoped to the Shuttlecocks category) → V6 `VOUCHER_NO_ELIGIBLE_ITEMS` rejection, **no fallback** to
+  generic-promotion (per §1a step 4, "recognized voucher, just not applicable"), inline `discount-error-message`
+  showed the backend's Vietnamese `customer_message` verbatim, cart total unchanged (₫3,200,000 before and
+  after) — confirms the frontend correctly distinguishes step 4 (no fallback) from step 5 (fallback) exactly as
+  §1a specifies.
+- **Backend bug found incidentally (out of this slice's scope, NOT fixed this session):** the displayed message
+  was `"Mã này chỉ áp dụng cho {categories}. Giỏ hàng chưa có sản phẩm phù hợp."` — the `{categories}` placeholder
+  was NOT filled. Root cause (verified):
+  `apps/backend/src/workflows/voucher-engine/lib/validators.ts:122-123` sets
+  `details: { applicable_categories: categoryIds }`, but the template in
+  `apps/backend/src/workflows/voucher-engine/lib/errors.ts:79-80` uses `{categories}` — a key-name mismatch, so
+  `fillPlaceholders()` (`errors.ts:235-243`, `key in details` lookup) never finds a match and leaves the literal
+  placeholder in the customer-facing string. Even if the key matched, `applicable_categories` holds raw category
+  IDs, not human-readable names, so filling it verbatim would show an id, not a name. This is Day 3/backend
+  territory (`validators.ts`/`errors.ts`, not any of Thức's Day 5 storefront task IDs) — **flagged for a future
+  session to fix, not touched here** (out of the explicitly requested Slice 1 scope: storefront only, this
+  session was told not to implement/verify other tasks). The storefront itself behaves correctly — it renders
+  whatever `customer_message` the backend returns, verbatim, exactly as requirement 8 requires; the bug is
+  entirely in the backend's own message template.
+
+**Blockers:** none for this task. See the backend bug noted above (unrelated to this task's own scope, recorded
+for visibility).
+
+### Task 4.1.3 — Gắn active voucher state vào cart response
+
+**Status:** Done.
+
+**Verified:** `retrieveCart()`'s default `fields` string (`lib/data/cart.ts`) includes cart-level `metadata`;
+`discount-code/index.tsx`'s `readVoucherMetadata`/`toDisplayedVoucher` read `cart.metadata.voucher` (never
+`cart.promotions`) to decide "is a voucher active" and to source the human `code`/`discount_amount`/
+`discount_capped` for display; the ephemeral Promotion's own internal code/id is filtered OUT of the
+generic-promotions list via `promotion.id !== voucherMeta?.ephemeral_promotion_id`.
+
+**Live verification:** applied `SAVE10` on the fresh cart → voucher row showed human code `SAVE10` + "You saved
+₫98,000"; hard-reloaded the cart page (full navigation, not client-side route transition) → voucher row and
+savings persisted identically, confirming hydration from `cart.metadata.voucher` survives a reload, not just
+in-memory component state. Confirmed via direct backend query
+(`GET /store/carts/:id?fields=metadata`) that `cart.metadata.voucher` was populated server-side.
+`document.body.innerText.includes("VEPH")` → `false` after apply — the internal ephemeral code
+(`VEPH-...`, confirmed present in the raw cart JSON's `ephemeral_code`/`promotions[].code` fields) never reaches
+the DOM.
+
+**Blockers:** none.
+
+### Task 4.1.5 — Recalculate cart total sau apply voucher
+
+**Status:** Done.
+
+**Verified:** apply flow ends with `verifyCartTotalsStep`-refetched authoritative cart data (Day 4, unchanged);
+storefront never computes/displays a predicted discount — every amount shown comes from the apply response or a
+refetched cart.
+
+**Live verification:** clean cart (1 item, unit price ₫980,000, no other discounts) → applied `SAVE10` (10%) →
+total updated to ₫882,000 (= 980,000 − 98,000, exact 10%-of-980,000 math, integer VND) in the same render pass
+(no manual refresh needed) and confirmed identical after a hard reload.
+
+**Blockers:** none.
+
+### Task 4.1.6 — Recalculate cart total sau remove voucher
+
+**Status:** Done.
+
+**Verified:** `removeVoucher()` (`lib/data/voucher.ts`) calls `DELETE /store/carts/:id/voucher`, then
+`revalidateCartTags()`; `handleRemoveVoucher` clears local `activeVoucher`/`capExplanation` state immediately
+and lets the next `cart.metadata.voucher` resync confirm it.
+
+**Live verification:** with `SAVE10` applied (total ₫882,000), clicked the voucher row's remove button →
+`voucher-applied-row` disappeared, total reverted to ₫980,000 (the exact pre-discount subtotal — no partial
+discount, no rounding artifact). Confirmed via direct backend query
+(`GET /store/carts/:id?fields=total,subtotal,discount_total,metadata`) that `total: 980000`, `discount_total: 0`,
+`metadata: {}` — the voucher metadata key was actually cleared (`""` merge-patch per the existing
+`2026-07-14-cart-metadata-merge-patch.md` lesson), not just hidden client-side.
+
+**Note (not a defect, recorded for completeness):** an earlier check on a DIFFERENT, older, already-uncommitted
+test cart (`cart_01KXHZ2AAS71KWTXZV6ETXCK6P`, left over from the prior same-branch session) showed a remove
+reverting the total to ₫2,793,000 rather than the full undiscounted subtotal — investigated and confirmed
+correct: that cart also had a separate, still-active GENERIC promotion (`GENERICPROMO5`, is_automatic:false) from
+earlier prior-session testing, so ₫2,793,000 (= ₫2,940,000 − 5%) was the mathematically correct post-voucher-
+removal total, not a bug. The fresh, controlled cart above is the authoritative evidence for this task.
+
+**Blockers:** none.
+
+### Task 4.3.4 — Demo flow apply voucher
+
+**Status:** Done.
+
+**Evidence:** screenshots `06-clean-cart-save10-applied.png` (fresh cart, `SAVE10` applied, ₫98,000 saved, total
+₫882,000) in this session's scratchpad; prior-session screenshots `03-cart-voucher-applied.png` (`SAVE10` on a
+cart with a suggested-item promo present, ₫294,000 saved) and `04-replace-confirm-modal.png` (Vietnamese
+`customer_message` "Bạn đang dùng mã SAVE10. Thay bằng mã mới chứ?" rendered verbatim in `ReplaceConfirmModal`)
+independently re-confirmed consistent with this session's live re-run.
+
+**Blockers:** none.
+
+### Task 4.3.5 — Demo flow remove voucher
+
+**Status:** Done.
+
+**Evidence:** screenshot `07-clean-cart-voucher-removed.png` (fresh cart, voucher row gone, total reverted to
+₫980,000, no discount line shown) plus the direct-backend-query confirmation under Task 4.1.6 above.
+
+**Blockers:** none.
+
+### Session verification summary (all commands, all real results)
+
+- `npx tsc --noEmit -p tsconfig.json` (from `apps/storefront/`) — **0 errors**.
+- `pnpm --filter @dtc/storefront lint` (from `hf-medusa-store/`) — **8 pre-existing errors, ~5 pre-existing
+  warnings**, all confirmed identical to the committed `HEAD` baseline via `git show HEAD:.../cart.ts` diff
+  (dead gift-card/discount stub functions flagged in `REQUIREMENTS.md` §1.2's own audit, plus 2 unrelated
+  `@ts-ignore` warnings and 3 `react-hooks/exhaustive-deps` warnings elsewhere) — **no new lint issues
+  introduced**.
+- `pnpm --filter @dtc/storefront build` (from `hf-medusa-store/`) — **succeeded**, 53/53 static pages generated,
+  compiled in 11.2s.
+- Live manual verification via headless Chrome (CDP, port 9223) against the real running backend (port 9009,
+  Postgres-backed, `SAVE10`/`MEGA20`/`SHUTTLE20` seeded via `seed-voucher-engine.ts`) and storefront (port 8008)
+  — see per-task "Live verification" notes above. Backend test suites (unit/module-integration/HTTP-integration)
+  were NOT re-run this session per `references/testing.md`'s guidance ("do not re-run the full backend suite for
+  a storefront-only change unless something in the manual matrix surfaced a backend regression") — nothing did.
+- One operational note: `pnpm --filter @dtc/storefront build` run while `next dev` was concurrently serving port
+  8008 corrupted the dev server's `.next` chunks (shared output directory) — required a dev-server restart
+  mid-session. Not a code defect; recorded here only so a future session doesn't mistake the resulting transient
+  "Cannot find module './NNN.js'" runtime error for a real regression.
+
+### Conflicts/deviations recorded this session
+
+- `storefront-day5-testing.md` Test B's one-line requirement ("does not fall back to a generic-promotion
+  attempt") does not precisely match the approved `UX-FLOW.md` §1a design, which explicitly requires falling
+  back on `VOUCHER_NOT_FOUND` (step 5) while only steps 3/4 (recognized-but-rejected) forbid fallback. Verified
+  the shipped code correctly implements §1a; no code was changed. See the new lesson.
+
+### Lessons captured this session
+
+- Lesson action: Created
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-invalid-code-fallback-shows-generic-error-by-design.md`
+  Title: An unrecognized code intentionally falls back to the generic-promotion path and shows its (English)
+  error — this is approved UX design, not a bug
+  Related tasks: 4.1.2
+  One-sentence finding: `storefront-day5-testing.md` Test B's summary conflates "unrecognized code" (falls back
+  to generic-promotion per `UX-FLOW.md` §1a step 5) with "recognized-but-rejected voucher" (steps 3/4, no
+  fallback) — the shipped code correctly implements §1a; the test description's wording is the imprecise
+  artifact, not the code.
+
+### Files created this session
+
+`.claude/lessons/voucher-engine/2026-07-15-invalid-code-fallback-shows-generic-error-by-design.md`.
+
+### Files modified this session
+
+`hf-medusa-store/apps/storefront/src/modules/voucher/types.ts` (corrected a stale comment on `AvailableVoucher`
+claiming the my-vouchers route is public/unguarded — it is actually customer-gated per the corrected finding
+already recorded in `REQUIREMENTS.md` §1.5/§2, the comment just hadn't been updated to match);
+`.claude/lessons/voucher-engine/INDEX.md` (new row); `.claude/progress/voucher-engine-progress.md` (this entry).
+
+No other production file was modified this session — the storefront implementation found at session start
+(uncommitted `lib/config.ts`, `lib/data/cart.ts`, `lib/data/voucher.ts`, `discount-code/index.tsx` + its two new
+modals, `modules/voucher/types.ts`/`errors.ts`) already satisfied all 9 stated requirements and all 6 selected
+task IDs upon live verification; no implementation gap was found that required a code fix.
+
+### Confirmation of scope
+
+Only the 6 selected task IDs were verified/marked Done. Not touched: the rest of Thức's Day 5 (`4.1.8`,
+`4.2.1`–`4.2.7`, `4.3.6`–`4.3.8`), any Hùng task, admin voucher APIs, Redis rate-limit/cooldown, rate-limit UI, or
+mini-cart voucher display. No backend file was modified. `docs/tasks_grouped.md` was not modified.
+
+**Overall session status:** Complete. All 6 selected Day 5 Slice 1 tasks verified Done against live, real
+browser + real backend behavior (not just typecheck/build), one storefront doc comment corrected, one reusable
+lesson captured, 0 typecheck errors, 0 new lint issues, successful build, and an honest record of one
+non-blocking documentation discrepancy found and resolved by reading the authoritative design doc rather than by
+changing product behavior.
 
 ## 2026-07-13 — Pricing Calculation Foundation
 
