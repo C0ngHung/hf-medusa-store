@@ -260,82 +260,91 @@ const SuggestionsCarousel = ({
     })
   }
 
-  // 4.4.8 — hide the entire section once nothing is left to show.
-  if (!items.length) return null
+  // 4.4.8 — hide the section once nothing is left to show, but keep rendering
+  // while a toast is active so the EC-07 stock message still appears even after
+  // the LAST suggestion is removed (otherwise the component unmounts silently
+  // and the shopper never sees why the section vanished).
+  if (!items.length && !toast) return null
 
   return (
-    <div className="w-full" data-testid={`suggestions-${context}`}>
-      <div className="mb-4 flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <Heading level="h3" className="text-lg">
-            {heading}
-          </Heading>
-          {threshold && threshold.remaining > 0 ? (
-            <Text className="text-sm text-ui-fg-subtle">
-              Thêm{" "}
-              <span className="font-semibold text-green-600">
-                {convertToLocale({
-                  amount: threshold.remaining,
-                  currency_code: currencyCode,
-                })}
-              </span>{" "}
-              nữa để được miễn phí vận chuyển 🚚
-            </Text>
-          ) : (
-            subheading && (
-              <Text className="text-sm text-ui-fg-subtle">{subheading}</Text>
-            )
-          )}
+    <>
+      {items.length > 0 && (
+        <div className="w-full" data-testid={`suggestions-${context}`}>
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <Heading level="h3" className="text-lg">
+                {heading}
+              </Heading>
+              {threshold && threshold.remaining > 0 ? (
+                <Text className="text-sm text-ui-fg-subtle">
+                  Thêm{" "}
+                  <span className="font-semibold text-green-600">
+                    {convertToLocale({
+                      amount: threshold.remaining,
+                      currency_code: currencyCode,
+                    })}
+                  </span>{" "}
+                  nữa để được miễn phí vận chuyển 🚚
+                </Text>
+              ) : (
+                subheading && (
+                  <Text className="text-sm text-ui-fg-subtle">
+                    {subheading}
+                  </Text>
+                )
+              )}
+            </div>
+
+            {/* Desktop-only scroll arrows (hidden on touch/mobile) */}
+            {edges.overflow && (
+              <div className="hidden shrink-0 gap-2 small:flex">
+                <IconButton
+                  onClick={() => scrollByCards(-1)}
+                  disabled={edges.atStart}
+                  aria-label="Cuộn trái"
+                  className="border border-gray-200"
+                >
+                  <ChevronLeftMini />
+                </IconButton>
+                <IconButton
+                  onClick={() => scrollByCards(1)}
+                  disabled={edges.atEnd}
+                  aria-label="Cuộn phải"
+                  className="border border-gray-200"
+                >
+                  <ChevronRightMini />
+                </IconButton>
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={scrollerRef}
+            onScroll={syncEdges}
+            className={clx(
+              "flex gap-4 overflow-x-auto scroll-smooth pb-2",
+              // Native horizontal swipe on mobile without hijacking vertical page
+              // scroll; contain the bounce so it doesn't chain to the page (point 3).
+              "snap-x snap-mandatory overscroll-x-contain [scrollbar-width:thin]",
+            )}
+          >
+            {items.map((item, index) => (
+              <div key={item.product_id} className="snap-start h-full">
+                <SuggestionCard
+                  item={item}
+                  currencyCode={currencyCode}
+                  variant={variant}
+                  slot={index + 1}
+                  onAdd={handleAdd}
+                  onDismiss={handleDismiss}
+                  onImpression={handleImpression}
+                  onTap={handleTap}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-
-        {/* Desktop-only scroll arrows (hidden on touch/mobile) */}
-        {edges.overflow && (
-          <div className="hidden shrink-0 gap-2 small:flex">
-            <IconButton
-              onClick={() => scrollByCards(-1)}
-              disabled={edges.atStart}
-              aria-label="Cuộn trái"
-              className="border border-gray-200"
-            >
-              <ChevronLeftMini />
-            </IconButton>
-            <IconButton
-              onClick={() => scrollByCards(1)}
-              disabled={edges.atEnd}
-              aria-label="Cuộn phải"
-              className="border border-gray-200"
-            >
-              <ChevronRightMini />
-            </IconButton>
-          </div>
-        )}
-      </div>
-
-      <div
-        ref={scrollerRef}
-        onScroll={syncEdges}
-        className={clx(
-          "flex gap-4 overflow-x-auto scroll-smooth pb-2",
-          // Native horizontal swipe on mobile without hijacking vertical page
-          // scroll; contain the bounce so it doesn't chain to the page (point 3).
-          "snap-x snap-mandatory overscroll-x-contain [scrollbar-width:thin]",
-        )}
-      >
-        {items.map((item, index) => (
-          <div key={item.product_id} className="snap-start h-full">
-            <SuggestionCard
-              item={item}
-              currencyCode={currencyCode}
-              variant={variant}
-              slot={index + 1}
-              onAdd={handleAdd}
-              onDismiss={handleDismiss}
-              onImpression={handleImpression}
-              onTap={handleTap}
-            />
-          </div>
-        ))}
-      </div>
+      )}
 
       {/* One-tap-add toast: success → Undo (4.4.3); failure → red error (4.4.3b) */}
       {toast && (
@@ -380,7 +389,7 @@ const SuggestionsCarousel = ({
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 
