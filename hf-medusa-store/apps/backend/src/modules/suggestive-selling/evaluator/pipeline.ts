@@ -239,11 +239,45 @@ export function readBrand(product: {
 }
 
 /**
+ * BR-02(b): a product is in stock iff it has ≥1 purchasable variant. A variant is
+ * purchasable when it does not track inventory (`manage_inventory === false`),
+ * allows backorder (`allow_backorder === true`), or has AVAILABLE stock — where
+ * available = Σ(stocked_quantity − reserved_quantity) over its inventory location
+ * levels (matches Medusa's `inventory_quantity`, which is a .computed() field that
+ * reads back undefined via query.graph — see the cart-totals-computed-fields
+ * lesson). Single source of truth for stock — used by BOTH the product engine
+ * (engine.ts) and the cart engine (via enrichProductRow). REQUIRES the caller to
+ * fetch manage_inventory, allow_backorder, and
+ * inventory_items.inventory.location_levels.{stocked,reserved}_quantity.
+ */
+export function isProductInStock(variants: VariantLike[]): boolean {
+  return variants.some((v) => {
+    if (v?.manage_inventory === false) return true; // untracked → always purchasable
+    if (v?.allow_backorder === true) return true; // orderable even at 0 available
+    const available = (v?.inventory_items ?? []).reduce((sum, item) => {
+      const levels = item?.inventory?.location_levels ?? [];
+      return (
+        sum +
+        levels.reduce(
+          (s, lvl) =>
+            s +
+            Math.max(
+              0,
+              (lvl?.stocked_quantity ?? 0) - (lvl?.reserved_quantity ?? 0),
+            ),
+          0,
+        )
+      );
+    }, 0);
+    return available > 0;
+  });
+}
+
+/**
  * Map a raw product graph row to the enriched, provenance-free shape (SPEC A.4
  * step 6): variant resolution, price fields, stock, taxonomy, brand. Pure —
  * shared by the product engine (enrichCandidates) and the cart engine so both
- * derive display fields identically. `in_stock` is best-effort (has a variant);
- * authoritative per-variant stock is re-checked at add-time (EC-07/SUGG-003).
+ * derive display fields identically. `in_stock` via isProductInStock (BR-02b).
  */
 export function enrichProductRow(row: ProductRowLike): EnrichedProduct {
   const variants = (row.variants ?? []) as VariantLike[];
@@ -269,7 +303,7 @@ export function enrichProductRow(row: ProductRowLike): EnrichedProduct {
     brand: readBrand(row),
     variant_id,
     requires_variant_selection,
-    in_stock: variants.length > 0,
+    in_stock: isProductInStock(variants),
     price,
     discount_price,
   };

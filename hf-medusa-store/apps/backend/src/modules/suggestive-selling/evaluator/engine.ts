@@ -16,6 +16,7 @@ import type {
 import {
   computePriceFields,
   finalizeSuggestions,
+  isProductInStock,
   readBrand,
   resolveVariant,
 } from "./pipeline";
@@ -181,8 +182,12 @@ export class EvaluationEngine {
         "metadata",
         "categories.name",
         "variants.id",
+        "variants.manage_inventory",
+        "variants.allow_backorder",
         "variants.calculated_price.calculated_amount",
         "variants.calculated_price.original_amount",
+        "variants.inventory_items.inventory.location_levels.stocked_quantity",
+        "variants.inventory_items.inventory.location_levels.reserved_quantity",
       ],
       filters: { id: ids },
       context,
@@ -213,10 +218,10 @@ export class EvaluationEngine {
         brand: readBrand(product),
         variant_id,
         requires_variant_selection,
-        // Best-effort availability: purchasable if the product has any variant.
-        // Authoritative per-variant stock is re-checked at add-time (EC-07/SUGG-003);
-        // display staleness is acceptable (EC-09).
-        in_stock: variants.length > 0,
+        // BR-02(b): in stock iff ≥1 purchasable variant (shared helper — same
+        // source of truth as the cart engine). Authoritative per-variant stock
+        // is still re-checked at add-time (EC-07/SUGG-003).
+        in_stock: isProductInStock(variants),
         price,
         discount_price,
       });

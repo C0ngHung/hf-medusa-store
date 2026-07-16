@@ -18,6 +18,22 @@ export const getAuthHeaders = async (): Promise<
   }
 }
 
+/**
+ * Per-browser suggestion session id (SUGG-002c). Minted by middleware into the
+ * `_medusa_suggest_session` cookie; sent as `x-session-id` so the backend scopes
+ * a guest's dismissals to this browser instead of the shared `sess:anon`.
+ * Ignored server-side when the shopper is logged in (dismissals scope by
+ * customer_id then). Returns undefined if the cookie hasn't been set yet.
+ */
+export const getSuggestionSessionId = async (): Promise<string | undefined> => {
+  try {
+    const cookies = await nextCookies()
+    return cookies.get("_medusa_suggest_session")?.value
+  } catch {
+    return undefined
+  }
+}
+
 export const getCacheTag = async (tag: string): Promise<string> => {
   try {
     const cookies = await nextCookies()
@@ -34,7 +50,7 @@ export const getCacheTag = async (tag: string): Promise<string> => {
 }
 
 export const getCacheOptions = async (
-  tag: string
+  tag: string,
 ): Promise<{ tags: string[] } | Record<string, never>> => {
   if (typeof window !== "undefined") {
     return {}

@@ -66,8 +66,12 @@ const PRODUCT_FIELDS = [
   "categories.id",
   "categories.name",
   "variants.id",
+  "variants.manage_inventory",
+  "variants.allow_backorder",
   "variants.calculated_price.calculated_amount",
   "variants.calculated_price.original_amount",
+  "variants.inventory_items.inventory.location_levels.stocked_quantity",
+  "variants.inventory_items.inventory.location_levels.reserved_quantity",
 ];
 
 /** Upper bound on the CR-02 price-band scan pool (Phase-1; cache lands Day-4). */

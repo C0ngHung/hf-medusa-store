@@ -8,7 +8,7 @@ import {
   SuggestionContext,
   SuggestionEventInput,
 } from "@modules/suggestions/types"
-import { getAuthHeaders, getCacheTag } from "./cookies"
+import { getAuthHeaders, getCacheTag, getSuggestionSessionId } from "./cookies"
 import {
   deleteLineItem,
   getOrSetCart,
@@ -40,7 +40,8 @@ export async function listProductSuggestions({
   sessionId?: string | null
 }): Promise<ProductSuggestionsResponse> {
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  if (sessionId) headers["x-session-id"] = sessionId
+  const resolvedSession = sessionId ?? (await getSuggestionSessionId())
+  if (resolvedSession) headers["x-session-id"] = resolvedSession
 
   return sdk.client
     .fetch<ProductSuggestionsResponse>(
@@ -73,7 +74,8 @@ export async function listCartSuggestions({
   sessionId?: string | null
 }): Promise<CartSuggestionsResponse> {
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  if (sessionId) headers["x-session-id"] = sessionId
+  const resolvedSession = sessionId ?? (await getSuggestionSessionId())
+  if (resolvedSession) headers["x-session-id"] = resolvedSession
 
   return sdk.client
     .fetch<CartSuggestionsResponse>(`/store/carts/${cartId}/suggestions`, {
@@ -97,7 +99,12 @@ export async function trackSuggestionEvents(
   if (!events.length) return
 
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  const sessionId = events.find((e) => e.session_id)?.session_id
+  // Prefer an explicit per-event session_id; else fall back to the browser's
+  // suggestion-session cookie so guest dismissals land in this browser's scope
+  // (and match the id the read path sends). Ignored server-side when logged in.
+  const sessionId =
+    events.find((e) => e.session_id)?.session_id ??
+    (await getSuggestionSessionId())
   if (sessionId) headers["x-session-id"] = sessionId
 
   try {

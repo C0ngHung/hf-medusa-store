@@ -37,10 +37,30 @@ export interface CalculatedPriceLike {
   original_amount?: number | null;
 }
 
+/** A single inventory location level — real (non-computed) stock columns. */
+export interface InventoryLevelLike {
+  stocked_quantity?: number | null;
+  reserved_quantity?: number | null;
+}
+
 /** Structural view of a Medusa product variant (only fields we read). */
 export interface VariantLike {
   id: string;
   calculated_price?: CalculatedPriceLike | null;
+  /** False → Medusa does not track inventory → always purchasable. */
+  manage_inventory?: boolean | null;
+  /** True → orderable even at zero available. */
+  allow_backorder?: boolean | null;
+  /**
+   * Inventory linked to the variant. Available = stocked − reserved, summed over
+   * location_levels. `available_quantity` is a Medusa .computed() field that reads
+   * back undefined via query.graph, so we derive it from these real columns.
+   */
+  inventory_items?: Array<{
+    inventory?: {
+      location_levels?: InventoryLevelLike[] | null;
+    } | null;
+  }> | null;
 }
 
 /** A candidate after product data has been attached (price, stock, variant, taxonomy). */

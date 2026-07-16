@@ -15,7 +15,7 @@ async function getRegionMap(cacheId: string) {
 
   if (!BACKEND_URL) {
     throw new Error(
-      "Middleware.ts: Error fetching regions. Did you set up regions in your Medusa Admin and define a NEXT_PUBLIC_MEDUSA_BACKEND_URL environment variable."
+      "Middleware.ts: Error fetching regions. Did you set up regions in your Medusa Admin and define a NEXT_PUBLIC_MEDUSA_BACKEND_URL environment variable.",
     )
   }
 
@@ -68,14 +68,16 @@ async function getRegionMap(cacheId: string) {
  */
 async function getCountryCode(
   request: NextRequest,
-  regionMap: Map<string, HttpTypes.StoreRegion | number>
+  regionMap: Map<string, HttpTypes.StoreRegion | number>,
 ) {
   let countryCode
 
   const urlCountryCode = request.nextUrl.pathname.split("/")[1]?.toLowerCase()
 
   // Cloudflare Workers provides country via request.cf.country
-  const cloudflareCountryCode = (request as { cf?: { country?: string } }).cf?.country?.toLowerCase()
+  const cloudflareCountryCode = (
+    request as { cf?: { country?: string } }
+  ).cf?.country?.toLowerCase()
 
   // Vercel provides x-vercel-ip-country header
   const vercelCountryCode = request.headers
@@ -117,11 +119,28 @@ export async function middleware(request: NextRequest) {
   const urlHasCountry = firstPathSegment === country.toLowerCase()
 
   if (urlHasCountry) {
-    if (!cacheIdCookie) {
+    // Guest suggestion session (SUGG-002c): the backend scopes dismissals by
+    // customer_id when logged in, else by the `x-session-id` header. Without a
+    // per-browser id every guest would share `sess:anon`, so one shopper's
+    // dismiss would hide a card for all guests. Mint a stable id here (mirrors
+    // _medusa_cache_id) so each browser/incognito window is isolated. TTL 24h
+    // matches the backend dismissal TTL.
+    const needsCacheId = !cacheIdCookie
+    const needsSuggestSession = !request.cookies.get("_medusa_suggest_session")
+
+    if (needsCacheId || needsSuggestSession) {
       const response = NextResponse.next()
-      response.cookies.set("_medusa_cache_id", cacheId, {
-        maxAge: 60 * 60 * 24,
-      })
+      if (needsCacheId) {
+        response.cookies.set("_medusa_cache_id", cacheId, {
+          maxAge: 60 * 60 * 24,
+        })
+      }
+      if (needsSuggestSession) {
+        response.cookies.set("_medusa_suggest_session", crypto.randomUUID(), {
+          maxAge: 60 * 60 * 24,
+          sameSite: "lax",
+        })
+      }
       return response
     }
     return NextResponse.next()

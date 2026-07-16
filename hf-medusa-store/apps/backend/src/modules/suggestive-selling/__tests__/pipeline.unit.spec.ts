@@ -2,6 +2,7 @@ import { CONSUMABLE_CATEGORIES } from "../constants";
 import {
   applyBr02Filter,
   computePriceFields,
+  enrichProductRow,
   finalizeSuggestions,
   isConsumable,
   rankAndLimit,
@@ -229,6 +230,70 @@ describe("applyBr02Filter — SUGG-002 (T-SUGG-03/04/05)", () => {
       filterCtx(),
     );
     expect(kept.map((c) => c.product_id)).toEqual(["ok"]);
+  });
+});
+
+describe("enrichProductRow — inventory stock checks (BR-02b)", () => {
+  // Build a variant matching the real graph shape probed against BG65:
+  // variants[].inventory_items[].inventory.location_levels[].{stocked,reserved}_quantity
+  const variant = (
+    stocked: number,
+    reserved = 0,
+    opts: { manage_inventory?: boolean; allow_backorder?: boolean } = {},
+  ) =>
+    ({
+      id: "var",
+      manage_inventory: opts.manage_inventory ?? true,
+      allow_backorder: opts.allow_backorder ?? false,
+      inventory_items: [
+        {
+          inventory: {
+            location_levels: [
+              { stocked_quantity: stocked, reserved_quantity: reserved },
+            ],
+          },
+        },
+      ],
+    }) as any;
+
+  const rowWith = (variants: any[]) =>
+    enrichProductRow({ id: "p", title: "P", variants } as any);
+
+  it("in_stock=true when available (stocked − reserved) > 0", () => {
+    expect(rowWith([variant(5, 0)]).in_stock).toBe(true);
+  });
+
+  it("in_stock=false when stocked=0 (BG65 originally reported)", () => {
+    expect(rowWith([variant(0, 0)]).in_stock).toBe(false);
+  });
+
+  it("in_stock=false when fully reserved (stocked=1, reserved=1 → available 0)", () => {
+    // Exactly the real BG65 state: shows in admin as '0 available'.
+    expect(rowWith([variant(1, 1)]).in_stock).toBe(false);
+  });
+
+  it("in_stock=true when partly reserved (stocked=5, reserved=2 → available 3)", () => {
+    expect(rowWith([variant(5, 2)]).in_stock).toBe(true);
+  });
+
+  it("in_stock=true when manage_inventory=false (untracked)", () => {
+    expect(rowWith([variant(0, 0, { manage_inventory: false })]).in_stock).toBe(
+      true,
+    );
+  });
+
+  it("in_stock=true when allow_backorder=true despite 0 available", () => {
+    expect(rowWith([variant(0, 0, { allow_backorder: true })]).in_stock).toBe(
+      true,
+    );
+  });
+
+  it("in_stock=true if ANY variant has availability", () => {
+    expect(rowWith([variant(0, 0), variant(10, 0)]).in_stock).toBe(true);
+  });
+
+  it("in_stock=false when product has no variants", () => {
+    expect(rowWith([]).in_stock).toBe(false);
   });
 });
 
