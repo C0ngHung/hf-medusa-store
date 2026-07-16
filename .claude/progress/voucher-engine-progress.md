@@ -175,13 +175,14 @@ build` succeeded (53/53 static pages) per Thức's Slice 1 session. `pnpm --filt
 - **Next allowed scope:** ~~Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware)~~ **done, see
   `fix/voucher-engine-code-review-findings` above**; Day 6–7 (test-plan execution, T-VOUCH-01..12/
   T-SUGG-01..10 acceptance coverage), a dedicated seed-fixture task to unblock item 7 above (this branch's
-  `src/scripts/seed-voucher-cap-demo.ts`, still uncommitted, is a first step toward this — seeds a generic
-  automatic item promotion so the CONFLICT-8/PD-15 stacking-rejection path can be demoed live), a
-  browser-automation pass to independently re-verify the storefront UI's own re-render after cart-change
-  auto-invalidation, ~~Phase 7 (efficiency) + Tasks 6.6/6.10 of the code-review-fix plan~~ **done as of
-  2026-07-16 session 2, see above — the entire plan is complete**, merging
-  `fix/voucher-engine-code-review-findings` to `develop` (now the main remaining step for this branch),
-  and — immediately after that merge — a full
+  `src/scripts/seed-voucher-cap-demo.ts`, **committed `e734b7d` in session 3**, is a first step toward
+  this — seeds a generic automatic item promotion so the CONFLICT-8/PD-15 stacking-rejection path can be
+  demoed live), a browser-automation pass to independently re-verify the storefront UI's own re-render
+  after cart-change auto-invalidation, ~~Phase 7 (efficiency) + Tasks 6.6/6.10 of the code-review-fix
+  plan~~ **done as of 2026-07-16 session 2, see above — the entire plan is complete**, ~~merging
+  `fix/voucher-engine-code-review-findings` to `develop`~~ **the branch is now synced to `origin/develop`
+  @ `6f7ce31` and PR-ready as of 2026-07-16 session 3 (see the dated entry above); the only remaining
+  step is Cealus opening the MR**, and — immediately after that merge — a full
   combined test re-run across both lanes' changes together (unit, module-integration, HTTP-integration all
   run once, not per-branch) since neither lane's last-known-good counts above reflect the other lane's
   changes.
@@ -525,6 +526,73 @@ performed.
 plan (Task 1.1 through 7.3, all 7 phases) is now done on `fix/voucher-engine-code-review-findings`** —
 combined with session 1's fractional-adjustment fix (outside the plan but on the same branch), there is no
 more code-review-finding work left on this branch except merging it to `develop`.
+
+## 2026-07-16 (session 3) — `fix/voucher-engine-code-review-findings`: commit leftover rename + sync to develop (2 merges) + verify, PR-ready
+
+**Scope of this session:** no plan task ID — this was a Git-hygiene + develop-sync pass on the
+`fix/voucher-engine-code-review-findings` branch (the code-review plan itself was already complete after
+sessions 1–2). Goal: commit the remaining working-tree changes, pull the latest `develop` in and resolve
+conflicts, verify, and leave the branch PR-ready.
+
+### 1. Committed 4 leftover working-tree changes
+
+- `338c2ae` `fix(backend)` — renamed the `cart.metadata.voucher` snapshot key `raw_voucher_discount` →
+  **`uncapped_voucher_discount`** in `lib/ephemeral-promotion.ts` + `apply-voucher.ts` +
+  `revalidate-voucher-on-cart-change.ts` + `record-voucher-usage.ts` (reads snapshot, still writes the DB
+  column `raw_voucher_discount`) + the record-usage HTTP spec fixture. **Why:** Medusa's entity/response
+  serialization treats any `raw_<x>` JSONB key as the BigNumber-raw companion of a field `<x>` and
+  rewrites it to `{value,precision}` (plus injects a bogus `voucher_discount` sibling) wherever this blob
+  passes through that layer (`cart.updated` revalidation, `completeCartWorkflow` cart→order metadata copy),
+  corrupting the value `recordVoucherUsageWorkflow` writes to the real INTEGER column
+  `voucher_usage_log.raw_voucher_discount` — the write then throws and silently drops usage recording
+  (SEC/INT-02/INT-04 anti-over-redemption). The DB column and `calculate-discount.ts` field KEEP the
+  `raw_` name (real typed values, not a generic JSONB blob). Lesson:
+  [[medusa-raw-prefix-metadata-decoration-gotcha]].
+- `e5617fc` `fix(storefront)` — mirrored the same rename in `apps/storefront/src/modules/voucher/types.ts`.
+- `e734b7d` `chore(backend)` — added `src/scripts/seed-voucher-cap-demo.ts` (`DEMO-CAP-CONFLICT-40`: one
+  generic automatic item-level Promotion so the CONFLICT-8/PD-15 fail-closed stacking guard can be demoed
+  live; idempotent; demo-only).
+- `4fa0ce8` `docs` — added the plan file `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`.
+- `apps/storefront/tsconfig.tsbuildinfo` deliberately NOT committed (generated build cache).
+
+### 2. Merged `origin/develop` twice to sync
+
+- **`213e426`** — merged develop up to `bc787a2`. **3 backend conflicts** (all in the rate-limit surface,
+  because develop had independently landed a version of the same 3.7.x work):
+  - `api/middlewares.ts` — comment-only; code (wire `voucherRateLimitMiddleware` before body validation)
+    identical on both sides. Merged comments.
+  - `api/middlewares/voucher-rate-limit.ts` — identical 429 response shape; kept our EN `message` +
+    develop's fuller comment.
+  - `api/store/carts/[id]/voucher/route.ts` — kept our shared `buildVoucherErrorResponse`; kept
+    `const ip = req.ip || null` (NEVER the spoofable `X-Forwarded-For`, dropping develop's `extractIp`
+    so the route's counter key matches `voucherRateLimitMiddleware`); **adopted develop's brute-force rule
+    `body.code === "VOUCHER_NOT_FOUND"`** — this is correct per **SPEC §9.3** (only `VOUCHER_NOT_FOUND`
+    counts; our old `status === 404 || 422` wrongly also counted `VOUCHER_INACTIVE` 422).
+- **`f4ab8d0`** — merged develop up to `6f7ce31`, which includes **`1b59128 "rebuild Voucher management"`**
+  (Thức's storefront voucher-UI rewrite). **2 storefront conflicts, resolved IN FAVOR OF THỨC'S NEW UI**
+  (Cealus confirmed Thức announced the rewrite):
+  - `modules/checkout/components/discount-code/index.tsx` — took Thức's version wholesale (`--theirs`):
+    new notice model (`voucherNotice`/`setVoucherNotice`/`shownNoticeRef`, surfaced once on the live
+    transition), `!err.customer_message → notFound` handling, `APPLY_SUCCESS_VI`/`REMOVE_SUCCESS_VI`,
+    stricter replace-confirm (`kind !== "success"`).
+  - `modules/voucher/types.ts` — took Thức's notice type name `VoucherAutoRemoveNotice` (+ its KNOWN-GAP
+    comment) but KEPT our `uncapped_voucher_discount` (outside the conflict; must match the backend key).
+    Confirmed no orphan references to the old `VoucherNoticeMetadata`/`readVoucherNotice`/`autoRemoveNotice`.
+
+### 3. Verified
+
+- `pnpm --filter @dtc/backend test:integration:http integration-tests/http/voucher-rate-limit.spec.ts` →
+  **1/1 PASS** — log shows 5×`VOUCHER_NOT_FOUND` (404) incrementing the counter 1→5 (5th `blocked=true`),
+  6th returns 429 with the shared `ErrorEnvelope` — exactly the §9.3 rule the merge adopted.
+- `pnpm --filter @dtc/backend test:integration:http integration-tests/http/apply-remove-voucher.spec.ts` →
+  **6/6 PASS** (SEC-01 tamper 400, apply + authoritative total, 409 replace-required, 404-not-409
+  while active, remove reverts total + no usage_count increment, remove no-op 200).
+- `apps/storefront` `pnpm exec tsc --noEmit` → **0 errors** (Thức's UI + our types agree).
+- Each HTTP suite run ALONE (the `--runInBand` multi-`medusaIntegrationTestRunner` flake, see
+  [[integration-test-runinband-isolation]]). No conflict markers left; `git diff --check` clean.
+
+**Result:** branch is synced to `origin/develop` @ `6f7ce31`, all conflicts resolved with tests green,
+committed and (per this session's end) pushed. **PR-ready → Cealus opens the MR to `develop`.**
 
 ## 2026-07-15 (session 3) — Day 5 (Thức, Slice 3): cart-consistency, auto-invalidation, order usage recording
 
