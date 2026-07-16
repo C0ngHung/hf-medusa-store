@@ -121,6 +121,25 @@ export const applyVoucherWorkflow = createWorkflow(
       ({ activeCheck }) => activeCheck.previous?.ephemeral_promotion_id,
     );
 
+    // Code-review Task 7.3: checkActiveVoucherStep (above) and this step both
+    // call query.graph on the same cart_id — evaluated merging them into one
+    // read and deliberately did NOT, because they read the cart at two
+    // sequentially-DEPENDENT points, not the same point twice:
+    // checkActiveVoucherStep's metadata-only read runs BEFORE the conditional
+    // "detach old ephemeral promotion" branch above and its result
+    // (`hasPrevious`) decides whether that detach even runs, while this
+    // step's full read must run AFTER it — its `item_promotion_discount`
+    // Rule-11/CONFLICT-8 baseline is only correct once the old ephemeral
+    // adjustment (if any) has actually been removed from the cart (see the
+    // comment on `pre_apply_item_promotion_discount` at the
+    // verifyCartTotalsStep call below). Merging into a single earlier read
+    // would corrupt that baseline for the replace case by counting the
+    // about-to-be-removed old adjustment as if it were an ordinary item
+    // promotion; merging into a single later read would move the
+    // replace-confirmation gate to run AFTER the detach it's supposed to
+    // gate, violating tasks 3.4.6/3.4.7/3.4.8 (never remove a valid existing
+    // voucher before the replacement is validated) and the Task 3.1 ordering
+    // this file already fixed. Left as two separate reads.
     const cart = loadCartContextStep({
       cart_id: input.cart_id,
       voucher_promotion_id: previousPromotionId,
