@@ -5,7 +5,7 @@ File tổng hợp **các kịch bản demo**. Mỗi mục = 1 case cần trình 
 > **Trạng thái file:**
 >
 > - **PHẦN A — Suggestive Selling** đã cover đầy đủ SRS §3 (SUGG-001…006) + edge case liên quan (EC-05, EC-07, EC-09) + toàn bộ acceptance test T-SUGG-01…10.
-> - **PHẦN B — Voucher** để trống, người làm VoucherEngine bổ sung sau (nối tiếp vào các cart đã dựng ở PHẦN A — hai feature chỉ giao nhau ở cart nên ghép luồng được).
+> - **PHẦN B — Voucher Engine** đã bổ sung kế hoạch demo/test theo SRS §4, §8, §9: apply/remove/replace, V1→V8 fail-fast, stacking/cap 50%, auto-invalidation, rate-limit, usage log, admin create/analytics và luồng tích hợp với Suggestive Selling.
 
 > **Chuẩn bị chung:** backend chạy (`pnpm backend:dev` → http://localhost:9009), DB đã `db:migrate`
 > (bước này **tự chain toàn bộ seed** — catalog → suggestive → voucher → customers → orders →
@@ -694,26 +694,551 @@ Sau bước 2 key của cart đó bị xoá; bước 3 tạo lại.
 
 ---
 
-# PHẦN B — VOUCHER (chờ VoucherEngine bổ sung)
+# PHẦN B — VOUCHER ENGINE
 
-> **Phần này để trống cho người làm VoucherEngine.** Suggestive Selling (PHẦN A) đã hoàn chỉnh; voucher nối tiếp xuống dưới.
+Phần này là kế hoạch demo/test thủ công cho Voucher Engine, bám theo SRS §4 Voucher, §8 Edge Cases, §9 NFR và API contract. Các scenario dùng chung catalog/cart từ PHẦN A để chứng minh luồng tích hợp: **gợi ý sản phẩm → add vào cart → áp voucher → tính stacking/cap → cart đổi thì revalidate**.
 
-**Cách ghép luồng (gợi ý):** tái dùng các cart đã dựng ở PHẦN A làm state đầu vào cho voucher, để hai feature thành **luồng hoàn chỉnh**:
+## B0. Cheat-sheet: endpoint + dữ liệu seed Voucher
 
+### Endpoint Voucher Engine
+
+| Trace | Method | Path | Request chính | Response chính |
+| ----- | ------ | ---- | -------------- | --------------- |
+| VOUCH-001/002/003 | POST | `/store/carts/{cartId}/voucher` | `{ "code": "SAVE10" }`, query optional `?replace=true` | `{ success, discount_amount, discount_capped, cap_explanation, updated_cart_total, voucher_details }` |
+| VOUCH-004 | DELETE | `/store/carts/{cartId}/voucher` | body rỗng | `{ success, updated_cart_total, message }` |
+| VOUCH-001 | GET | `/store/customers/me/vouchers` | customer auth nếu có | `{ vouchers: [...] }` |
+| Admin | POST | `/admin/vouchers` | VoucherConfig fields | `{ voucher }` |
+| Admin analytics | GET | `/admin/vouchers/{id}/analytics` | voucher id | `{ total_uses, total_discount_given, avg_order_value, capped_count, conversion_rate }` |
+
+### Dữ liệu seed Voucher
+
+Chạy seed nếu DB chưa có voucher:
+
+```bash
+cd hf-medusa-store/apps/backend
+npx medusa exec ./src/scripts/seed-voucher-engine.ts
 ```
-gợi ý (A1–A2) → one-tap add (A7–A10) → áp voucher → stacking item-promo + voucher + cap 50% → auto-invalidate khi đổi giỏ (nối A16/A17)
+
+Seed hiện có:
+
+| Code | Ý nghĩa | Kỳ vọng chính |
+| ---- | ------- | ------------- |
+| `SAVE10` | 10% toàn giỏ, không scope, không min order | Happy path apply/remove/replace |
+| `MEGA20` | 20% toàn giỏ | Dùng cho cap 50% khi cart có promotion đủ lớn |
+| `SHUTTLE20` | 20% cho category Shuttlecocks, min order 200.000₫ | V5 min order, V6 eligible category, auto-remove |
+| `RACKET2M` | Promotion Medusa thường, fixed 2.000.000₫ | Test coexistence promotion + voucher; không phải VoucherConfig |
+
+> Lưu ý: Voucher Engine quản lý `VoucherConfig`; Promotion module vẫn quản lý promotion thường. Storefront chỉ có **một ô nhập mã giảm giá**, nhận cả voucher code và promotion code.
+
+### Helper dựng cart
+
+1. Resolve variant từ handle như PHẦN A.
+2. Tạo cart theo region VND.
+3. Add item:
+
+```http
+POST /store/carts/{cartId}/line-items
+{ "variant_id": "<variantId>", "quantity": 1 }
 ```
 
-**Cần cover (SRS §4 Voucher + §8 Edge Cases):**
+Các sản phẩm dùng nhiều trong phần B:
 
-| Nhóm       | Requirement                                           | Acceptance test  |
-| ---------- | ----------------------------------------------------- | ---------------- |
-| Apply      | VOUCH-001 (apply code / My Vouchers), VOUCH-002 V1–V8 | T-VOUCH-01…06    |
-| Stacking   | VOUCH-003 (item-promo → voucher → cap 50%)            | T-VOUCH-07/08/09 |
-| Remove     | VOUCH-004 (gỡ voucher, không tăng usage_count)        | T-VOUCH-10       |
-| Revalidate | VOUCH-005 (auto-invalidate khi cart đổi)              | T-VOUCH-11       |
-| Edge cases | EC-01, EC-02, EC-03, EC-04, EC-06, EC-08, EC-10       | T-VOUCH-12       |
+| Handle | Giá | Vai trò |
+| ------ | --- | ------- |
+| `yonex-as50` | 980.000 | Shuttlecock đủ điều kiện `SHUTTLE20` |
+| `yonex-mavis-2000` | 420.000 | Shuttlecock đủ điều kiện `SHUTTLE20` |
+| `yonex-mavis-350` | 350.000 | Shuttlecock đủ điều kiện `SHUTTLE20` |
+| `yonex-astrox-99-pro` | 4.500.000 | Racket không thuộc scope Shuttlecocks |
+| `yonex-bg65` | 120.000 | String, dùng để test cart không đủ scope Shuttlecocks |
 
-**Quy ước tiếp nối:** đánh số `## B1, B2, …`; giữ nguyên khung của PHẦN A (Mục tiêu → SRS trace → Dữ liệu → Các bước → Kết quả kỳ vọng); bổ sung 1 bảng "Ma trận coverage — Voucher" ở cuối như PHẦN A.
+---
 
-<!-- ↓↓↓ VoucherEngine: thêm scenario B1, B2, … từ đây ↓↓↓ -->
+## B1. Apply voucher hợp lệ — nhập mã thủ công
+
+**SRS:** VOUCH-001, VOUCH-002 · **Acceptance:** T-VOUCH-01
+**Mục tiêu:** khách nhập voucher hợp lệ, backend validate fail-fast V1→V8, cart total cập nhật ngay, UI hiển thị voucher đang active.
+
+**Dữ liệu:** cart có `yonex-as50` ×1 = 980.000₫. Voucher `SAVE10`.
+
+**Các bước:**
+
+1. Mở storefront `http://localhost:8008/cart`.
+2. Add `yonex-as50` vào cart.
+3. Nhập `SAVE10` vào ô discount/promotion hiện có.
+4. Click Apply.
+
+**Kết quả kỳ vọng:**
+
+- Request store: `POST /store/carts/{cartId}/voucher { "code": "SAVE10" }`.
+- Response `success: true`, `discount_capped: false`.
+- Discount voucher = `floor(980.000 × 10%) = 98.000₫`.
+- Cart total giảm từ 980.000₫ xuống 882.000₫.
+- UI chỉ có **một** discount input; không có VoucherPanel riêng.
+- UI hiển thị success message tiếng Việt và row voucher `SAVE10`.
+- `cart.metadata.voucher` có snapshot voucher active.
+
+---
+
+## B2. My Vouchers / Available vouchers — chọn voucher từ danh sách
+
+**SRS:** VOUCH-001
+**Mục tiêu:** khách có thể chọn voucher khả dụng thay vì nhập tay, nếu backend trả danh sách "My Vouchers".
+
+**Dữ liệu:** khách đăng nhập; DB có voucher active (`SAVE10`, `SHUTTLE20`).
+
+**Các bước:**
+
+1. Login customer demo.
+2. Mở cart/checkout.
+3. Click "Available vouchers" trong discount module.
+4. Chọn `SAVE10` hoặc `SHUTTLE20`.
+
+**Kết quả kỳ vọng:**
+
+- Storefront gọi `GET /store/customers/me/vouchers`.
+- Nếu có voucher: modal/list hiển thị code, giá trị, điều kiện.
+- Chọn voucher sẽ gọi cùng flow apply như B1.
+- Nếu guest hoặc backend trả rỗng: UI hiển thị empty state, không crash.
+
+---
+
+## B3. Validation fail-fast V1 — mã không tồn tại
+
+**SRS:** VOUCH-002 V1, i18n · **Acceptance:** T-VOUCH-02
+**Mục tiêu:** mã không tồn tại trả lỗi đầu tiên, UI hiển thị message dễ hiểu, không chạy tiếp validation sau.
+
+**Dữ liệu:** cart bất kỳ có item. Code `NOTAREAL123`.
+
+**Các bước:**
+
+1. Nhập `NOTAREAL123`.
+2. Click Apply.
+
+**Kết quả kỳ vọng:**
+
+- Voucher Engine trả `VOUCHER_NOT_FOUND`.
+- Storefront fallback sang generic Promotion.
+- Vì code cũng không phải promotion, UI hiển thị một lỗi cuối bằng tiếng Việt: mã giảm giá không đúng / kiểm tra lại.
+- Không hiển thị raw technical error.
+- Không làm thay đổi total/cart metadata.
+
+---
+
+## B4. Validation V5 — chưa đạt min order
+
+**SRS:** VOUCH-002 V5 · **Acceptance:** T-VOUCH-05
+**Mục tiêu:** voucher active nhưng cart không đạt `min_order_value` thì fail-fast tại V5 và trả message đúng.
+
+**Dữ liệu:** cart có `yonex-bg65` ×1 = 120.000₫. Voucher `SHUTTLE20` min order 200.000₫.
+
+**Các bước:**
+
+1. Add `yonex-bg65` vào cart.
+2. Nhập `SHUTTLE20`.
+3. Click Apply.
+
+**Kết quả kỳ vọng:**
+
+- Response 422 với code tương ứng min order.
+- UI render `customer_message` từ backend, ưu tiên tiếng Việt.
+- Không attach voucher, không có ephemeral promotion, total giữ nguyên.
+
+---
+
+## B5. Validation V6 — cart không có item đủ điều kiện
+
+**SRS:** VOUCH-002 V6 · **Acceptance:** T-VOUCH-06
+**Mục tiêu:** voucher scoped theo Shuttlecocks không áp dụng cho cart chỉ có racket/string.
+
+**Dữ liệu:** cart có `yonex-astrox-99-pro` ×1 = 4.500.000₫. Voucher `SHUTTLE20`.
+
+**Các bước:**
+
+1. Add `yonex-astrox-99-pro`.
+2. Nhập `SHUTTLE20`.
+3. Click Apply.
+
+**Kết quả kỳ vọng:**
+
+- V5 pass vì subtotal > 200.000₫.
+- V6 fail vì không có item thuộc Shuttlecocks.
+- UI hiển thị `customer_message`; không còn placeholder thô như `{categories}`.
+- Total không đổi.
+
+---
+
+## B6. Voucher scoped item — chỉ giảm item đủ điều kiện
+
+**SRS:** VOUCH-001, VOUCH-002 V6, VOUCH-003 Rule 4 · **Acceptance:** T-VOUCH-01/T-VOUCH-06
+**Mục tiêu:** `SHUTTLE20` chỉ tính trên item thuộc Shuttlecocks, không giảm toàn bộ cart.
+
+**Dữ liệu:** cart = `yonex-mavis-350` ×1 (350.000₫, eligible) + `yonex-astrox-99-pro` ×1 (4.500.000₫, not eligible). Voucher `SHUTTLE20`.
+
+**Các bước:**
+
+1. Add hai item trên vào cart.
+2. Nhập `SHUTTLE20`.
+3. Click Apply.
+
+**Kết quả kỳ vọng:**
+
+- Eligible subtotal = 350.000₫.
+- Voucher discount = `floor(350.000 × 20%) = 70.000₫`.
+- Total từ 4.850.000₫ xuống 4.780.000₫.
+- UI hiển thị voucher row `SHUTTLE20`; không giảm phần racket.
+
+---
+
+## B7. Chỉ một voucher active — replace confirmation
+
+**SRS:** VOUCH-001, VOUCH-003 Rule 3 · **Acceptance:** T-VOUCH-01
+**Mục tiêu:** cart chỉ có một Voucher Engine voucher. Áp voucher thứ hai phải hỏi xác nhận replace.
+
+**Dữ liệu:** cart có `yonex-as50` ×1. Voucher `SAVE10`, `MEGA20`.
+
+**Các bước:**
+
+1. Apply `SAVE10` thành công.
+2. Nhập `MEGA20`.
+3. Click Apply.
+4. Modal replace xuất hiện.
+5. Click Cancel.
+6. Lặp lại bước 2–4, lần này click Replace.
+
+**Kết quả kỳ vọng:**
+
+- Bước 2 trả 409 `VOUCHER_REPLACE_REQUIRED`, có `details.current_code = "SAVE10"`.
+- Modal hiển thị message từ backend.
+- Cancel: `SAVE10` vẫn active.
+- Replace: Storefront gọi `POST /store/carts/{cartId}/voucher?replace=true`.
+- Nếu `MEGA20` hợp lệ: `SAVE10` biến mất, `MEGA20` active, total cập nhật.
+- Nếu replace fail vì validation khác: voucher cũ không bị mất và UI hiển thị lỗi.
+
+---
+
+## B8. Remove voucher — không tăng usage_count
+
+**SRS:** VOUCH-004, EC-06 · **Acceptance:** T-VOUCH-10
+**Mục tiêu:** gỡ voucher đảo discount, không tăng usage count; apply→remove→apply lại vẫn được.
+
+**Dữ liệu:** cart có `yonex-as50` ×1. Voucher `SAVE10`.
+
+**Các bước:**
+
+1. Apply `SAVE10`.
+2. Ghi nhận total sau discount.
+3. Click remove/trash trên voucher row.
+4. Apply lại `SAVE10`.
+
+**Kết quả kỳ vọng:**
+
+- DELETE `/store/carts/{cartId}/voucher` trả `success: true`.
+- Total quay về trước voucher.
+- UI hiển thị "Đã gỡ mã giảm giá."
+- Apply lại trong cùng session vẫn được, vì usage chỉ tăng khi order placed.
+
+---
+
+## B9. Generic Promotion coexistence — promotion thường không bị voucher UI phá
+
+**SRS:** VOUCH-003 Rule 1/2/3, Storefront unified input
+**Mục tiêu:** cùng một input áp được cả promotion thường và Voucher Engine voucher; ephemeral promotion nội bộ không lộ ra UI.
+
+**Dữ liệu:** cart có `yonex-astrox-99-pro` ×1. Promotion thường `RACKET2M`; voucher `SAVE10`.
+
+**Các bước:**
+
+1. Nhập `RACKET2M` vào discount input.
+2. Apply thành công như promotion thường.
+3. Nhập `SAVE10`.
+4. Apply voucher.
+5. Remove promotion thường.
+6. Remove voucher.
+
+**Kết quả kỳ vọng:**
+
+- `RACKET2M` không phải VoucherConfig nên Voucher Engine `VOUCHER_NOT_FOUND`, sau đó fallback Promotion apply thành công.
+- UI không hiện lỗi voucher trước khi promotion fallback thành công.
+- Promotion thường và voucher hiển thị thành hai dòng logic riêng.
+- Ephemeral voucher promotion code dạng nội bộ không xuất hiện cho khách.
+- Remove promotion thường không làm mất voucher; remove voucher không làm mất promotion thường.
+- Không bị rate-limit chỉ vì dùng promotion thường hợp lệ.
+
+---
+
+## B10. Stacking happy path — item promotion trước, voucher sau
+
+**SRS:** VOUCH-003 Rule 1–6 · **Acceptance:** T-VOUCH-07
+**Mục tiêu:** chứng minh thứ tự tính discount: item-level promotion trước, voucher sau, chưa chạm global cap.
+
+**Dữ liệu chuẩn SRS:** racket 4.500.000₫ có item promo 20% (giảm 900.000₫) + item gợi ý/cước 200.000₫ không promo; voucher `SAVE10`.
+
+**Các bước:**
+
+1. Dựng cart theo fixture trên, hoặc dùng test data tương đương.
+2. Apply `SAVE10`.
+3. Đối chiếu breakdown.
+
+**Kết quả kỳ vọng:**
+
+- Original subtotal = 4.700.000₫.
+- Item promotion = 900.000₫.
+- Post-promotion subtotal = 3.800.000₫.
+- Voucher = 380.000₫.
+- Final total = **3.420.000₫**.
+- `discount_capped = false`.
+
+> Nếu seed hiện tại chưa có item-level promotion 20% đúng fixture, scenario này cần chạy bằng test fixture/backend integration thay vì UI thủ công.
+
+---
+
+## B11. Global cap exceeded — chỉ cắt voucher
+
+**SRS:** VOUCH-003 Rule 6, EC-01 · **Acceptance:** T-VOUCH-08
+**Mục tiêu:** khi tổng discount vượt 50%, hệ thống chỉ cắt phần voucher, không cắt item promotion.
+
+**Dữ liệu chuẩn SRS:** racket 4.500.000₫ promo 40% (giảm 1.800.000₫) + item gợi ý/cước 200.000₫ promo 30% (giảm 60.000₫); voucher `MEGA20`.
+
+**Các bước:**
+
+1. Dựng cart theo fixture trên, hoặc dùng seed/promotion tương đương.
+2. Apply `MEGA20`.
+3. Kiểm tra response/UI cap explanation.
+
+**Kết quả kỳ vọng:**
+
+- Original subtotal = 4.700.000₫.
+- Item promotion total = 1.860.000₫.
+- Raw voucher = 568.000₫.
+- Cap 50% = 2.350.000₫.
+- Voucher bị cắt còn **490.000₫**.
+- Final total = **2.350.000₫**.
+- `discount_capped = true`.
+- UI hiển thị giải thích cap bằng tiếng Việt.
+
+> Nếu chưa có seed item-promotion percentage đúng fixture, dùng unit/integration test làm bằng chứng và đánh dấu UI live test cần bổ sung seed.
+
+---
+
+## B12. EC-03 — không bao giờ âm hoặc về 0
+
+**SRS:** EC-03, VOUCH-003 Rule 6 · **Acceptance:** T-VOUCH-09
+**Mục tiêu:** voucher 50% + item promo 50% không làm cart total âm/0; global cap giữ final total > 0.
+
+**Dữ liệu:** cart fixture có tổng discount tiềm năng 100%.
+
+**Các bước:**
+
+1. Dựng fixture bằng backend test hoặc seed riêng.
+2. Apply voucher có discount lớn.
+3. Kiểm tra final total.
+
+**Kết quả kỳ vọng:**
+
+- Tổng discount không vượt global cap 50%.
+- Final total luôn > 0, tối thiểu 1₫ theo SRS.
+- Hệ thống log warning nếu chạm sàn.
+
+---
+
+## B13. Auto-invalidation — cart đổi làm voucher không còn hợp lệ
+
+**SRS:** VOUCH-005, EC-02 · **Acceptance:** T-VOUCH-11
+**Mục tiêu:** khi cart thay đổi khiến voucher fail V5/V6, voucher tự bị gỡ và khách nhận notification.
+
+**Dữ liệu:** cart có `yonex-mavis-2000` ×1 = 420.000₫. Voucher `SHUTTLE20`.
+
+**Các bước:**
+
+1. Apply `SHUTTLE20` thành công.
+2. Xóa line item `yonex-mavis-2000`.
+3. Reload hoặc quan sát cart sau mutation.
+
+**Kết quả kỳ vọng:**
+
+- Sau khi xóa item, cart không còn eligible item và subtotal không còn đạt điều kiện.
+- Workflow revalidate chạy, voucher bị auto-remove.
+- `cart.metadata.voucher` rỗng.
+- Total không còn discount voucher.
+- UI hiển thị notice lý do tự gỡ nếu backend trả `voucher_notice`/metadata tương ứng.
+
+---
+
+## B14. EC-10 — brute-force rate limit
+
+**SRS:** EC-10, SEC-02 · **Acceptance:** T-VOUCH-12
+**Mục tiêu:** thử nhiều mã voucher sai bị chặn 429, có message rõ ràng và không ảnh hưởng promotion hợp lệ.
+
+**Dữ liệu:** cart bất kỳ có item; Redis đang chạy. Code sai: `NOPE01`, `NOPE02`, ...
+
+**Các bước:**
+
+1. Đảm bảo Redis sạch nếu test lại local:
+
+```bash
+docker exec -it hf_medusa_redis redis-cli FLUSHALL
+```
+
+2. Nhập lần lượt 5 mã voucher sai.
+3. Nhập mã sai lần thứ 6.
+4. Sau đó thử promotion thường hợp lệ `RACKET2M` ở cart mới/sau cooldown.
+
+**Kết quả kỳ vọng:**
+
+- Sau 5 failed voucher attempts trong 15 phút, request tiếp theo trả 429 `VOUCHER_RATE_LIMITED`.
+- Response có `customer_message` tiếng Việt hoặc message cooldown rõ ràng.
+- UI hiển thị lỗi rate-limit, không silent fail.
+- Backend log được IP + customer_id nếu có.
+- Promotion thường hợp lệ không nên làm khách bị block sai bởi voucher rate-limit.
+
+---
+
+## B15. Order placed — usage_count và VoucherUsageLog
+
+**SRS:** EC-06, INT-02, INT-04 · **Acceptance:** bổ sung cho VOUCH-004/EC-06
+**Mục tiêu:** usage chỉ tăng khi order đặt thành công, ghi log immutable và idempotent.
+
+**Dữ liệu:** cart có `SAVE10` active; customer login.
+
+**Các bước:**
+
+1. Apply `SAVE10`.
+2. Complete checkout/order.
+3. Kiểm tra DB hoặc admin analytics.
+4. Gọi/quan sát lại event order placed nếu có retry.
+
+**Kết quả kỳ vọng:**
+
+- `usage_count` tăng đúng 1 lần.
+- Có đúng 1 row trong `voucher_usage_log` cho `(voucher_id, order_id)`.
+- Retry/idempotent không làm tăng usage lần hai.
+- Analytics của voucher phản ánh `total_uses`, `total_discount_given`, `capped_count`.
+
+---
+
+## B16. Admin — tạo voucher và xem analytics
+
+**SRS:** Admin Voucher API, analytics · **Acceptance:** voucher analytics
+**Mục tiêu:** admin tạo VoucherConfig, khách apply được voucher đó, admin xem analytics.
+
+**Dữ liệu:** admin đăng nhập tại `http://localhost:9009/app`; hoặc gọi API admin trực tiếp.
+
+**Các bước:**
+
+1. Mở Admin → Vouchers.
+2. Click Create voucher.
+3. Tạo voucher mới, ví dụ:
+   - code để trống hoặc `DEMO10`
+   - discount_type `percentage`
+   - discount_value `1000`
+   - active = true
+   - valid_from/valid_to hợp lệ
+4. Lưu voucher.
+5. Dùng code vừa tạo apply ở Storefront.
+6. Sau khi có order/usage, click Analyze trên row voucher hoặc gọi `GET /admin/vouchers/{id}/analytics`.
+
+**Kết quả kỳ vọng:**
+
+- Admin tạo thành công; nếu code để trống, backend sinh code uppercase alphanumeric ≥6 ký tự.
+- Voucher mới xuất hiện trong bảng Voucher Management với `is_active`.
+- Storefront apply được voucher qua cùng discount input.
+- Analytics trả đúng shape:
+
+```json
+{
+  "total_uses": 0,
+  "total_discount_given": 0,
+  "avg_order_value": 0,
+  "capped_count": 0,
+  "conversion_rate": 0
+}
+```
+
+Giá trị tăng sau khi có order sử dụng voucher.
+
+---
+
+## B17. Security — client không được gửi số tiền/tổng giảm
+
+**SRS:** SEC-01, INT-03
+**Mục tiêu:** mọi tính toán discount server-side; client không thể tự gửi `discount_amount`, `final_total`, `customer_id`.
+
+**Dữ liệu:** cart bất kỳ; voucher `SAVE10`.
+
+**Các bước:**
+
+1. Gọi API bằng Postman/curl với body cố tình chèn field cấm:
+
+```json
+{
+  "code": "SAVE10",
+  "discount_amount": 999999999,
+  "final_voucher_discount": 999999999,
+  "customer_id": "fake"
+}
+```
+
+2. Quan sát response.
+
+**Kết quả kỳ vọng:**
+
+- API reject request do schema strict, hoặc bỏ qua mọi field không thuộc contract theo implementation đã chốt.
+- Không có cart total nào lấy từ client.
+- Nếu request hợp lệ chỉ với `{ "code": "SAVE10" }`, mọi amount trong response được tính từ backend/cart authoritative.
+
+---
+
+## B18. Luồng tích hợp Suggestive Selling → Voucher Engine
+
+**SRS:** VOUCH-003, VOUCH-005, EC-02, EC-08; giao thoa với SUGG-003/SUGG-005
+**Mục tiêu:** chứng minh hai feature phối hợp qua cart: item gợi ý được add vào cart, voucher tính trên cart mới; khi item gợi ý bị xóa, voucher revalidate.
+
+**Dữ liệu:** product detail racket có gợi ý phụ kiện/cầu; voucher scoped như `SHUTTLE20` hoặc voucher theo category tương ứng.
+
+**Các bước:**
+
+1. Từ product detail, dùng flow Suggestive Selling để add item gợi ý đủ điều kiện voucher.
+2. Mở cart.
+3. Apply voucher scoped.
+4. Xóa item gợi ý vừa add.
+
+**Kết quả kỳ vọng:**
+
+- Sau khi add item gợi ý, cart suggestions invalidated như PHẦN A.
+- Voucher apply tính trên cart mới.
+- Nếu item gợi ý là eligible item duy nhất, xóa nó sẽ auto-remove voucher.
+- Không có trạng thái cart lệch giữa suggestion cache và voucher metadata.
+
+---
+
+## Ma trận coverage — Voucher
+
+| SRS / EC | Nội dung | Scenario | Acceptance |
+| -------- | -------- | -------- | ---------- |
+| VOUCH-001 | Nhập/chọn voucher, apply tại checkout, tổng cập nhật | B1, B2, B6 | T-VOUCH-01 |
+| VOUCH-002 V1 | Code không tồn tại/không active, fail-fast + i18n | B3 | T-VOUCH-02 |
+| VOUCH-002 V5 | Min order | B4 | T-VOUCH-05 |
+| VOUCH-002 V6 | Eligible product/category scope | B5, B6 | T-VOUCH-06 |
+| VOUCH-003 Rule 1–2 | Item promotion trước, voucher sau | B9, B10 | T-VOUCH-07 |
+| VOUCH-003 Rule 3 | Chỉ 1 voucher active, replace confirm | B7 | T-VOUCH-01 |
+| VOUCH-003 Rule 4 | Voucher % chỉ trên eligible post-promo items | B6 | T-VOUCH-06 |
+| VOUCH-003 Rule 5 | Per-voucher max discount | B11 | T-VOUCH-08 |
+| VOUCH-003 Rule 6 | Global cap 50%, chỉ cắt voucher | B11, B12 | T-VOUCH-08/09 |
+| VOUCH-004 | Remove voucher, không tăng usage | B8 | T-VOUCH-10 |
+| VOUCH-005 | Cart change auto-invalidate | B13, B18 | T-VOUCH-11 |
+| EC-01 | Item promo + voucher tiến sát/vượt cap | B11 | T-VOUCH-08 |
+| EC-02 | Xóa hết eligible items → auto-remove | B13, B18 | T-VOUCH-11 |
+| EC-03 | Không âm/0, sàn > 0 | B12 | T-VOUCH-09 |
+| EC-04 | Apply voucher vs remove eligible item đồng thời | Cần bổ sung test concurrency/API | bổ sung |
+| EC-06 | Apply→remove→apply lại, usage chỉ tăng khi order | B8, B15 | T-VOUCH-10 |
+| EC-08 | Cascading discount khi thêm item gợi ý kích hoạt promo mới | B18 + seed tier promo riêng | Should |
+| EC-10 | Brute-force voucher rate-limit | B14 | T-VOUCH-12 |
+| SEC-01 | Không tin amount từ client | B17 | security |
+| INT-02/INT-04 | Atomic usage + append-only log | B15 | integrity |
+| Admin voucher | Tạo voucher và analytics | B16 | admin acceptance |
+
+## Ghi chú còn cần fixture/seed riêng
+
+- B10/B11/B12 cần fixture item-level promotion đúng số học SRS nếu muốn demo bằng UI 100%. Hiện seed `RACKET2M` là promotion fixed để test coexistence an toàn; fixture percentage mạnh có thể bị guard stacking percentage từ implementation hiện tại.
+- EC-04 concurrency nên chạy bằng integration/API test có kiểm soát thay vì thao tác tay trong browser.
+- EC-08 cần seed tier promotion "Spend 5M get extra 5%" nếu muốn chứng minh cascading discount đầy đủ.

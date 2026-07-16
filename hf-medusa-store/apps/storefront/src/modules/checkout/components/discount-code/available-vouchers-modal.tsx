@@ -8,12 +8,19 @@ import Modal from "@modules/common/components/modal"
 import { Button, Heading, Text } from "@modules/common/components/ui"
 import type { AvailableVoucher } from "@modules/voucher/types"
 
+// Duplicated (not imported) deliberately — importing from "./index" here
+// would be a circular import, since index.tsx imports this file.
+const GENERIC_ERROR_VI = "Có lỗi xảy ra, bạn thử lại sau ít phút nhé!"
+
 type ApplyResult = { ok: boolean; message?: string }
 
 type AvailableVouchersModalProps = {
   isOpen: boolean
   close: () => void
   currencyCode: string
+  /** Passed to `fetchAvailableVouchers` so the backend can compute per-voucher
+   * `eligible`/`ineligible_reason` against this cart's current contents. */
+  cartId?: string
   onApply: (code: string) => Promise<ApplyResult>
 }
 
@@ -42,6 +49,7 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
   isOpen,
   close,
   currencyCode,
+  cartId,
   onApply,
 }) => {
   const [vouchers, setVouchers] = useState<AvailableVoucher[] | null>(null)
@@ -55,7 +63,7 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
     let cancelled = false
     setVouchers(null)
     setErrorMessage(null)
-    fetchAvailableVouchers().then((result) => {
+    fetchAvailableVouchers(cartId).then((result) => {
       if (!cancelled) {
         setVouchers(result)
       }
@@ -63,15 +71,17 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
     return () => {
       cancelled = true
     }
-  }, [isOpen])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, cartId])
 
   const handleApply = async (code: string) => {
     setPendingCode(code)
     setErrorMessage(null)
     const result = await onApply(code)
     setPendingCode(null)
-    if (!result.ok && result.message) {
-      setErrorMessage(result.message)
+    if (!result.ok) {
+      // Defensive fallback — a failure must never render as silence.
+      setErrorMessage(result.message ?? GENERIC_ERROR_VI)
     }
   }
 
@@ -90,47 +100,62 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
               No vouchers available right now.
             </Text>
           )}
-          {vouchers?.map((voucher) => (
-            <div
-              key={voucher.code}
-              className="flex items-center justify-between gap-x-4 border rounded-md p-3"
-              data-testid="available-voucher-row"
-            >
-              <div className="flex flex-col text-left">
-                <Text className="txt-small-plus">{voucher.code}</Text>
-                <Text className="text-ui-fg-subtle text-small-regular">
-                  {voucher.description}
-                </Text>
-                {(voucher.min_order ||
-                  voucher.applicable_categories.length > 0) && (
-                  <Text className="text-ui-fg-subtle text-small-regular">
-                    {voucher.min_order
-                      ? `Min. order ${convertToLocale({
-                          amount: voucher.min_order,
-                          currency_code: currencyCode,
-                        })}`
-                      : null}
-                    {voucher.min_order &&
-                      voucher.applicable_categories.length > 0 &&
-                      " · "}
-                    {voucher.applicable_categories.length > 0
-                      ? `Applies to: ${voucher.applicable_categories.join(", ")}`
-                      : null}
-                  </Text>
-                )}
-              </div>
-              <Button
-                variant="secondary"
-                size="small"
-                isLoading={pendingCode === voucher.code}
-                disabled={pendingCode !== null}
-                onClick={() => handleApply(voucher.code)}
-                data-testid="available-voucher-apply-button"
+          {vouchers?.map((voucher) => {
+            // `eligible` is only present when this list was fetched with a
+            // cart id (see `cartId` prop) — `undefined` means "not computed",
+            // never treated as ineligible.
+            const isIneligible = voucher.eligible === false
+            return (
+              <div
+                key={voucher.code}
+                className="flex items-center justify-between gap-x-4 border rounded-md p-3"
+                data-testid="available-voucher-row"
               >
-                Apply
-              </Button>
-            </div>
-          ))}
+                <div className="flex flex-col text-left">
+                  <Text className="txt-small-plus">{voucher.code}</Text>
+                  <Text className="text-ui-fg-subtle text-small-regular">
+                    {voucher.description}
+                  </Text>
+                  {isIneligible ? (
+                    <Text
+                      className="text-ui-fg-error text-small-regular"
+                      data-testid="available-voucher-ineligible-reason"
+                    >
+                      {voucher.ineligible_reason}
+                    </Text>
+                  ) : (
+                    (voucher.min_order ||
+                      voucher.applicable_categories.length > 0) && (
+                      <Text className="text-ui-fg-subtle text-small-regular">
+                        {voucher.min_order
+                          ? `Min. order ${convertToLocale({
+                              amount: voucher.min_order,
+                              currency_code: currencyCode,
+                            })}`
+                          : null}
+                        {voucher.min_order &&
+                          voucher.applicable_categories.length > 0 &&
+                          " · "}
+                        {voucher.applicable_categories.length > 0
+                          ? `Applies to: ${voucher.applicable_categories.join(", ")}`
+                          : null}
+                      </Text>
+                    )
+                  )}
+                </div>
+                <Button
+                  variant="secondary"
+                  size="small"
+                  isLoading={pendingCode === voucher.code}
+                  disabled={pendingCode !== null || isIneligible}
+                  onClick={() => handleApply(voucher.code)}
+                  data-testid="available-voucher-apply-button"
+                >
+                  Apply
+                </Button>
+              </div>
+            )
+          })}
           <ErrorMessage
             error={errorMessage}
             data-testid="available-vouchers-error"

@@ -123,6 +123,7 @@ export type VoucherConfig = {
   stackable_with_promotions: boolean;
   per_user_limit: number;
   usage_limit?: number | null;
+  usage_count?: number;
   valid_from: string;
   valid_to: string;
   is_active: boolean;
