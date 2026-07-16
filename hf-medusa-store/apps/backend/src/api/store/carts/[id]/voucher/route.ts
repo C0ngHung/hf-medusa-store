@@ -41,6 +41,31 @@ function unwrapWorkflowError(err: unknown): unknown {
   return err;
 }
 
+/**
+ * Shared log + envelope-mapping for both POST and DELETE below — logs a
+ * consistent format (this previously drifted: POST's fallback used
+ * `JSON.stringify(err, Object.getOwnPropertyNames(err))`, DELETE's just
+ * `String(err)`) and maps the unwrapped error to the API_CONTRACT §8 envelope.
+ * Does NOT send the response itself — callers decide when (POST needs the
+ * status first, to record a failed rate-limit attempt before responding).
+ */
+function buildVoucherErrorResponse(
+  req: MedusaRequest,
+  rawErr: unknown,
+  cart_id: string,
+  action: string,
+): ReturnType<typeof toErrorEnvelope> {
+  const logger = req.scope.resolve(ContainerRegistrationKeys.LOGGER);
+  logger.error(
+    `[voucher-engine] ${action} failed cart_id=${cart_id}: ${
+      rawErr instanceof Error
+        ? (rawErr.stack ?? rawErr.message)
+        : JSON.stringify(rawErr, Object.getOwnPropertyNames(rawErr as object))
+    }`,
+  );
+  return toErrorEnvelope(unwrapWorkflowError(rawErr), req.requestId);
+}
+
 export const POST = async (
   req: MedusaStoreRequest<ApplyVoucherBody>,
   res: MedusaResponse,
@@ -65,17 +90,11 @@ export const POST = async (
     await resetFailedAttempts(req.scope, customer_id, ip);
     res.json(result);
   } catch (rawErr) {
-    const logger = req.scope.resolve(ContainerRegistrationKeys.LOGGER);
-    logger.error(
-      `[voucher-engine] apply-voucher failed cart_id=${cart_id}: ${
-        rawErr instanceof Error
-          ? (rawErr.stack ?? rawErr.message)
-          : JSON.stringify(rawErr, Object.getOwnPropertyNames(rawErr as object))
-      }`,
-    );
-    const { status, body } = toErrorEnvelope(
-      unwrapWorkflowError(rawErr),
-      req.requestId,
+    const { status, body } = buildVoucherErrorResponse(
+      req,
+      rawErr,
+      cart_id,
+      "apply-voucher",
     );
     // Only a genuine "this code didn't work" outcome counts against the
     // brute-force counter (V1-V8 rejections -> 404/422). A 409
@@ -98,17 +117,11 @@ export const DELETE = async (req: MedusaRequest, res: MedusaResponse) => {
     });
     res.json(result);
   } catch (rawErr) {
-    const logger = req.scope.resolve(ContainerRegistrationKeys.LOGGER);
-    logger.error(
-      `[voucher-engine] remove-voucher failed cart_id=${cart_id}: ${
-        rawErr instanceof Error
-          ? (rawErr.stack ?? rawErr.message)
-          : String(rawErr)
-      }`,
-    );
-    const { status, body } = toErrorEnvelope(
-      unwrapWorkflowError(rawErr),
-      req.requestId,
+    const { status, body } = buildVoucherErrorResponse(
+      req,
+      rawErr,
+      cart_id,
+      "remove-voucher",
     );
     res.status(status).json(body);
   }
