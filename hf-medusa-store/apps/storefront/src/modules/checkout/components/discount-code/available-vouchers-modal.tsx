@@ -5,7 +5,7 @@ import { convertToLocale } from "@lib/util/money"
 import { fetchAvailableVouchers } from "@lib/data/voucher"
 import ErrorMessage from "@modules/checkout/components/error-message"
 import Modal from "@modules/common/components/modal"
-import { Button, Heading, Text } from "@modules/common/components/ui"
+import { Badge, Button, Heading, Text } from "@modules/common/components/ui"
 import type { AvailableVoucher } from "@modules/voucher/types"
 
 // Duplicated (not imported) deliberately — importing from "./index" here
@@ -112,7 +112,23 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
                 data-testid="available-voucher-row"
               >
                 <div className="flex flex-col text-left">
-                  <Text className="txt-small-plus">{voucher.code}</Text>
+                  <Text className="txt-small-plus flex items-center gap-x-2">
+                    {voucher.code}
+                    {!isIneligible &&
+                      voucher.estimated_savings != null &&
+                      voucher.estimated_savings > 0 && (
+                        <Badge
+                          color="green"
+                          data-testid="available-voucher-savings-badge"
+                        >
+                          Save{" "}
+                          {convertToLocale({
+                            amount: voucher.estimated_savings,
+                            currency_code: currencyCode,
+                          })}
+                        </Badge>
+                      )}
+                  </Text>
                   <Text className="text-ui-fg-subtle text-small-regular">
                     {voucher.description}
                   </Text>

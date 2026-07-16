@@ -111,6 +111,14 @@ export type AvailableVoucher = {
    */
   eligible?: boolean
   ineligible_reason?: string
+  /**
+   * Integer VND — the actual discount this cart would receive from this
+   * voucher (server-computed via the same pure calculator the real apply
+   * flow uses). Also only present with a cart id. The list arrives already
+   * sorted by this (eligible first, then highest savings) — this field is
+   * for display only, never re-sorted client-side.
+   */
+  estimated_savings?: number
 }
 
 /**
