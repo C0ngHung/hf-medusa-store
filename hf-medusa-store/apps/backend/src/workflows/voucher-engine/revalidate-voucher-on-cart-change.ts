@@ -34,8 +34,10 @@ import {
   when,
 } from "@medusajs/framework/workflows-sdk";
 import {
+  acquireLockStep,
   createPromotionsWorkflow,
   deletePromotionsWorkflow,
+  releaseLockStep,
   updateCartPromotionsWorkflow,
 } from "@medusajs/core-flows";
 import { PromotionActions, Modules } from "@medusajs/framework/utils";
@@ -108,6 +110,15 @@ const removeAndNotifyStep = createStep(
 export const revalidateVoucherWorkflow = createWorkflow(
   revalidateVoucherWorkflowId,
   (input: RevalidateVoucherWorkflowInput) => {
+    // Same lock namespace as applyVoucherWorkflow/removeVoucherWorkflow
+    // (EC-04) — a cart mutation's revalidation must not race an in-flight
+    // apply/remove request touching cart.metadata.voucher.
+    const lockKey = transform(
+      { input },
+      ({ input }) => `voucher:cart:${input.cart_id}`,
+    );
+    acquireLockStep({ key: lockKey, ttl: 10 });
+
     const existing = checkVoucherExistsStep({ cart_id: input.cart_id });
 
     const cart = loadCartContextStep({
@@ -311,6 +322,8 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
       removeAndNotifyStep({ cart_id: input.cart_id, notice });
     });
+
+    releaseLockStep({ key: lockKey });
 
     return new WorkflowResponse(
       transform({ existing }, ({ existing }) => ({
