@@ -9,7 +9,10 @@ import { applyPromotions } from "@lib/data/cart"
 import { applyVoucher, removeVoucher } from "@lib/data/voucher"
 import { convertToLocale } from "@lib/util/money"
 import Trash from "@modules/common/icons/trash"
-import type { VoucherCartMetadata } from "@modules/voucher/types"
+import type {
+  VoucherCartMetadata,
+  VoucherNoticeMetadata,
+} from "@modules/voucher/types"
 import ErrorMessage from "../error-message"
 import { SubmitButton } from "../submit-button"
 import ReplaceConfirmModal from "./replace-confirm-modal"
@@ -62,6 +65,13 @@ function toDisplayedVoucher(meta: VoucherCartMetadata): DisplayedVoucher {
   }
 }
 
+function readVoucherNotice(
+  cart: HttpTypes.StoreCart,
+): VoucherNoticeMetadata | null {
+  const metadata = cart.metadata as Record<string, unknown> | null | undefined
+  return (metadata?.voucher_notice as VoucherNoticeMetadata | undefined) ?? null
+}
+
 /** Outcome of trying VoucherEngine's apply endpoint (UX-FLOW.md §1a). */
 type VoucherApplyAttempt =
   | { kind: "success" }
@@ -93,6 +103,8 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     () => (voucherMeta ? toDisplayedVoucher(voucherMeta) : null),
   )
   const [capExplanation, setCapExplanation] = useState<string | null>(null)
+  const [autoRemoveNotice, setAutoRemoveNotice] =
+    useState<VoucherNoticeMetadata | null>(() => readVoucherNotice(cart))
   const [phase, setPhase] = useState<
     "idle" | "applying" | "removingVoucher" | "removingGeneric"
   >("idle")
@@ -129,6 +141,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     const meta = readVoucherMetadata(cart)
     setActiveVoucher(meta ? toDisplayedVoucher(meta) : null)
     setCapExplanation(null)
+    setAutoRemoveNotice(readVoucherNotice(cart))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart.metadata])
 
@@ -150,6 +163,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         })
         setCapExplanation(result.data.cap_explanation)
         setReplaceConfirm(null)
+        setAutoRemoveNotice(null)
         return { kind: "success" }
       }
       const err = result.error
@@ -269,6 +283,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         skipNextResync.current = true
         setActiveVoucher(null)
         setCapExplanation(null)
+        setAutoRemoveNotice(null)
       } else {
         setErrorMessage(result.error.customer_message)
       }
@@ -317,6 +332,23 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       <Heading level="h3" className="txt-medium">
         Promotion code
       </Heading>
+
+      {autoRemoveNotice && (
+        <div
+          className="bg-amber-50 border border-amber-200 rounded-md p-3 text-ui-fg-subtle text-small-regular flex items-start justify-between gap-x-2"
+          data-testid="voucher-auto-remove-notice"
+        >
+          <span>{autoRemoveNotice.customer_message}</span>
+          <button
+            type="button"
+            className="txt-small text-ui-fg-interactive shrink-0"
+            onClick={() => setAutoRemoveNotice(null)}
+            data-testid="voucher-auto-remove-notice-dismiss"
+          >
+            Đã hiểu
+          </button>
+        </div>
+      )}
 
       <form action={handleApplySubmit} className="w-full">
         <div className="flex w-full gap-x-2">

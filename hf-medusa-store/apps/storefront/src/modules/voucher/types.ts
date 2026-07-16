@@ -31,6 +31,22 @@ export type VoucherCartMetadata = {
 }
 
 /**
+ * `cart.metadata.voucher_notice` — async auto-remove reason (SPEC §11.3 step
+ * 3b / §8.4), mirrors the backend's `VoucherAutoRemoveNotice`
+ * (`workflows/voucher-engine/lib/auto-remove-notice.ts`). Written when
+ * `revalidateVoucherWorkflow` auto-removes a voucher after a cart change;
+ * cleared (key absent) once a new voucher is successfully applied/recomputed
+ * or the customer manually removes their voucher.
+ */
+export type VoucherNoticeMetadata = {
+  code: "VOUCHER_AUTO_REMOVED"
+  reason_code: string
+  voucher_code: string
+  reason_vi: string
+  customer_message: string
+}
+
+/**
  * `POST /store/carts/:id/voucher` success envelope (SPEC §8.1) — verified
  * against `apply-voucher.ts`'s `response` transform, byte-for-byte.
  */
