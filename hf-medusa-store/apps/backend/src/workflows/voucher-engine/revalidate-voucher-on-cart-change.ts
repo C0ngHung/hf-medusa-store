@@ -170,7 +170,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
               ephemeral_code: newPromotion.code,
               discount_type: lookup.voucher!.discount_type,
               discount_value: lookup.voucher!.discount_value,
-              raw_voucher_discount: discount.raw_voucher_discount,
+              uncapped_voucher_discount: discount.raw_voucher_discount,
               voucher_discount_after_voucher_cap:
                 discount.voucher_discount_after_voucher_cap,
               discount_amount: discount.final_voucher_discount,

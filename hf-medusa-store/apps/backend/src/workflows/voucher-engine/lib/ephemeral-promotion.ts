@@ -48,7 +48,22 @@ export interface VoucherCartMetadata {
   ephemeral_code: string;
   discount_type: "percentage" | "fixed_amount";
   discount_value: number;
-  raw_voucher_discount: number;
+  /**
+   * = raw_voucher_discount (§10) — the voucher rule applied to the eligible
+   * post-promotion subtotal, before either cap. NOT named `raw_voucher_discount`
+   * here: Medusa's entity/response serialization treats any `raw_<x>` key as
+   * the BigNumber-raw companion of a field `<x>` and silently rewrites it to
+   * `{value, precision}` (plus injects a bogus sibling `voucher_discount` key)
+   * wherever this JSONB blob passes through that layer (e.g. after a
+   * `cart.updated` revalidation, or at `completeCartWorkflow`'s cart→order
+   * metadata copy) — corrupting the value `recordVoucherUsageWorkflow` later
+   * writes into the real `voucher_usage_log.raw_voucher_discount` INTEGER
+   * column, which throws and silently drops the whole usage-recording step
+   * (SEC/INT-02/INT-04 anti-over-redemption). The DB column and the pure
+   * `calculate-discount.ts` field keep the `raw_` name (real typed values, not
+   * a generic JSONB blob) — only this metadata snapshot key avoids it.
+   */
+  uncapped_voucher_discount: number;
   voucher_discount_after_voucher_cap: number;
   /** = final_voucher_discount (§10) — the amount actually charged. */
   discount_amount: number;
