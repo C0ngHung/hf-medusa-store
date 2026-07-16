@@ -33,4 +33,27 @@ describe("voucherRateLimitMiddleware — IP source (unit)", () => {
     );
     expect(next).toHaveBeenCalled();
   });
+
+  it("returns a 429 body matching the shared ErrorEnvelope contract", async () => {
+    isRateLimitedMock.mockResolvedValue(true);
+
+    const req: any = { headers: {}, ip: "10.0.0.5", auth_context: {} };
+    const json = jest.fn();
+    const res: any = { status: jest.fn().mockReturnValue({ json }) };
+    const next = jest.fn();
+
+    await voucherRateLimitMiddleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(429);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "rate_limited",
+        code: "VOUCHER_RATE_LIMITED",
+        message: expect.any(String),
+        customer_message:
+          "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 30 phút.",
+      }),
+    );
+    expect(next).not.toHaveBeenCalled();
+  });
 });

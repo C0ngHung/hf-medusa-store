@@ -15,10 +15,7 @@ import { isRateLimited } from "../../lib/voucher-rate-limit";
  * is absent (isRateLimited returns false → never blocks a legitimate checkout,
  * 3.7.7).
  *
- * HANDOFF (Day 4): this is wired onto the STORE voucher validate/apply endpoint,
- * which belongs to Thức's track (3.4.x store) and does not exist yet. Register it
- * in api/middlewares.ts against that route's matcher when it lands. Exported here,
- * unit/module tested via the counter helpers, ready to attach.
+ * Registered on `POST /store/carts/:id/voucher` in `api/middlewares.ts`.
  */
 export async function voucherRateLimitMiddleware(
   req: MedusaRequest,
@@ -36,10 +33,15 @@ export async function voucherRateLimitMiddleware(
 
   const blocked = await isRateLimited(req.scope, customerId, ip);
   if (blocked) {
-    // Verbatim customer-facing VI message (aligns with EC-10 / API_CONTRACT).
+    // Matches the shared ErrorEnvelope/VoucherErrorEnvelope contract
+    // (workflows/voucher-engine/lib/errors.ts) so the storefront's
+    // `customer_message`-only rendering path works for this response too.
     res.status(429).json({
+      type: "rate_limited",
       code: "VOUCHER_RATE_LIMITED",
-      message: "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 30 phút.",
+      message: "voucher validation rate limited (SEC-02/EC-10)",
+      customer_message:
+        "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 30 phút.",
     });
     return;
   }
