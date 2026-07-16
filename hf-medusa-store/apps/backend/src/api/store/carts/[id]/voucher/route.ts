@@ -20,6 +20,10 @@ import { ApplyVoucherBody, ApplyVoucherQuerySchema } from "./validators";
 import { applyVoucherWorkflow } from "../../../../../workflows/voucher-engine/apply-voucher";
 import { removeVoucherWorkflow } from "../../../../../workflows/voucher-engine/remove-voucher";
 import { toErrorEnvelope } from "../../../../../workflows/voucher-engine/lib/errors";
+import {
+  recordFailedAttempt,
+  resetFailedAttempts,
+} from "../../../../../lib/voucher-rate-limit";
 
 /**
  * Unwraps a Medusa workflow's thrown error to the real underlying cause when
@@ -47,6 +51,7 @@ export const POST = async (
   // `QueryConfig`, not suited to a single boolean flag.
   const { replace } = ApplyVoucherQuerySchema.parse(req.query);
   const customer_id = req.auth_context?.actor_id ?? null;
+  const ip = req.ip || null;
 
   try {
     const { result } = await applyVoucherWorkflow(req.scope).run({
@@ -57,6 +62,7 @@ export const POST = async (
         replace,
       },
     });
+    await resetFailedAttempts(req.scope, customer_id, ip);
     res.json(result);
   } catch (rawErr) {
     const logger = req.scope.resolve(ContainerRegistrationKeys.LOGGER);
@@ -71,6 +77,14 @@ export const POST = async (
       unwrapWorkflowError(rawErr),
       req.requestId,
     );
+    // Only a genuine "this code didn't work" outcome counts against the
+    // brute-force counter (V1-V8 rejections -> 404/422). A 409
+    // VOUCHER_REPLACE_REQUIRED means the code IS valid (just needs replace
+    // confirmation) and must never count as a failed guess; a 400/500 is an
+    // internal/calculation problem, not a guess (SEC-02/EC-10).
+    if (status === 404 || status === 422) {
+      await recordFailedAttempt(req.scope, customer_id, ip);
+    }
     res.status(status).json(body);
   }
 };
