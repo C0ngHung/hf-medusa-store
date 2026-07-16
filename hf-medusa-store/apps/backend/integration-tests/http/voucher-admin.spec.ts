@@ -1,5 +1,7 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import { createAdminUser } from "./helpers/create-admin-user";
+import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
+import type VoucherEngineService from "../../src/modules/voucher-engine/service";
 
 jest.setTimeout(120_000);
 
@@ -114,6 +116,65 @@ medusaIntegrationTestRunner({
             total_discount_given: 0,
             avg_order_value: 0,
             capped_count: 0,
+            conversion_rate: 0,
+          }),
+        );
+      });
+
+      // Code-review Task 7.2: analytics now aggregates voucher_usage_log at
+      // the DB layer (COUNT/SUM/COUNT FILTER) instead of fetching every row
+      // and reducing in JS — this pins the aggregate's numeric output against
+      // several real rows, not just the empty/all-zero case above.
+      it("aggregates total_uses/total_discount_given/capped_count correctly across several real usage-log rows", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          validBody(),
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const service = getContainer().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        const rows = [
+          { order_id: "order_1", discount_applied: 100_000, was_capped: false },
+          { order_id: "order_2", discount_applied: 250_000, was_capped: true },
+          { order_id: "order_3", discount_applied: 50_000, was_capped: true },
+        ];
+        await service.createVoucherUsageLogs(
+          rows.map((r) => ({
+            voucher_id: id,
+            customer_id: "cus_test_fixture",
+            order_id: r.order_id,
+            currency_code: "vnd",
+            voucher_code: "ANALYTICS-TEST",
+            discount_type: "percentage" as const,
+            discount_value: 1000,
+            raw_voucher_discount: r.discount_applied,
+            voucher_discount_after_voucher_cap: r.discount_applied,
+            final_voucher_discount: r.discount_applied,
+            discount_applied: r.discount_applied,
+            original_discount: r.discount_applied,
+            was_capped: r.was_capped,
+            cap_percentage_bps: 5000,
+            original_subtotal: 2_000_000,
+            item_promotion_discount: 0,
+            applied_at: new Date(),
+          })),
+        );
+
+        const res = await api.get(
+          `/admin/vouchers/${id}/analytics`,
+          adminHeaders,
+        );
+        expect(res.status).toBe(200);
+        expect(res.data.analytics).toEqual(
+          expect.objectContaining({
+            voucher_id: id,
+            total_uses: 3,
+            total_discount_given: 400_000,
+            capped_count: 2,
+            avg_order_value: 0,
             conversion_rate: 0,
           }),
         );
