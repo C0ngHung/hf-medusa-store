@@ -26,11 +26,9 @@ import {
   transform,
   when,
 } from "@medusajs/framework/workflows-sdk";
-import { toVoucherScope } from "./lib/mappers";
-import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
+import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
-import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
 import { validateVoucherStep } from "./steps/validate-voucher";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 
@@ -65,31 +63,7 @@ export const resolveVoucherDiscountWorkflow = createWorkflow(
       user_usage_count: lookup.user_usage_count,
     });
 
-    const scope = transform({ lookup }, ({ lookup }) =>
-      toVoucherScope(
-        lookup.voucher ?? {
-          applicable_product_ids: null,
-          applicable_category_ids: null,
-        },
-      ),
-    );
-
-    const resolved = resolveEligibleItemsStep({
-      lines: cart.lines,
-      scope,
-    });
-
-    const voucherTerms = transform({ lookup }, ({ lookup }) => ({
-      discount_type: lookup.voucher!.discount_type,
-      discount_value: lookup.voucher!.discount_value,
-      max_discount_amount: lookup.voucher!.max_discount_amount,
-    }));
-
-    const discount = calculateVoucherDiscountStep({
-      lines: resolved.lines,
-      voucher: voucherTerms,
-      global_cap_bps: lookup.global_cap_bps,
-    });
+    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
     const verification = when(
       { input, discount },

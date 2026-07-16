@@ -9,11 +9,10 @@
  * actually carries the capped amount (Decision G, §14.2-A), and the
  * concurrency lock (§14.2-C).
  *
- * Deliberately EXCLUDES `checkRateLimitStep` (§11.1 step 2) — brute-force
- * rate-limiting is Hùng's Day 4 scope (tasks 3.7.1–3.7.8, `docs/tasks_grouped.md`),
- * not built yet. Inserting it later is additive (it slots in before
- * `checkActiveVoucherStep`, keyed on the same normalized code) and does not
- * require restructuring this workflow.
+ * Brute-force rate-limiting (§11.1 step 2, SEC-02/EC-10) is enforced at the
+ * HTTP boundary — `voucherRateLimitMiddleware` on the store route plus
+ * `recordFailedAttempt`/`resetFailedAttempts` in the route handler — not
+ * inside this workflow.
  */
 
 import {
@@ -24,20 +23,19 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  createPromotionsWorkflow,
   deletePromotionsWorkflow,
   releaseLockStep,
   updateCartPromotionsWorkflow,
 } from "@medusajs/core-flows";
 import { PromotionActions } from "@medusajs/framework/utils";
-import { toVoucherScope } from "./lib/mappers";
-import { generateEphemeralPromotionCode } from "./lib/ephemeral-promotion";
+import { createAndAttachEphemeralPromotion } from "./lib/create-and-attach-ephemeral-promotion";
+import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
+import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
+import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { validateVoucherStep } from "./steps/validate-voucher";
-import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
-import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
 
@@ -62,9 +60,21 @@ export const applyVoucherWorkflow = createWorkflow(
 
     acquireLockStep({ key: lockKey, ttl: 10 });
 
+    // Existence check FIRST (SPEC V1) — a nonexistent/mistyped code must 404
+    // regardless of whether another voucher is already active on the cart;
+    // otherwise checkActiveVoucherStep's replace-confirmation gate below
+    // (which never sees `code`) would fire first and ask the customer to
+    // "replace" a code that was never valid in the first place.
+    const lookup = lookupVoucherStep({
+      code: input.code,
+      customer_id: transform({ input }, ({ input }) => input.customer_id ?? ""),
+    });
+    assertVoucherFoundStep({ voucher: lookup.voucher });
+
     // One-active-voucher / replace-confirmation gate (tasks 3.4.6/3.4.7/3.4.8) —
     // must run BEFORE any new Promotion is created (never remove a valid
-    // existing voucher before the replacement is validated).
+    // existing voucher before the replacement is validated). Only reached
+    // once the submitted code is confirmed to exist.
     const activeCheck = checkActiveVoucherStep({
       cart_id: input.cart_id,
       replace: input.replace,
@@ -104,11 +114,6 @@ export const applyVoucherWorkflow = createWorkflow(
         .config({ name: "detach-old-ephemeral-promotion" });
     });
 
-    const lookup = lookupVoucherStep({
-      code: input.code,
-      customer_id: transform({ input }, ({ input }) => input.customer_id ?? ""),
-    });
-
     // Exclude the PREVIOUS voucher's own ephemeral adjustment (if replacing)
     // from item_promotion_discount, mirroring Rule 11 under Decision G.
     const previousPromotionId = transform(
@@ -116,6 +121,25 @@ export const applyVoucherWorkflow = createWorkflow(
       ({ activeCheck }) => activeCheck.previous?.ephemeral_promotion_id,
     );
 
+    // Code-review Task 7.3: checkActiveVoucherStep (above) and this step both
+    // call query.graph on the same cart_id — evaluated merging them into one
+    // read and deliberately did NOT, because they read the cart at two
+    // sequentially-DEPENDENT points, not the same point twice:
+    // checkActiveVoucherStep's metadata-only read runs BEFORE the conditional
+    // "detach old ephemeral promotion" branch above and its result
+    // (`hasPrevious`) decides whether that detach even runs, while this
+    // step's full read must run AFTER it — its `item_promotion_discount`
+    // Rule-11/CONFLICT-8 baseline is only correct once the old ephemeral
+    // adjustment (if any) has actually been removed from the cart (see the
+    // comment on `pre_apply_item_promotion_discount` at the
+    // verifyCartTotalsStep call below). Merging into a single earlier read
+    // would corrupt that baseline for the replace case by counting the
+    // about-to-be-removed old adjustment as if it were an ordinary item
+    // promotion; merging into a single later read would move the
+    // replace-confirmation gate to run AFTER the detach it's supposed to
+    // gate, violating tasks 3.4.6/3.4.7/3.4.8 (never remove a valid existing
+    // voucher before the replacement is validated) and the Task 3.1 ordering
+    // this file already fixed. Left as two separate reads.
     const cart = loadCartContextStep({
       cart_id: input.cart_id,
       voucher_promotion_id: previousPromotionId,
@@ -127,79 +151,25 @@ export const applyVoucherWorkflow = createWorkflow(
       user_usage_count: lookup.user_usage_count,
     });
 
-    const scope = transform({ lookup }, ({ lookup }) =>
-      toVoucherScope(
-        lookup.voucher ?? {
-          applicable_product_ids: null,
-          applicable_category_ids: null,
-        },
-      ),
-    );
+    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
-    const resolved = resolveEligibleItemsStep({ lines: cart.lines, scope });
-
-    const voucherTerms = transform({ lookup }, ({ lookup }) => ({
-      discount_type: lookup.voucher!.discount_type,
-      discount_value: lookup.voucher!.discount_value,
-      max_discount_amount: lookup.voucher!.max_discount_amount,
-    }));
-
-    const discount = calculateVoucherDiscountStep({
-      lines: resolved.lines,
-      voucher: voucherTerms,
-      global_cap_bps: lookup.global_cap_bps,
+    // EC-04: verify no concurrent mutation (e.g. an item removal) changed the
+    // cart between loadCartContextStep's read and this point, right before we
+    // commit the computed discount.
+    assertCartUnchangedStep({
+      cart_id: input.cart_id,
+      expected_concurrency_marker: cart.concurrency_marker,
     });
 
     // Decision G — carry the capped amount via a fresh, cart-specific,
     // fixed-amount Promotion (never the shared/canonical VoucherConfig.promotion_id).
-    const ephemeralInput = transform(
-      { input, cart, discount, lookup },
-      ({ input, cart, discount, lookup }) => ({
-        promotionsData: [
-          {
-            code: generateEphemeralPromotionCode(
-              input.cart_id,
-              lookup.voucher!.id,
-            ),
-            type: "standard" as const,
-            status: "active" as const,
-            is_automatic: false,
-            application_method: {
-              type: "fixed" as const,
-              target_type: "items" as const,
-              allocation: "across" as const,
-              value: discount.final_voucher_discount,
-              currency_code: cart.currency_code,
-            },
-          },
-        ],
-      }),
-    );
-
-    const createdPromotions = createPromotionsWorkflow.runAsStep({
-      input: ephemeralInput,
+    const ephemeralPromotion = createAndAttachEphemeralPromotion({
+      cart_id: input.cart_id,
+      voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
+      cart,
+      discount,
+      attachStepName: "attach-new-ephemeral-promotion",
     });
-
-    const ephemeralPromotion = transform(
-      { createdPromotions },
-      ({ createdPromotions }) => ({
-        id: createdPromotions[0].id,
-        code: createdPromotions[0].code as string,
-      }),
-    );
-
-    updateCartPromotionsWorkflow
-      .runAsStep({
-        input: transform(
-          { input, ephemeralPromotion },
-          ({ input, ephemeralPromotion }) => ({
-            cart_id: input.cart_id,
-            promo_codes: [ephemeralPromotion.code],
-            action: PromotionActions.ADD,
-          }),
-        ),
-      })
-      .config({ name: "attach-new-ephemeral-promotion" });
 
     const voucherSnapshot = transform(
       { lookup, discount, ephemeralPromotion, activeCheck },
@@ -210,7 +180,7 @@ export const applyVoucherWorkflow = createWorkflow(
         ephemeral_code: ephemeralPromotion.code,
         discount_type: lookup.voucher!.discount_type,
         discount_value: lookup.voucher!.discount_value,
-        raw_voucher_discount: discount.raw_voucher_discount,
+        uncapped_voucher_discount: discount.raw_voucher_discount,
         voucher_discount_after_voucher_cap:
           discount.voucher_discount_after_voucher_cap,
         discount_amount: discount.final_voucher_discount,

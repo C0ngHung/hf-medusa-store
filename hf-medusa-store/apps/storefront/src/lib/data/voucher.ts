@@ -2,6 +2,7 @@
 
 import { revalidateTag } from "next/cache"
 import { MEDUSA_BACKEND_URL } from "@lib/config"
+import { getLocaleHeader } from "@lib/util/get-locale-header"
 import type {
   ApplyVoucherResult,
   AvailableVoucher,
@@ -22,7 +23,12 @@ import { getAuthHeaders, getCacheTag, getCartId } from "./cookies"
  * `docs/voucher-engine-ui/UX-FLOW.md`) requires displaying the Vietnamese
  * `customer_message` verbatim, never the English `message`, so these calls
  * read the full error envelope themselves instead of going through the
- * shared SDK client's error path.
+ * shared SDK client's error path. Re-verified against the currently-installed
+ * SDK (2026-07-16, code review follow-up): `FetchError` still only carries
+ * `message`/`statusText`/`status` — this tradeoff still holds. The ONE thing
+ * bypassing `sdk.client.fetch` genuinely loses is the `x-medusa-locale`
+ * header `lib/config.ts` auto-injects for every other data module — added
+ * back explicitly below via `getLocaleHeader()` instead of switching clients.
  *
  * API-level failures (4xx/5xx with an error envelope) are returned as data
  * (`VoucherActionResult`), never thrown: a thrown custom `Error` subclass
@@ -45,9 +51,21 @@ async function voucherFetch<T>(
   path: string,
   init: { method: "GET" | "POST" | "DELETE"; body?: unknown },
 ): Promise<VoucherActionResult<T>> {
+  // Mirrors the locale-header injection every other storefront data module
+  // gets "for free" via the patched `sdk.client.fetch` (`lib/config.ts`) —
+  // this file bypasses that client (see header comment) so it must add the
+  // header itself. Best-effort: never let a locale lookup failure break the
+  // request; omit the header entirely (rather than send a literal "null")
+  // when no locale cookie is set.
+  let locale: string | null = null
+  try {
+    locale = (await getLocaleHeader())["x-medusa-locale"]
+  } catch {}
+
   const headers: Record<string, string> = {
     "content-type": "application/json",
     accept: "application/json",
+    ...(locale ? { "x-medusa-locale": locale } : {}),
     ...(process.env.NEXT_PUBLIC_MEDUSA_PUBLISHABLE_KEY
       ? {
           "x-publishable-api-key":

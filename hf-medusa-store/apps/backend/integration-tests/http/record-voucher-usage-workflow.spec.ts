@@ -68,7 +68,7 @@ medusaIntegrationTestRunner({
           ephemeral_code: "VEPH-TEST-FIXTURE",
           discount_type: voucher.discount_type,
           discount_value: voucher.discount_value,
-          raw_voucher_discount: 200_000,
+          uncapped_voucher_discount: 200_000,
           voucher_discount_after_voucher_cap: 200_000,
           discount_amount: 200_000,
           discount_capped: false,

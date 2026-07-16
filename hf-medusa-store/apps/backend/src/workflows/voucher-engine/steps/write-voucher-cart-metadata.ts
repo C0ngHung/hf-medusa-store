@@ -18,6 +18,7 @@ import {
   VOUCHER_METADATA_KEY,
   VoucherCartMetadata,
 } from "../lib/ephemeral-promotion";
+import { VOUCHER_NOTICE_METADATA_KEY } from "../lib/auto-remove-notice";
 
 export const writeVoucherCartMetadataStepId = "write-voucher-cart-metadata";
 
@@ -39,6 +40,11 @@ export const writeVoucherCartMetadataStep = createStep(
       metadata: {
         ...(input.previous_metadata ?? {}),
         [VOUCHER_METADATA_KEY]: input.voucher,
+        // A fresh successful apply/recompute supersedes any stale
+        // VOUCHER_AUTO_REMOVED notice from an earlier auto-removal — `""` is
+        // a merge-patch delete (see mergeMetadata finding in this file's
+        // original header comment).
+        [VOUCHER_NOTICE_METADATA_KEY]: "",
       },
     });
 
@@ -58,12 +64,16 @@ export const writeVoucherCartMetadataStep = createStep(
     // Explicitly restore the previous value, or clear it with `""` when there
     // was none, so a failed apply never leaves a stale voucher snapshot
     // pointing at a Promotion that compensation elsewhere rolled back.
-    const previous = compensationInput.previous_metadata ?? {};
+    const previous = (compensationInput.previous_metadata ?? {}) as Record<
+      string,
+      unknown
+    >;
     await cartModuleService.updateCarts(compensationInput.cart_id, {
       metadata: {
         ...previous,
-        [VOUCHER_METADATA_KEY]:
-          (previous as Record<string, unknown>)[VOUCHER_METADATA_KEY] ?? "",
+        [VOUCHER_METADATA_KEY]: previous[VOUCHER_METADATA_KEY] ?? "",
+        [VOUCHER_NOTICE_METADATA_KEY]:
+          previous[VOUCHER_NOTICE_METADATA_KEY] ?? "",
       },
     });
   },

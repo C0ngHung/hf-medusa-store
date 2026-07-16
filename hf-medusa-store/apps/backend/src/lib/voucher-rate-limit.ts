@@ -24,7 +24,8 @@ import { decideRateLimit } from "../workflows/voucher-engine/lib/rate-limit-poli
  * read-modify-write, not a raw Redis INCR. That is acceptable for rate limiting
  * (a rare lost increment only makes the limiter slightly more lenient); the
  * hard anti-over-redemption guarantee lives at the DB layer (INT-02, see
- * voucher-usage-counter.ts + the order.placed workflow, Day 5).
+ * `VoucherEngineService.redeemVoucherAtomic` + the order.placed workflow,
+ * Day 5).
  */
 
 /** Structural logger view (Medusa Logger). */

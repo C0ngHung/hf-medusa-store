@@ -237,6 +237,73 @@ medusaIntegrationTestRunner({
         expect(notice?.customer_message).not.toMatch(/\{code\}|\{reason\}/);
       });
 
+      it("clears a stale auto-remove notice once a new voucher is successfully (re-)applied", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_noticecleared",
+          },
+        ]);
+        await createVoucher({
+          code: "NOTICECLEAR10",
+          discount_type: "percentage",
+          discount_value: 1000,
+          min_order_value: 1_500_000,
+        });
+        await createVoucher({
+          code: "NOTICECLEAR20",
+          discount_type: "percentage",
+          discount_value: 2000,
+          min_order_value: null,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: {
+            cart_id: cart.id,
+            code: "NOTICECLEAR10",
+            customer_id: null,
+          },
+        });
+
+        // Drop the item price under the first voucher's min_order_value so
+        // revalidation auto-removes it and writes the stale notice.
+        const lineItemId = await firstLineItemId(cart.id);
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        await cartModuleService.updateLineItems(lineItemId, {
+          unit_price: 1_000_000,
+        });
+        await revalidateVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id },
+        });
+
+        const withStaleNotice = await retrieveCartWithTotal(cart.id);
+        expect(
+          (withStaleNotice.metadata as Record<string, unknown> | null)?.[
+            VOUCHER_NOTICE_METADATA_KEY
+          ],
+        ).toBeDefined();
+
+        // Now successfully apply a different (unscoped) voucher.
+        await applyVoucherWorkflow(container()).run({
+          input: {
+            cart_id: cart.id,
+            code: "NOTICECLEAR20",
+            customer_id: null,
+          },
+        });
+
+        const afterCart = await retrieveCartWithTotal(cart.id);
+        expect(
+          (afterCart.metadata as Record<string, unknown> | null)?.[
+            VOUCHER_NOTICE_METADATA_KEY
+          ],
+        ).toBeUndefined();
+      });
+
       it("auto-removes + writes the no-eligible-items reason when the last eligible item is removed (tasks 3.5.3/3.5.10)", async () => {
         // Scoped voucher: only the racket product is eligible. Apply on a cart
         // that has ONLY the eligible item (a fixed/across ephemeral promotion
@@ -296,6 +363,74 @@ medusaIntegrationTestRunner({
         expect(notice?.code).toBe("VOUCHER_AUTO_REMOVED");
         expect(notice?.reason_code).toBe("VOUCHER_NO_ELIGIBLE_ITEMS");
         expect(notice?.voucher_code).toBe("RACKETONLY10");
+      });
+
+      it("acquires the voucher:cart:{id} lock so two concurrent revalidations on the same cart don't corrupt the ephemeral promotion (EC-04)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_lockrace",
+          },
+        ]);
+        await createVoucher({
+          code: "LOCKRACE10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%, unscoped
+          min_order_value: null,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id, code: "LOCKRACE10", customer_id: null },
+        });
+
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        const lineItemId = await firstLineItemId(cart.id);
+        await cartModuleService.updateLineItems(lineItemId, { quantity: 2 });
+
+        // Fire two revalidations for the SAME cart concurrently. Medusa's
+        // (in-memory, test-env) locking provider is FAIL-FAST, not
+        // queue-and-wait: the loser throws "Failed to acquire lock" rather
+        // than blocking — which the calling `cart.updated` subscriber always
+        // catches/logs (this workflow "Never throws" by design, see file
+        // header), so a lost race is a silent no-op, not a corruption. Without
+        // the EC-04 lock, BOTH would instead proceed, read the same stale
+        // `existing.active!.ephemeral_promotion_id`, and race to
+        // create+attach a new promotion + delete the old one — leaving either
+        // a duplicate attached promotion or a crash from double-deleting the
+        // same one.
+        const results = await Promise.allSettled([
+          revalidateVoucherWorkflow(container()).run({
+            input: { cart_id: cart.id },
+          }),
+          revalidateVoucherWorkflow(container()).run({
+            input: { cart_id: cart.id },
+          }),
+        ]);
+        const fulfilled = results.filter((r) => r.status === "fulfilled");
+        const rejected = results.filter((r) => r.status === "rejected");
+        // Mutual exclusion in effect: exactly one of the two racing
+        // revalidations won the lock; the other lost it (fail-fast).
+        expect(fulfilled).toHaveLength(1);
+        expect(rejected).toHaveLength(1);
+        const rejectionReason = (rejected[0] as PromiseRejectedResult).reason;
+        expect(
+          typeof rejectionReason === "string"
+            ? rejectionReason
+            : (rejectionReason?.message ?? JSON.stringify(rejectionReason)),
+        ).toMatch(/Failed to acquire lock/);
+
+        const afterCart = await retrieveCartWithTotal(cart.id);
+        expect(Number(afterCart.total)).toBe(3_600_000); // 4,000,000 - 10%
+        const snapshot = (
+          afterCart.metadata as Record<string, unknown> | null
+        )?.[VOUCHER_METADATA_KEY] as
+          | { discount_amount: number; ephemeral_promotion_id: string }
+          | undefined;
+        expect(snapshot?.discount_amount).toBe(400_000);
       });
 
       it("does NOT increment usage_count when a voucher is applied to a cart (task 3.6.11, Rule 12)", async () => {

@@ -65,6 +65,39 @@
   re-verified live in this slice was the storefront UI's own re-render after this kind of mutation — this relies
   on the unchanged `DiscountCode` hydration effect already verified live in Slice 1.
 - **Days 6–7:** Not started.
+- **Branch `fix/voucher-engine-code-review-findings` (off `develop`, NOT yet merged) — Phases 1–6 of the
+  `[max]` code-review fix plan DONE, committed (20 commits, Task 1.1–6.9; plan at
+  `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`):** rate limiter made real
+  (SEC-02/EC-10 — stopped trusting spoofable `X-Forwarded-For`, wired the middleware onto
+  `POST /store/carts/:id/voucher`, fed `recordFailedAttempt`/`resetFailedAttempts` from the real apply
+  route, fixed the 429 body to match `ErrorEnvelope`); EC-04 optimistic-concurrency (`assertCartUnchangedStep`
+  in `apply-voucher.ts` + the cart lock now also acquired in `revalidate-voucher-on-cart-change.ts`);
+  correctness (voucher-existence check moved before the replace-confirmation gate; `?replace=false` query
+  coercion bug fixed; storefront `notFound` outcome handled in the replace-confirm flow); `voucher_notice`
+  bugs (cleared on a successful apply/recompute/remove; storefront now reads and displays it); the existing
+  30s Redis config cache wired into `lookupVoucherStep`; 5 cleanup/dedup extractions (shared
+  cart-metadata-voucher read, shared resolve-scope+calculate-discount sequence, shared ephemeral-Promotion
+  build, dead `lib/voucher-usage-counter.ts` deleted, POST/DELETE error handling deduped in the store
+  route) plus the storefront locale-header fix and the `VoucherErrorEnvelope`/`ErrorEnvelope` pinning
+  comment. **As of 2026-07-16 (session 2), Task 6.6 and 6.10 and all of Phase 7 are ALSO done** (5 more
+  commits: `17c636c`, `4fe59c4`, `1e055f2`, `75aad5d`, `5f0066e`) — **the entire code-review fix plan
+  (Task 1.1–7.3) is now complete on this branch.** Task 6.6 (`has_voucher`) and 7.3 (duplicate
+  `query.graph` reads in `apply-voucher.ts`) were both evaluated and deliberately KEPT as-is (documented
+  in place why — read 3× in `revalidateVoucherWorkflow`; the two cart reads are sequentially dependent,
+  not the same read twice), no behavior change. Task 6.10 (`roundMoney`) was also deliberately kept
+  separate (documented why — `bps()` needs basis-points overflow-safe division, not a bare floor call;
+  merging would add a cross-module coupling on VoucherEngine's INT-01 money math for no real gain).
+  Task 7.1 (parallelize the 2 independent `voucher-analytics` lookups) and 7.2 (DB-side
+  `COUNT`/`SUM`/`COUNT FILTER` aggregate replacing the JS-side row reduce, new
+  `VoucherEngineService.getUsageAnalyticsAggregate`) were real code changes, each with a new/extended test
+  (`voucher-admin.spec.ts` now also covers a 3-row real-data aggregation case: 3 uses, ₫400,000 total,
+  2 capped — 8/8 passing). Verified after all 5: `pnpm test:unit` 231/231 (19 suites, unchanged count —
+  none of these tasks added new unit tests except the money.ts ones from the earlier fractional fix),
+  `apply-remove-voucher.spec.ts` 6/6, `revalidate-voucher-workflow.spec.ts` 7/7, `voucher-admin.spec.ts`
+  8/8, `pnpm build` (backend + storefront) 0 errors. See the 2026-07-16 (session 1) dated entry below for
+  the earlier fractional-adjustment fix (item 3 of the "Unresolved blockers" list further down — now
+  resolved on this branch, not yet merged) and the 2026-07-16 (session 2) dated entry for this Task
+  6.6/6.10/7.1/7.2/7.3 work. **Still pending: merging this branch to `develop`.**
 - **Lessons infrastructure:** `.claude/lessons/voucher-engine/INDEX.md` now lists 13 lessons — the original 8
   (2026-07-14), Hùng's session-6 addition (scoped-voucher + multi-item cart `fixed`/`across` fractional-adjustment
   gap at `verify-cart-totals` — a latent APPLY-path bug in Thức's 3.4.x, surfaced while testing 3.5.x, flagged as a
@@ -116,14 +149,20 @@ build` succeeded (53/53 static pages) per Thức's Slice 1 session. `pnpm --filt
 - **Test env:** `apps/backend/.env.test` (gitignored) created from the `.env.test.template` develop added,
   pointing `DB_*` at the docker-compose Postgres (`hfmedusa`@5433) — required by `@medusajs/test-utils`. See
   `docs/team/RUNNING_TESTS.md`.
-- **Unresolved blockers (combined):**
-  1. Rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on
-     `/store/carts/:id/voucher` (Hùng's Day-4 3.7.x lane — separate branch).
-  2. `recordFailedAttempt`/`resetFailedAttempts` have no production caller in the apply flow yet (Hùng 3.7.x).
-  3. Scoped-voucher + multi-item `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức's
-     3.4.x/§23.4 — see the scoped-voucher lesson; flagged as a handoff, not fixed).
-  4. `cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful (re)apply —
-     a storefront/apply-flow lifecycle concern (Thức's apply / PD-09 refetch-polling).
+- **Unresolved blockers (combined, as of the 2026-07-15 merge — see the `fix/voucher-engine-code-review-findings`
+  bullet above for current status; none of 1–4 below are merged to `develop` yet):**
+  1. ~~Rate-limit middleware `voucherRateLimitMiddleware` still UNWIRED in `src/api/middlewares.ts` on
+     `/store/carts/:id/voucher` (Hùng's Day-4 3.7.x lane — separate branch).~~ **FIXED** on
+     `fix/voucher-engine-code-review-findings` (Task 1.2, commit `c553afe`) — pending merge.
+  2. ~~`recordFailedAttempt`/`resetFailedAttempts` have no production caller in the apply flow yet (Hùng
+     3.7.x).~~ **FIXED** on the same branch (Task 1.3, commit `cbbeb59`) — pending merge.
+  3. ~~Scoped-voucher + multi-item `across` fractional-adjustment bug in apply/`verify-cart-totals` (Thức's
+     3.4.x/§23.4 — see the scoped-voucher lesson; flagged as a handoff, not fixed).~~ **FIXED** on the same
+     branch, 2026-07-16 (commit `69ff1af`, see the dated entry below and the corrected lesson) — pending
+     merge.
+  4. ~~`cart.metadata.voucher_notice` is written on auto-remove but not cleared on a later successful
+     (re)apply — a storefront/apply-flow lifecycle concern (Thức's apply / PD-09 refetch-polling).~~
+     **FIXED** on the same branch (Task 4.1, commit `8854cb2`) — pending merge.
   5. `storefront-day5-testing.md` Test B's wording should be tightened to distinguish "recognized-but-rejected
      voucher" (no fallback) from "unrecognized code" (falls back to generic-promotion, per `UX-FLOW.md` §1a).
   6. **Backend bug found incidentally, NOT fixed:** `VOUCHER_NO_ELIGIBLE_ITEMS`'s `customer_message` template
@@ -133,15 +172,427 @@ build` succeeded (53/53 static pages) per Thức's Slice 1 session. `pnpm --filt
      fix this.
   7. The still-open _live_ half of `4.2.1`/`4.2.6`/`4.2.7` (calculation-layer proof already Done, live browser
      scenario blocked by missing generic-Promotion seed data — see the seed-data lesson).
-- **Next allowed scope:** Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware), Day 6–7 (test-plan
-  execution, T-VOUCH-01..12/T-SUGG-01..10 acceptance coverage), a dedicated seed-fixture task to unblock item 7
-  above, a browser-automation pass to independently re-verify the storefront UI's own re-render after
-  cart-change auto-invalidation, and — immediately after this merge — a full combined test re-run across both
-  lanes' changes together (unit, module-integration, HTTP-integration all run once, not per-branch) since neither
-  lane's last-known-good counts above reflect the other lane's changes.
+- **Next allowed scope:** ~~Hùng's Day 4 rate-limiting tasks (3.7.x — wire the middleware)~~ **done, see
+  `fix/voucher-engine-code-review-findings` above**; Day 6–7 (test-plan execution, T-VOUCH-01..12/
+  T-SUGG-01..10 acceptance coverage), a dedicated seed-fixture task to unblock item 7 above (this branch's
+  `src/scripts/seed-voucher-cap-demo.ts`, **committed `e734b7d` in session 3**, is a first step toward
+  this — seeds a generic automatic item promotion so the CONFLICT-8/PD-15 stacking-rejection path can be
+  demoed live), a browser-automation pass to independently re-verify the storefront UI's own re-render
+  after cart-change auto-invalidation, ~~Phase 7 (efficiency) + Tasks 6.6/6.10 of the code-review-fix
+  plan~~ **done as of 2026-07-16 session 2, see above — the entire plan is complete**, ~~merging
+  `fix/voucher-engine-code-review-findings` to `develop`~~ **the branch is now synced to `origin/develop`
+  @ `6f7ce31` and PR-ready as of 2026-07-16 session 3 (see the dated entry above); the only remaining
+  step is Cealus opening the MR**, and — immediately after that merge — a full
+  combined test re-run across both lanes' changes together (unit, module-integration, HTTP-integration all
+  run once, not per-branch) since neither lane's last-known-good counts above reflect the other lane's
+  changes.
 
 > Older entries are historical snapshots and may contain findings corrected by later sessions. The latest
 > authoritative summary and latest dated verification section are the current source of truth.
+
+## 2026-07-16 (session 1) — `fix/voucher-engine-code-review-findings`: across-split fractional-adjustment fix + test coverage
+
+**Scope of this session:** not a `docs/tasks_grouped.md` task ID — this is the `fix/voucher-engine-code-review-findings`
+branch, working off `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md` (the `[max]`
+code-review fix plan). A prior session on this same branch had already completed and committed the entire
+plan (Phases 1–6, Task 1.1–6.9, 20 commits) and then gone on to Day-6 demo/evidence work beyond the plan
+(creating `src/scripts/seed-voucher-cap-demo.ts`), during which it reproduced the previously-flagged
+2026-07-15 across-split fractional-adjustment bug (see the corrected lesson below) and started implementing
+the fix live — that session ended (crashed) with the fix implemented but uncommitted, no test written, and
+no progress/lesson entry recorded. This session's job: recover the context, and (per explicit instruction)
+finish the fix properly — write the missing test coverage, verify, then commit.
+
+### Starting state found (context-recovery audit, before any code change)
+
+`git status` on `fix/voucher-engine-code-review-findings` showed uncommitted changes to
+`apps/backend/src/modules/voucher-engine/lib/money.ts` and
+`apps/backend/src/workflows/voucher-engine/steps/verify-cart-totals.ts`, plus two untracked files
+(`docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`,
+`apps/backend/src/scripts/seed-voucher-cap-demo.ts`). Cross-referencing `git log` against the plan file
+confirmed all 20 plan commits (Task 1.1–6.9) were already present; the uncommitted diff matched exactly the
+"candidate fix 1" already proposed in
+`.claude/lessons/voucher-engine/2026-07-15-scoped-voucher-across-split-fractional-adjustment.md` (sum the
+voucher's per-line adjustments at full precision and validate only the aggregate is integer) — a real,
+previously-flagged bug fix, not a distraction. `money.ts` had gained an exported `sumRawToInt` (plus renaming
+the private `unwrapNumeric` to an exported `toRawNumber`); `verify-cart-totals.ts`'s adjustment-total step
+had switched from per-adjustment `toInt` + `sumInts` to `sumRawToInt` over raw (unconverted) adjustment
+amounts.
+
+### Item — across-split fractional-adjustment fix (2026-07-15 lesson)
+
+**Status:** Done — implementation (found already written, uncommitted) + test coverage (written this
+session) + commit.
+
+**Mapped SPEC section(s):** §14.2-A, §23.4, §10 (same as the lesson).
+
+**Previous state:** implemented but wholly uncommitted, with zero test coverage and no record of the fix in
+this progress file or the lesson file.
+
+**Implementation completed:** no production-logic change was made this session — the pre-existing
+uncommitted diff was reviewed and confirmed correct against the lesson's candidate fix 1, then test coverage
+was added to properly close the TDD loop before committing.
+
+**Exact files created:** none.
+
+**Exact files modified:**
+
+- `apps/backend/src/modules/voucher-engine/lib/money.ts` (already modified, uncommitted, before this
+  session — verified, not re-written)
+- `apps/backend/src/workflows/voucher-engine/steps/verify-cart-totals.ts` (same)
+- `apps/backend/src/modules/voucher-engine/lib/__tests__/money.unit.spec.ts` (this session — added 8 new
+  test cases)
+
+**Important symbols:** `sumRawToInt(values: unknown[], label: string): number` (new, exported from
+`money.ts`), `toRawNumber(value: unknown, label: string): number` (renamed from the module-private
+`unwrapNumeric`, now exported so it's directly unit-testable and reusable by `sumRawToInt`).
+
+**Migrations:** none.
+
+**Integration wiring:** `verifyCartTotalsStep` (`steps/verify-cart-totals.ts`) is the sole caller of
+`sumRawToInt`, replacing its prior per-adjustment `toInt` + `sumInts` combination for the voucher's own
+adjustment total specifically (the non-voucher Rule-11-shrink-guard sum, a few lines below, is intentionally
+left on the strict per-line `toInt`/`sumInts` path — that sum's inputs are ordinary item/order promotion
+adjustments, not an `across`-split ephemeral voucher promotion, so the per-line integer invariant still
+holds there).
+
+**Tests added:** `money.unit.spec.ts` — a `describe("toRawNumber", ...)` block (unwraps the same
+BigNumberValue shapes as `toInt`, but does not reject a non-integer; rejects an unrecognized shape) and a
+`describe("sumRawToInt", ...)` block: sums exact integers; reproduces the lesson's exact repro numbers
+(racket 2,000,000 + shoes 1,500,000, scoped 10% voucher → two fractional per-line adjustments
+114285.714285714... / 85714.285714286... summing to exactly 200,000); accepts BigNumberValue-shaped inputs
+(not just raw numbers); rejects a genuinely-fractional total (not just an allocation artifact); rejects a
+non-finite element; rejects an unsafe-integer total.
+
+**Commands executed:**
+
+- `pnpm test:unit -- money.unit.spec.ts` → **32/32 passing** (the new + pre-existing cases in that file).
+- `pnpm test:unit` (full suite) → **231/231 passing, 19 suites** — no regression anywhere else.
+- `npx tsc --noEmit -p tsconfig.json` (from `apps/backend/`) → same 2 PRE-EXISTING errors as every prior
+  session (`integration-tests/http/helpers/create-admin-user.ts` missing `jsonwebtoken`;
+  `src/admin/lib/sdk.ts` `import.meta`/CommonJS) — no new errors.
+
+**Actual results:** all green, as above. No HTTP-integration re-run was done this session (the lesson's own
+prior test file, `revalidate-voucher-workflow.spec.ts`, was deliberately restructured at the time to avoid
+tripping the multi-item apply path rather than reproducing it — re-adding a dedicated HTTP-level
+multi-item-scoped-voucher-apply regression test is flagged as a follow-up, not done this session, since the
+unit-level repro of the exact lesson numbers was judged sufficient to close the TDD loop for this
+pure-function fix).
+
+**Conflict and SPEC-update history:** none — this is an implementation-granularity fix (where the integer
+assertion is applied), not a business-rule change, matching the lesson's own "Related SPEC sections: no SPEC
+text changed" note.
+
+**Blockers and remaining work:** the fix is committed on `fix/voucher-engine-code-review-findings` but that
+branch is not yet merged to `develop`. A dedicated HTTP-integration regression test (scoped voucher applied
+to a real multi-item cart) is still a nice-to-have follow-up, not blocking.
+
+### Session verification summary
+
+- `pnpm test:unit -- money.unit.spec.ts` → 32/32 passing.
+- `pnpm test:unit` (full) → 231/231 passing, 19 suites.
+- `npx tsc --noEmit -p tsconfig.json` → 2 pre-existing errors only (unchanged from every prior session).
+
+### Conflicts/deviations recorded this session
+
+None found beyond what's already described above (the fix pre-dated this session; this session only added
+test coverage and closed the commit).
+
+### Lessons captured this session
+
+- Lesson action: Corrected
+  Lesson path: `.claude/lessons/voucher-engine/2026-07-15-scoped-voucher-across-split-fractional-adjustment.md`
+  Title: Scoped voucher + multi-item cart: the `fixed`/`across` ephemeral promotion (no `target_rules`)
+  splits the discount into FRACTIONAL per-line adjustments, and `verify-cart-totals`' per-adjustment `toInt`
+  throws
+  Related tasks: 3.5.3, 3.5.10 (original surfacing); code-review-findings branch, 2026-07-16 (fix)
+  One-sentence finding: The lesson's own candidate fix 1 (sum the voucher's adjustments raw and validate
+  only the aggregate) is now implemented as `sumRawToInt` in `money.ts` and wired into
+  `verifyCartTotalsStep` — the lesson's "Resolution" section is updated in place to record this rather than
+  still reading "not fixed this session".
+
+### Files created / modified this session
+
+**Modified:** `apps/backend/src/modules/voucher-engine/lib/__tests__/money.unit.spec.ts` (new test cases);
+`.claude/lessons/voucher-engine/2026-07-15-scoped-voucher-across-split-fractional-adjustment.md` (corrected
+Resolution/Applicability + revision-history footer); `.claude/lessons/voucher-engine/INDEX.md` (updated row);
+`.claude/progress/voucher-engine-progress.md` (this entry + refreshed current-summary block).
+**Committed this session (already-uncommitted-before-this-session code, now landed):** commit `69ff1af`
+`fix(backend): sum voucher adjustment lines at full precision before the integer check`, touching
+`apps/backend/src/modules/voucher-engine/lib/money.ts`,
+`apps/backend/src/modules/voucher-engine/lib/__tests__/money.unit.spec.ts`,
+`apps/backend/src/workflows/voucher-engine/steps/verify-cart-totals.ts`.
+**Left untouched, still uncommitted/untracked (explicitly out of this session's scope):**
+`hf-medusa-store/apps/storefront/tsconfig.tsbuildinfo` (build artifact),
+`docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md` (the plan file itself),
+`hf-medusa-store/apps/backend/src/scripts/seed-voucher-cap-demo.ts` (separate Day-6 demo seed script, a
+different piece of work from the same prior session).
+
+### Confirmation of scope
+
+Only the across-split fractional-adjustment fix was worked on this session (test coverage + commit). No
+other code-review-fix-plan task (Task 6.6, 6.10, or any of Phase 7) was implemented or touched;
+`seed-voucher-cap-demo.ts` was read for context only, not modified or committed; no merge to `develop` was
+performed.
+
+**Overall session status:** Complete for the stated scope. The across-split fractional-adjustment bug —
+open since 2026-07-15 as a named handoff — is now fixed, tested (8 new unit cases, exact lesson-repro
+numbers included), committed (`69ff1af`), and the lesson + this progress file are updated to reflect it.
+Still pending: merging `fix/voucher-engine-code-review-findings` to `develop`, Task 6.6/6.10, all of Phase 7,
+and the optional HTTP-level regression test noted above.
+
+## 2026-07-16 (session 2) — `fix/voucher-engine-code-review-findings`: finish the plan (Task 6.6, 6.10, 7.1–7.3)
+
+**Scope of this session:** the 5 remaining items from `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`
+that session 1 (this same day) had not reached: Task 6.6 (redundant `has_voucher` field), 6.10 (reuse
+suggestive-selling's `roundMoney`), and all of Phase 7 (7.1 parallelize voucher-analytics lookups, 7.2
+DB-side analytics aggregate, 7.3 duplicate `query.graph` reads in `apply-voucher.ts`). User explicitly
+approved continuing after being told each task's risk level; work proceeded one task at a time (lowest
+risk first: 6.6 → 7.1 → 6.10 → 7.2 → 7.3), each verified and committed separately before starting the
+next, per this project's checkpointed-execution preference.
+
+### Task 6.6 — `has_voucher` field
+
+**Status:** Done — evaluated, KEPT (not removed), documented why.
+
+**Finding:** the plan assumed ≤1 caller; `grep` found `revalidateVoucherWorkflow` reads
+`existing.has_voucher` 3 times (`shouldRecompute`, `shouldRemove`, the final `revalidated` output) across
+separate `transform()` callbacks that don't have `active` in scope otherwise. Removing it would mean
+recomputing `!!existing.active` at 3 call sites with no clarity gain — the plan's own escape hatch
+("keep it only if callers read it more than once... if it simplifies call sites, keep it") applies.
+
+**Files modified:** `apps/backend/src/workflows/voucher-engine/steps/check-voucher-exists.ts` (doc comment
+only, no behavior change).
+
+**Tests:** none needed (no behavior change); `pnpm test:unit` 231/231 (unchanged) confirms it.
+
+**Commit:** `17c636c` `docs(backend): document has_voucher as intentional, not redundant (Task 6.6)`.
+
+### Task 7.1 — parallelize voucher-analytics lookups
+
+**Status:** Done.
+
+**Implementation:** `voucherAnalyticsStep`'s sequential `await retrieveVoucherConfig(...)` then
+`await listVoucherUsageLogs(...)` became a single `Promise.all([...])` — the two reads have no data
+dependency; if the voucher doesn't exist, `Promise.all` still rejects with the same 404-mapped
+`MedusaError` `retrieveVoucherConfig` throws.
+
+**Files modified:**
+`apps/backend/src/workflows/voucher-engine/admin/steps/voucher-analytics.ts`.
+
+**Tests:** existing `voucher-admin.spec.ts` HTTP suite (unchanged assertions) — re-run to confirm no
+regression: **7/7 passing**.
+
+**Commit:** `4fe59c4`
+`perf(backend): parallelize the two independent voucher-analytics lookups (Task 7.1)`.
+
+### Task 6.10 — reuse suggestive-selling's `roundMoney`
+
+**Status:** Done — evaluated, KEPT separate (not merged), documented why.
+
+**Finding:** `suggestive-selling/utils/money.ts`'s `roundMoney` is a bare `Math.floor(value)` — the same D1
+floor rule VoucherEngine's `bps()` also uses, but `bps()` isn't just that one floor call: it's a
+basis-points-specific division with its own safe-integer overflow guard on `amount * basisPoints` that
+must run before the divide. Reusing `roundMoney` for just the final `Math.floor` would add a cross-module
+dependency onto VoucherEngine's INT-01 money math (this file's own header says it stays "deliberately
+dependency-free") for zero behavioral gain, and would silently couple VoucherEngine's rounding to whatever
+suggestive-selling decides `roundMoney` should do in the future. Kept separate per the plan's own escape
+hatch for a real, documented divergence.
+
+**Files modified:** `apps/backend/src/modules/voucher-engine/lib/money.ts` (doc comment only, no behavior
+change).
+
+**Tests:** none needed (no behavior change); `pnpm test:unit` 231/231 (unchanged) confirms it.
+
+**Commit:** `1e055f2`
+`docs(backend): document why bps() keeps its own Math.floor over reusing suggestive-selling's roundMoney (Task 6.10)`.
+
+### Task 7.2 — DB-side aggregate for voucher analytics
+
+**Status:** Done — real code change.
+
+**Finding first:** `voucher_usage_log` has NO `order_value` column at all (confirmed via the model file and
+a repo-wide grep) — `avg_order_value`/`conversion_rate` were already a constant `0` for every real DB-backed
+row before this change (the `computeAnalytics` pure helper's `avg_order_value` branch only ever fires for
+synthetic rows in its own unit test). So the DB-side aggregate only needed to cover the 3 fields that
+actually vary with real data: `total_uses`, `total_discount_given`, `capped_count`.
+
+**Implementation:** new `VoucherEngineService.getUsageAnalyticsAggregate(voucherId)` (`@InjectManager`,
+read-only, no transaction needed) runs one `COUNT(*)` / `COALESCE(SUM(discount_applied), 0)` /
+`COUNT(*) FILTER (WHERE was_capped)` query via `knex` (same `manager.getKnex()` idiom
+`redeemVoucherAtomic` already used) instead of `listVoucherUsageLogs` fetching every row for
+`computeAnalytics` to reduce in JS. `discount_applied`/`was_capped` are `integer`/`boolean not null`
+columns (verified in the migrations), so the DB sum/count needs no per-row floor/null-guard the old JS
+reduce had. Postgres returns `COUNT`/`SUM` as bigint-typed strings via node-pg — converted back with the
+existing `toInt` (same module's `lib/money.ts`, no `parseFloat`). `voucherAnalyticsStep` now calls this
+instead of `listVoucherUsageLogs` + `computeAnalytics`, hardcoding `avg_order_value: 0` /
+`conversion_rate: 0` directly (same values `computeAnalytics` always produced anyway for real data).
+`computeAnalytics` itself is UNCHANGED, still unit-tested, kept as documented reference for when
+`order_value` sourcing eventually lands — just no longer called from this step (confirmed via grep: its
+only remaining caller is its own unit test).
+
+**Files modified:** `apps/backend/src/modules/voucher-engine/service.ts` (new method + new
+`UsageAnalyticsAggregate` interface, new `toInt` import);
+`apps/backend/src/workflows/voucher-engine/admin/steps/voucher-analytics.ts` (calls the new aggregate
+instead of the old row-fetch).
+
+**Tests added:** `apps/backend/integration-tests/http/voucher-admin.spec.ts` — new case creates 3 real
+`VoucherUsageLog` rows (100,000/not-capped, 250,000/capped, 50,000/capped) via
+`service.createVoucherUsageLogs` and asserts the analytics response exactly matches: `total_uses: 3`,
+`total_discount_given: 400_000`, `capped_count: 2`, `avg_order_value: 0`, `conversion_rate: 0` — proving
+the DB aggregate's numeric output against real rows, not just the pre-existing empty-voucher/all-zero
+case.
+
+**Commands executed:** `npx tsc --noEmit -p tsconfig.json` → same 2 pre-existing errors only;
+`pnpm test:unit` → 231/231; `TEST_TYPE=integration:http pnpm test:integration:http -- voucher-admin.spec.ts`
+→ **8/8 passing** (both the original 7 plus the new aggregate case).
+
+**Commit:** `75aad5d`
+`perf(backend): aggregate voucher analytics at the DB layer instead of reducing every row in JS (Task 7.2)`.
+
+### Task 7.3 — duplicate `query.graph` reads in `apply-voucher.ts`
+
+**Status:** Done — evaluated, KEPT separate (not merged), documented why.
+
+**Finding:** `checkActiveVoucherStep`'s metadata-only read and `loadCartContextStep`'s full-cart read are
+NOT the same read done twice — they read the cart at two sequentially-DEPENDENT points.
+`checkActiveVoucherStep` runs BEFORE the conditional "detach old ephemeral promotion" branch and its
+result (`hasPrevious`) decides whether that detach even runs; `loadCartContextStep` must run AFTER it,
+because its `item_promotion_discount` (the CONFLICT-8/PD-15 Rule-11 baseline `verifyCartTotalsStep` later
+checks) is only correct once the old ephemeral adjustment (if replacing) has actually been removed from
+the cart. Merging into one earlier read would corrupt that baseline for the replace case (the
+about-to-be-removed old voucher adjustment would be miscounted as an ordinary item promotion); merging
+into one later read would move the replace-confirmation gate to run AFTER the mutation it's supposed to
+gate, violating both tasks 3.4.6/3.4.7/3.4.8 and the Task 3.1 ordering fix this same plan already shipped.
+The plan's own escape hatch ("if the two reads can't be safely merged without re-introducing ordering
+risk, leave them separate and note why") applies squarely here.
+
+**Files modified:** `apps/backend/src/workflows/voucher-engine/apply-voucher.ts` (doc comment only, no
+behavior change).
+
+**Tests:** none needed (no behavior change) — re-ran the two HTTP suites that exercise this workflow to
+confirm: `apply-remove-voucher.spec.ts` **6/6 passing**, `revalidate-voucher-workflow.spec.ts` **7/7
+passing** (unaffected, but shares `loadCartContextStep`/`checkActiveVoucherStep`-adjacent logic worth
+re-confirming).
+
+**Commit:** `5f0066e`
+`docs(backend): document why apply-voucher keeps two separate cart query.graph reads (Task 7.3)`.
+
+### Session verification summary
+
+- `pnpm test:unit` (full, after all 5 tasks) → **231/231 passing, 19 suites** (unchanged count — only
+  Task 7.2 added tests, and those are HTTP-integration, not unit).
+- `TEST_TYPE=integration:http pnpm test:integration:http -- voucher-admin.spec.ts` → **8/8 passing**.
+- `TEST_TYPE=integration:http pnpm test:integration:http -- apply-remove-voucher.spec.ts` → **6/6
+  passing**.
+- `TEST_TYPE=integration:http pnpm test:integration:http -- revalidate-voucher-workflow.spec.ts` → **7/7
+  passing**.
+- `npx tsc --noEmit -p tsconfig.json` (backend) → same 2 pre-existing errors only, no new ones.
+- `pnpm build` (from the workspace root, backend + storefront) → **0 errors**, storefront 42/42 static
+  pages generated.
+
+### Conflicts/deviations recorded this session
+
+None. All 5 tasks resolved cleanly; 3 of the 5 (6.6, 6.10, 7.3) concluded "keep as-is, document why" per
+the plan's own explicitly-allowed escape hatches — this is a normal, anticipated outcome for those tasks,
+not a deviation.
+
+### Lessons captured this session
+
+None — no non-obvious bug, framework surprise, or reusable edge case surfaced. All 5 findings (the 3
+keep-as-is decisions, the `order_value` column never having existed, the `InjectManager`/`getKnex`
+aggregate pattern) are either already fully explained inline in the code comments added this session or
+are routine task completion, not lesson-worthy per `references/lessons.md`'s own bar.
+
+### Files created / modified this session
+
+**Modified:** `apps/backend/src/workflows/voucher-engine/steps/check-voucher-exists.ts`,
+`apps/backend/src/workflows/voucher-engine/admin/steps/voucher-analytics.ts`,
+`apps/backend/src/modules/voucher-engine/lib/money.ts`,
+`apps/backend/src/modules/voucher-engine/service.ts`,
+`apps/backend/integration-tests/http/voucher-admin.spec.ts`,
+`apps/backend/src/workflows/voucher-engine/apply-voucher.ts`, `.claude/progress/voucher-engine-progress.md`
+(this entry + refreshed current-summary block).
+**Created:** none.
+
+### Confirmation of scope
+
+Only the 5 named tasks (6.6, 6.10, 7.1, 7.2, 7.3) were worked on. No other item was implemented or
+touched; `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`,
+`apps/backend/src/scripts/seed-voucher-cap-demo.ts`, and `apps/storefront/tsconfig.tsbuildinfo` remain
+exactly as they were (untracked/build-artifact, not this session's concern). No merge to `develop` was
+performed.
+
+**Overall session status:** Complete. **The entire `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`
+plan (Task 1.1 through 7.3, all 7 phases) is now done on `fix/voucher-engine-code-review-findings`** —
+combined with session 1's fractional-adjustment fix (outside the plan but on the same branch), there is no
+more code-review-finding work left on this branch except merging it to `develop`.
+
+## 2026-07-16 (session 3) — `fix/voucher-engine-code-review-findings`: commit leftover rename + sync to develop (2 merges) + verify, PR-ready
+
+**Scope of this session:** no plan task ID — this was a Git-hygiene + develop-sync pass on the
+`fix/voucher-engine-code-review-findings` branch (the code-review plan itself was already complete after
+sessions 1–2). Goal: commit the remaining working-tree changes, pull the latest `develop` in and resolve
+conflicts, verify, and leave the branch PR-ready.
+
+### 1. Committed 4 leftover working-tree changes
+
+- `338c2ae` `fix(backend)` — renamed the `cart.metadata.voucher` snapshot key `raw_voucher_discount` →
+  **`uncapped_voucher_discount`** in `lib/ephemeral-promotion.ts` + `apply-voucher.ts` +
+  `revalidate-voucher-on-cart-change.ts` + `record-voucher-usage.ts` (reads snapshot, still writes the DB
+  column `raw_voucher_discount`) + the record-usage HTTP spec fixture. **Why:** Medusa's entity/response
+  serialization treats any `raw_<x>` JSONB key as the BigNumber-raw companion of a field `<x>` and
+  rewrites it to `{value,precision}` (plus injects a bogus `voucher_discount` sibling) wherever this blob
+  passes through that layer (`cart.updated` revalidation, `completeCartWorkflow` cart→order metadata copy),
+  corrupting the value `recordVoucherUsageWorkflow` writes to the real INTEGER column
+  `voucher_usage_log.raw_voucher_discount` — the write then throws and silently drops usage recording
+  (SEC/INT-02/INT-04 anti-over-redemption). The DB column and `calculate-discount.ts` field KEEP the
+  `raw_` name (real typed values, not a generic JSONB blob). Lesson:
+  [[medusa-raw-prefix-metadata-decoration-gotcha]].
+- `e5617fc` `fix(storefront)` — mirrored the same rename in `apps/storefront/src/modules/voucher/types.ts`.
+- `e734b7d` `chore(backend)` — added `src/scripts/seed-voucher-cap-demo.ts` (`DEMO-CAP-CONFLICT-40`: one
+  generic automatic item-level Promotion so the CONFLICT-8/PD-15 fail-closed stacking guard can be demoed
+  live; idempotent; demo-only).
+- `4fa0ce8` `docs` — added the plan file `docs/superpowers/plans/2026-07-16-voucher-engine-code-review-fixes.md`.
+- `apps/storefront/tsconfig.tsbuildinfo` deliberately NOT committed (generated build cache).
+
+### 2. Merged `origin/develop` twice to sync
+
+- **`213e426`** — merged develop up to `bc787a2`. **3 backend conflicts** (all in the rate-limit surface,
+  because develop had independently landed a version of the same 3.7.x work):
+  - `api/middlewares.ts` — comment-only; code (wire `voucherRateLimitMiddleware` before body validation)
+    identical on both sides. Merged comments.
+  - `api/middlewares/voucher-rate-limit.ts` — identical 429 response shape; kept our EN `message` +
+    develop's fuller comment.
+  - `api/store/carts/[id]/voucher/route.ts` — kept our shared `buildVoucherErrorResponse`; kept
+    `const ip = req.ip || null` (NEVER the spoofable `X-Forwarded-For`, dropping develop's `extractIp`
+    so the route's counter key matches `voucherRateLimitMiddleware`); **adopted develop's brute-force rule
+    `body.code === "VOUCHER_NOT_FOUND"`** — this is correct per **SPEC §9.3** (only `VOUCHER_NOT_FOUND`
+    counts; our old `status === 404 || 422` wrongly also counted `VOUCHER_INACTIVE` 422).
+- **`f4ab8d0`** — merged develop up to `6f7ce31`, which includes **`1b59128 "rebuild Voucher management"`**
+  (Thức's storefront voucher-UI rewrite). **2 storefront conflicts, resolved IN FAVOR OF THỨC'S NEW UI**
+  (Cealus confirmed Thức announced the rewrite):
+  - `modules/checkout/components/discount-code/index.tsx` — took Thức's version wholesale (`--theirs`):
+    new notice model (`voucherNotice`/`setVoucherNotice`/`shownNoticeRef`, surfaced once on the live
+    transition), `!err.customer_message → notFound` handling, `APPLY_SUCCESS_VI`/`REMOVE_SUCCESS_VI`,
+    stricter replace-confirm (`kind !== "success"`).
+  - `modules/voucher/types.ts` — took Thức's notice type name `VoucherAutoRemoveNotice` (+ its KNOWN-GAP
+    comment) but KEPT our `uncapped_voucher_discount` (outside the conflict; must match the backend key).
+    Confirmed no orphan references to the old `VoucherNoticeMetadata`/`readVoucherNotice`/`autoRemoveNotice`.
+
+### 3. Verified
+
+- `pnpm --filter @dtc/backend test:integration:http integration-tests/http/voucher-rate-limit.spec.ts` →
+  **1/1 PASS** — log shows 5×`VOUCHER_NOT_FOUND` (404) incrementing the counter 1→5 (5th `blocked=true`),
+  6th returns 429 with the shared `ErrorEnvelope` — exactly the §9.3 rule the merge adopted.
+- `pnpm --filter @dtc/backend test:integration:http integration-tests/http/apply-remove-voucher.spec.ts` →
+  **6/6 PASS** (SEC-01 tamper 400, apply + authoritative total, 409 replace-required, 404-not-409
+  while active, remove reverts total + no usage_count increment, remove no-op 200).
+- `apps/storefront` `pnpm exec tsc --noEmit` → **0 errors** (Thức's UI + our types agree).
+- Each HTTP suite run ALONE (the `--runInBand` multi-`medusaIntegrationTestRunner` flake, see
+  [[integration-test-runinband-isolation]]). No conflict markers left; `git diff --check` clean.
+
+**Result:** branch is synced to `origin/develop` @ `6f7ce31`, all conflicts resolved with tests green,
+committed and (per this session's end) pushed. **PR-ready → Cealus opens the MR to `develop`.**
 
 ## 2026-07-15 (session 3) — Day 5 (Thức, Slice 3): cart-consistency, auto-invalidation, order usage recording
 

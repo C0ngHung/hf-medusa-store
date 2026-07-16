@@ -34,8 +34,9 @@ import {
   when,
 } from "@medusajs/framework/workflows-sdk";
 import {
-  createPromotionsWorkflow,
+  acquireLockStep,
   deletePromotionsWorkflow,
+  releaseLockStep,
   updateCartPromotionsWorkflow,
 } from "@medusajs/core-flows";
 import { PromotionActions, Modules } from "@medusajs/framework/utils";
@@ -44,15 +45,11 @@ import type { ICartModuleService } from "@medusajs/framework/types";
 import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
-import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
-import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
 import { revalidateStep } from "./steps/revalidate-voucher";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
-import { toVoucherScope } from "./lib/mappers";
-import {
-  VOUCHER_METADATA_KEY,
-  generateEphemeralPromotionCode,
-} from "./lib/ephemeral-promotion";
+import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
+import { createAndAttachEphemeralPromotion } from "./lib/create-and-attach-ephemeral-promotion";
+import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import {
   VOUCHER_NOTICE_METADATA_KEY,
   VoucherAutoRemoveNotice,
@@ -108,6 +105,15 @@ const removeAndNotifyStep = createStep(
 export const revalidateVoucherWorkflow = createWorkflow(
   revalidateVoucherWorkflowId,
   (input: RevalidateVoucherWorkflowInput) => {
+    // Same lock namespace as applyVoucherWorkflow/removeVoucherWorkflow
+    // (EC-04) — a cart mutation's revalidation must not race an in-flight
+    // apply/remove request touching cart.metadata.voucher.
+    const lockKey = transform(
+      { input },
+      ({ input }) => `voucher:cart:${input.cart_id}`,
+    );
+    acquireLockStep({ key: lockKey, ttl: 10 });
+
     const existing = checkVoucherExistsStep({ cart_id: input.cart_id });
 
     const cart = loadCartContextStep({
@@ -143,77 +149,15 @@ export const revalidateVoucherWorkflow = createWorkflow(
     // (a Promotion's `value` is not mutated in place — Decision G).
     when({ shouldRecompute }, ({ shouldRecompute }) => shouldRecompute).then(
       () => {
-        const scope = transform({ lookup }, ({ lookup }) =>
-          toVoucherScope(
-            lookup.voucher ?? {
-              applicable_product_ids: null,
-              applicable_category_ids: null,
-            },
-          ),
-        );
+        const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
-        const resolved = resolveEligibleItemsStep({
-          lines: cart.lines,
-          scope,
+        const newPromotion = createAndAttachEphemeralPromotion({
+          cart_id: input.cart_id,
+          voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
+          cart,
+          discount,
+          attachStepName: "add-recomputed-ephemeral-promotion",
         });
-
-        const voucherTerms = transform({ lookup }, ({ lookup }) => ({
-          discount_type: lookup.voucher!.discount_type,
-          discount_value: lookup.voucher!.discount_value,
-          max_discount_amount: lookup.voucher!.max_discount_amount,
-        }));
-
-        const discount = calculateVoucherDiscountStep({
-          lines: resolved.lines,
-          voucher: voucherTerms,
-          global_cap_bps: lookup.global_cap_bps,
-        });
-
-        const newPromotionInput = transform(
-          { input, cart, discount, lookup },
-          ({ input, cart, discount, lookup }) => ({
-            promotionsData: [
-              {
-                code: generateEphemeralPromotionCode(
-                  input.cart_id,
-                  lookup.voucher!.id,
-                ),
-                type: "standard" as const,
-                status: "active" as const,
-                is_automatic: false,
-                application_method: {
-                  type: "fixed" as const,
-                  target_type: "items" as const,
-                  allocation: "across" as const,
-                  value: discount.final_voucher_discount,
-                  currency_code: cart.currency_code,
-                },
-              },
-            ],
-          }),
-        );
-
-        const created = createPromotionsWorkflow.runAsStep({
-          input: newPromotionInput,
-        });
-
-        const newPromotion = transform({ created }, ({ created }) => ({
-          id: created[0].id,
-          code: created[0].code as string,
-        }));
-
-        updateCartPromotionsWorkflow
-          .runAsStep({
-            input: transform(
-              { input, newPromotion },
-              ({ input, newPromotion }) => ({
-                cart_id: input.cart_id,
-                promo_codes: [newPromotion.code],
-                action: PromotionActions.ADD,
-              }),
-            ),
-          })
-          .config({ name: "add-recomputed-ephemeral-promotion" });
 
         writeVoucherCartMetadataStep({
           cart_id: input.cart_id,
@@ -226,7 +170,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
               ephemeral_code: newPromotion.code,
               discount_type: lookup.voucher!.discount_type,
               discount_value: lookup.voucher!.discount_value,
-              raw_voucher_discount: discount.raw_voucher_discount,
+              uncapped_voucher_discount: discount.raw_voucher_discount,
               voucher_discount_after_voucher_cap:
                 discount.voucher_discount_after_voucher_cap,
               discount_amount: discount.final_voucher_discount,
@@ -311,6 +255,8 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
       removeAndNotifyStep({ cart_id: input.cart_id, notice });
     });
+
+    releaseLockStep({ key: lockKey });
 
     return new WorkflowResponse(
       transform({ existing }, ({ existing }) => ({

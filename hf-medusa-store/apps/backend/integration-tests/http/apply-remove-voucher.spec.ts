@@ -204,6 +204,44 @@ medusaIntegrationTestRunner({
         expect(data.discount_amount).toBe(200_000); // 20% of 1,000,000
       });
 
+      it("returns 404 VOUCHER_NOT_FOUND (not 409 VOUCHER_REPLACE_REQUIRED) for a nonexistent code while a voucher is already active", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_notfound_order",
+          },
+        ]);
+        await createVoucher({
+          code: "ACTIVEVOUCHER",
+          discount_type: "percentage",
+          discount_value: 1000,
+        });
+
+        await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "ACTIVEVOUCHER" },
+          publishableKeyHeaders,
+        );
+
+        // Syntactically valid (passes the Zod shape check) but no matching
+        // row — must 404 (V1), never 409 (the replace-confirmation gate must
+        // not even be reached for a code that was never valid).
+        await expect(
+          api.post(
+            `/store/carts/${cart.id}/voucher`,
+            { code: "NOTREALCODE1" },
+            publishableKeyHeaders,
+          ),
+        ).rejects.toMatchObject({
+          response: {
+            status: 404,
+            data: expect.objectContaining({ code: "VOUCHER_NOT_FOUND" }),
+          },
+        });
+      });
+
       it("removes an applied voucher: reverts the cart total and does not increment usage_count (tasks 3.4.2/3.4.10)", async () => {
         const cart = await createCart([
           {

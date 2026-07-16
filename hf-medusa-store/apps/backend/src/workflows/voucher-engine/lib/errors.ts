@@ -223,6 +223,10 @@ export function throwVoucherError(
  * what the customer sees; `details` is optional structured data for the FE.
  * `request_id` is threaded from the route's own request id (Day 4 §23.5) —
  * never generated here, since only the route knows the true request id.
+ *
+ * SOURCE OF TRUTH for the storefront's manually-mirrored `VoucherErrorEnvelope`
+ * (`apps/storefront/src/modules/voucher/types.ts`) — no cross-app type-sharing
+ * convention exists in this repo, so if you change one, check the other.
  */
 export interface ErrorEnvelope {
   type:

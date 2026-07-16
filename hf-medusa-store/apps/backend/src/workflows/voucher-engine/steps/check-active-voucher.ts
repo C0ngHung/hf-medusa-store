@@ -12,12 +12,9 @@
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import {
-  VOUCHER_METADATA_KEY,
-  VoucherCartMetadata,
-} from "../lib/ephemeral-promotion";
+import { VoucherCartMetadata } from "../lib/ephemeral-promotion";
 import { throwVoucherError } from "../lib/errors";
+import { readVoucherCartMetadata } from "../lib/read-voucher-cart-metadata";
 
 export const checkActiveVoucherStepId = "check-active-voucher";
 
@@ -36,20 +33,8 @@ export interface CheckActiveVoucherOutput {
 export const checkActiveVoucherStep = createStep(
   checkActiveVoucherStepId,
   async (input: CheckActiveVoucherInput, { container }) => {
-    const query = container.resolve(ContainerRegistrationKeys.QUERY);
-
-    const { data } = await query.graph({
-      entity: "cart",
-      filters: { id: input.cart_id },
-      fields: ["id", "metadata"],
-    });
-
-    const cart = data?.[0] as
-      | { metadata?: Record<string, unknown> }
-      | undefined;
-    const existing = cart?.metadata?.[VOUCHER_METADATA_KEY] as
-      | VoucherCartMetadata
-      | undefined;
+    const { active: existing, previous_metadata } =
+      await readVoucherCartMetadata(container, input.cart_id);
 
     if (existing && input.replace !== true) {
       throwVoucherError("VOUCHER_REPLACE_REQUIRED", {
@@ -58,8 +43,8 @@ export const checkActiveVoucherStep = createStep(
     }
 
     const output: CheckActiveVoucherOutput = {
-      previous: existing ?? null,
-      previous_metadata: cart?.metadata ?? null,
+      previous: existing,
+      previous_metadata,
     };
     return new StepResponse(output);
   },
