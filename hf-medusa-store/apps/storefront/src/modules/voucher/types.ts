@@ -34,14 +34,23 @@ export type VoucherCartMetadata = {
 }
 
 /**
- * `cart.metadata.voucher_notice` — async auto-remove reason (SPEC §11.3 step
- * 3b / §8.4), mirrors the backend's `VoucherAutoRemoveNotice`
- * (`workflows/voucher-engine/lib/auto-remove-notice.ts`). Written when
- * `revalidateVoucherWorkflow` auto-removes a voucher after a cart change;
- * cleared (key absent) once a new voucher is successfully applied/recomputed
- * or the customer manually removes their voucher.
+ * `cart.metadata.voucher_notice` — the async auto-remove notice
+ * `revalidateVoucherWorkflow` writes when a cart mutation invalidates the
+ * active voucher (SPEC §11.3 step 3b/§8.4). Verified against
+ * `workflows/voucher-engine/lib/auto-remove-notice.ts`'s
+ * `VoucherAutoRemoveNotice`. `customer_message` is pre-filled server-side —
+ * render it verbatim, never reformat `reason_vi`/`voucher_code` client-side.
+ *
+ * KNOWN GAP: the backend does not clear this key after a later successful
+ * (re)apply, so it persists in `cart.metadata` indefinitely once written. The
+ * storefront only surfaces it on the live transition it observes (an active
+ * voucher disappearing on the same render this key is populated) and never
+ * re-shows an already-surfaced notice for the same voucher — this avoids
+ * resurfacing a stale notice on an unrelated later page load, but also means
+ * a customer who reloads the page strictly after the auto-removal (without
+ * ever seeing the transition) will not see it retroactively.
  */
-export type VoucherNoticeMetadata = {
+export type VoucherAutoRemoveNotice = {
   code: "VOUCHER_AUTO_REMOVED"
   reason_code: string
   voucher_code: string
@@ -97,6 +106,14 @@ export type AvailableVoucher = {
   valid_to: string
   min_order: number | null
   applicable_categories: string[]
+  /**
+   * Only present when `fetchAvailableVouchers` was called with a cart id.
+   * Computed server-side (V5 min-order, V6 scope) against that cart's
+   * CURRENT contents — never re-derived client-side (SRS: UI must not
+   * duplicate voucher business validation).
+   */
+  eligible?: boolean
+  ineligible_reason?: string
 }
 
 /**

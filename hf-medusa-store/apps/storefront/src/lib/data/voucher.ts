@@ -155,13 +155,23 @@ export async function removeVoucher(): Promise<
  * `GET /store/customers/me/vouchers` ("Voucher khả dụng", Decision F).
  * Degrades to an empty list on any transport failure — an unavailable list
  * must never break the cart page.
+ *
+ * `cartId`, when passed, asks the backend to also compute `eligible`/
+ * `ineligible_reason` per voucher against that cart's current contents (V5
+ * min-order, V6 scope) — reusing the same server-side validators the real
+ * apply flow uses, never re-derived here (SRS: UI must not duplicate
+ * business validation).
  */
-export async function fetchAvailableVouchers(): Promise<AvailableVoucher[]> {
+export async function fetchAvailableVouchers(
+  cartId?: string,
+): Promise<AvailableVoucher[]> {
   try {
-    const result = await voucherFetch<{ vouchers: AvailableVoucher[] }>(
-      "/store/customers/me/vouchers",
-      { method: "GET" },
-    )
+    const path = cartId
+      ? `/store/customers/me/vouchers?cart_id=${encodeURIComponent(cartId)}`
+      : "/store/customers/me/vouchers"
+    const result = await voucherFetch<{ vouchers: AvailableVoucher[] }>(path, {
+      method: "GET",
+    })
     return result.ok ? (result.data.vouchers ?? []) : []
   } catch {
     return []
