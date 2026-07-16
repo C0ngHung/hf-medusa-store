@@ -1,4 +1,3 @@
-import { Modules } from "@medusajs/framework/utils";
 import type { MedusaContainer } from "@medusajs/framework/types";
 import {
   VOUCHER_CONFIG_CACHE_TTL,
@@ -6,6 +5,7 @@ import {
   COOLDOWN_S,
 } from "../modules/voucher-engine/constants";
 import { normalizeCode } from "../workflows/voucher-engine/lib/normalize";
+import { resolveCache, CacheClient } from "./cache";
 
 /**
  * VoucherEngine cache helpers (3.7.1, 3.7.2) — mirror lib/suggestion-cache.ts.
@@ -29,27 +29,18 @@ import { normalizeCode } from "../workflows/voucher-engine/lib/normalize";
  */
 
 /**
- * Minimal structural view of Medusa's cache service (`Modules.CACHE`). We depend
- * only on these three methods so callers need not import the full ICacheService.
+ * Minimal structural view of Medusa's cache service (`Modules.CACHE`) — an
+ * alias of the shared `CacheClient` (`./cache.ts`), kept under this repo's
+ * established name so existing VoucherEngine call sites are unaffected.
  */
-export interface VoucherCache {
-  get<T = unknown>(key: string): Promise<T | null>;
-  set(key: string, data: unknown, ttl?: number): Promise<void>;
-  invalidate(key: string): Promise<void>;
-}
+export type VoucherCache = CacheClient;
 
 /**
- * Resolve the cache module, or `null` when it is not registered/resolvable (D11).
- * Callers treat `null` as "caching disabled" and proceed without it. Shared by all
- * VoucherEngine Redis helpers (rate-limit, usage-counter).
+ * Resolve the cache module, or `null` when it is not registered/resolvable
+ * (D11). Callers treat `null` as "caching disabled" and proceed without it.
+ * Shared by all VoucherEngine Redis helpers (rate-limit, config cache).
  */
-export function cache(container: MedusaContainer): VoucherCache | null {
-  try {
-    return container.resolve(Modules.CACHE) as VoucherCache;
-  } catch {
-    return null;
-  }
-}
+export const cache = resolveCache;
 
 // ── Key builders ──
 
