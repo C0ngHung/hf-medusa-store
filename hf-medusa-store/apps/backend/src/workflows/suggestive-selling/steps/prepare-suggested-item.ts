@@ -63,18 +63,25 @@ export const prepareSuggestedItemStep = createStep(
     const cartModule = container.resolve(Modules.CART);
     const suggestive: any = container.resolve(SUGGESTIVE_SELLING_MODULE);
 
-    // 1. Attribution (SEC-01). Tier-1 carries a rule_id → it MUST exist & be
-    //    active. Tier-2 (category) has no rule_id → nothing to validate.
+    // 1. Attribution (SUGG-006, EC-09). A Tier-1 suggestion carries a rule_id;
+    //    we look the rule up only to enrich the analytics label (tier). This is
+    //    METADATA — it must never gate the cart operation. If the rule was
+    //    deactivated/removed after the suggestion was shown (EC-09: "adding the
+    //    suggested product still works, no error"), the product still exists, so
+    //    we drop the now-invalid attribution and add anyway rather than blocking
+    //    the customer. Tier-2/cart carry no rule_id → nothing to look up.
     let tier: string | null = null;
-    if (input.attribution.rule_id) {
+    let ruleId: string | null = input.attribution.rule_id ?? null;
+    if (ruleId) {
       const rules = await suggestive.listSuggestionRules(
-        { id: input.attribution.rule_id, is_active: true },
+        { id: ruleId, is_active: true },
         { select: ["id", "tier"] },
       );
-      if (!rules.length) {
-        throw new SuggestedItemError("SUGGESTION_INVALID_ATTRIBUTION");
+      if (rules.length) {
+        tier = rules[0].tier ?? null;
+      } else {
+        ruleId = null; // rule inactive/gone → drop attribution, still add (EC-09)
       }
-      tier = rules[0].tier ?? null;
     }
 
     // 2. Idempotency (D8 / EC-03): a prior line item on this cart already tagged
@@ -123,7 +130,7 @@ export const prepareSuggestedItemStep = createStep(
     //    item) + the add_to_cart analytics event. Stock is re-checked
     //    authoritatively by addToCartWorkflow's internal inventory confirm.
     const metadata: LineItemMeta = {
-      suggestion_rule_id: input.attribution.rule_id ?? null,
+      suggestion_rule_id: ruleId,
       source_context: input.attribution.source_context,
       source_product_id: input.attribution.source_product_id ?? null,
       tier,
@@ -137,7 +144,7 @@ export const prepareSuggestedItemStep = createStep(
         action: "add_to_cart",
         suggested_product_id: input.product_id,
         source_product_id: input.attribution.source_product_id ?? null,
-        rule_id: input.attribution.rule_id ?? null,
+        rule_id: ruleId,
         source_context: input.attribution.source_context,
         tier,
         slot: input.slot ?? null,
