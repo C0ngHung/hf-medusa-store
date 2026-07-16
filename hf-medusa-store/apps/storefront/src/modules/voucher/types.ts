@@ -100,6 +100,11 @@ export type AvailableVoucher = {
  * API_CONTRACT §4 error envelope (SPEC §8.3) — the one shape every
  * VoucherEngine store-route error response uses, verified against
  * `workflows/voucher-engine/lib/errors.ts`'s `toErrorEnvelope`.
+ *
+ * SOURCE OF TRUTH: `apps/backend/src/workflows/voucher-engine/lib/errors.ts`
+ * (`ErrorEnvelope`). No cross-app type-sharing convention exists in this repo
+ * (separate tsconfigs/builds), so this is a manually-mirrored copy — if you
+ * change one, check the other for drift.
  */
 export type VoucherErrorEnvelope = {
   type:
