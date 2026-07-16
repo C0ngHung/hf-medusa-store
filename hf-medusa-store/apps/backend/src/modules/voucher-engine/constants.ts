@@ -22,4 +22,4 @@ export const FAIL_THRESHOLD = 5;
 export const FAIL_WINDOW_S = 15 * 60;
 
 // 3.7.5 — cooldown (seconds) applied once the threshold is exceeded (30 min).
-export const COOLDOWN_S = 30 * 60;
+export const COOLDOWN_S = 60; // seconds => fix to 60*30 later

@@ -13,6 +13,17 @@ import { DEFAULT_CAP_PCT } from "../modules/voucher-engine/constants";
  *
  * Money = integer VND (INT-01). `discount_value` for percentage vouchers is in
  * BASIS-POINTS (1000 = 10%, 2000 = 20%); the global cap is 5000 = 50%.
+ *
+ * Also seeds ONE generic (non-VoucherEngine) Medusa Promotion, `RACKET2M`, for
+ * manual UI testing of generic-promotion + voucher coexistence and the 50%
+ * cap — VoucherEngine's own calculation is unchanged; this only adds a normal
+ * Promotion via the core Promotion module. Deliberately `fixed`/`items`/
+ * `across`, NOT `percentage`: a coexisting PERCENTAGE item/order Promotion
+ * hits the Rule-11 stacking guard (CONFLICT-8/PD-15,
+ * `workflows/voucher-engine/steps/verify-cart-totals.ts` step 4) and gets
+ * rejected with `VOUCHER_STACKING_UNSUPPORTED` — `fixed`/`across` is the same
+ * mechanism VoucherEngine's own ephemeral carrier uses (SPEC Decision G) and
+ * does not trigger that guard.
  */
 
 // Codes are stored UPPERCASE (see workflows/voucher-engine/lib/normalize).
@@ -115,5 +126,33 @@ export default async function seedVoucherEngine({ container }: ExecArgs) {
   });
   logger.info(
     `[seed:voucher] created global discount cap = ${DEFAULT_CAP_PCT} bp (50%).`,
+  );
+
+  // Idempotent wipe + insert (one generic Medusa Promotion for manual UI
+  // testing — coexistence with a voucher, and the 50% cap on a smaller cart;
+  // see the module header for why this is `fixed`, not `percentage`).
+  const promotionModule: any = container.resolve(Modules.PROMOTION);
+  const existingPromo = await promotionModule.listPromotions(
+    { code: "RACKET2M" },
+    { select: ["id"] },
+  );
+  if (existingPromo.length) {
+    await promotionModule.deletePromotions(existingPromo.map((p: any) => p.id));
+  }
+  await promotionModule.createPromotions({
+    code: "RACKET2M",
+    type: "standard",
+    status: "active",
+    is_automatic: false,
+    application_method: {
+      type: "fixed",
+      target_type: "items",
+      allocation: "across",
+      value: 2_000_000,
+      currency_code: "vnd",
+    },
+  });
+  logger.info(
+    "[seed:voucher] created generic promotion RACKET2M (2,000,000₫ off, fixed/items/across).",
   );
 }

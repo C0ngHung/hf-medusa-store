@@ -35,10 +35,18 @@ export async function voucherRateLimitMiddleware(
 
   const blocked = await isRateLimited(req.scope, customerId, ip);
   if (blocked) {
-    // Verbatim customer-facing VI message (aligns with EC-10 / API_CONTRACT).
+    // Same `ErrorEnvelope` shape every other VoucherEngine error uses
+    // (`lib/errors.ts`) — `customer_message` (VI, verbatim to the FE) is the
+    // field the storefront's generic error handling reads; `message` (EN) is
+    // for logs only. This response bypasses `toErrorEnvelope` (it's a
+    // middleware short-circuit, not a workflow error), so the shape is kept
+    // in sync with it by hand.
     res.status(429).json({
+      type: "rate_limited",
       code: "VOUCHER_RATE_LIMITED",
-      message: "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 30 phút.",
+      message: "rate limited: too many failed voucher attempts",
+      customer_message:
+        "Bạn đã thử quá nhiều lần. Vui lòng thử lại sau 30 phút.",
     });
     return;
   }
