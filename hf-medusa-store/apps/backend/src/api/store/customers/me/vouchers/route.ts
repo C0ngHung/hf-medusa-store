@@ -15,30 +15,60 @@
  * Read-only (`query.graph` + a Product-category name lookup) — no workflow,
  * per SPEC §12 ("read-only, no workflow").
  *
- * Optional `?cart_id=` — when supplied, each voucher additionally gets
- * `eligible`/`ineligible_reason` computed against that cart's CURRENT
- * contents (V5 min-order, V6 scope) so the storefront can show/disable an
- * "Apply" button per voucher without re-implementing any validation itself.
- * Reuses the exact same pure `v5MinOrder`/`v6Scope` functions and
- * `toErrorEnvelope` message-filling the real apply-time V1–V8 chain uses —
- * zero duplicated business logic, just an earlier look at the same checks.
- * V1–V4/V7/V8 are deliberately NOT run here: V1/V2 already hold (the
- * "currently active, currently valid" filter above), V3/V4 are usage-based
- * not cart-based (SPEC §9.2 revalidation-subset precedent excludes them from
- * cart-driven checks), V7 is a stub, and V8 (stacking) needs the cart's
- * current item-promotion state, which isn't relevant to "does this cart
- * qualify by category/subtotal" — matches the classic "wrong product/cart
- * too small" cases this feature targets.
+ * Optional `?cart_id=` — when supplied, each voucher additionally gets:
+ *  - `eligible`/`ineligible_reason` (V5 min-order, V6 scope), computed by
+ *    reusing the exact same pure `v5MinOrder`/`v6Scope` functions and
+ *    `toErrorEnvelope` message-filling the real apply-time V1–V8 chain uses;
+ *  - `estimated_savings` — the voucher discount (integer VND) this voucher
+ *    would produce against the cart's ORIGINAL (pre-any-other-promotion)
+ *    subtotal, via the SAME pure `calculateVoucherDiscount` +
+ *    `resolveEligibleItems` the real apply/resolve workflows call (§10).
+ *
+ *    Deliberately basis = ORIGINAL subtotal, NOT the real apply-time
+ *    "eligible post-promotion subtotal" (net of any OTHER item-level
+ *    promotion currently on the cart). Netting those out here would make
+ *    this number track a moving target for two reasons: (1) an existing
+ *    promotion's own discount can itself change over time (quantity tiers,
+ *    scheduling), and (2) actually attaching the voucher can retroactively
+ *    SHRINK a coexisting percentage item/order promotion (documented
+ *    Rule-11/CONFLICT-8 interaction, `verify-cart-totals.ts` step 4) — this
+ *    preview runs before any voucher is attached, so it cannot see that
+ *    shrink coming either way. Given both bases are approximations of the
+ *    real apply-time result whenever another promotion is active, the
+ *    original subtotal is preferred for being STABLE (same cart items →
+ *    same number, independent of another promotion's internal behavior) —
+ *    this is a browsing-time preview for ordering/display, not a price
+ *    guarantee; the actual apply call always recalculates authoritatively
+ *    server-side (SEC-01).
+ * The response list is then sorted: eligible vouchers first, and within each
+ * group by `estimated_savings` descending — "the voucher that saves the most
+ * on this cart floats to the top." A voucher blocked by scope naturally
+ * computes to 0 savings (its eligible subtotal is 0), so it already sinks to
+ * the bottom of the eligible group without special-casing; min-order-blocked
+ * vouchers are excluded from the top group entirely by the `eligible` sort key
+ * regardless of their computed amount, so a big-but-inapplicable number can't
+ * misleadingly rank above a smaller applicable one.
+ *
+ * V1–V4/V7/V8 are deliberately NOT run for eligibility: V1/V2 already hold
+ * (the "currently active, currently valid" filter above), V3/V4 are
+ * usage-based not cart-based (SPEC §9.2 revalidation-subset precedent
+ * excludes them from cart-driven checks), V7 is a stub, and V8 (stacking)
+ * needs the cart's current item-promotion state, which isn't relevant to
+ * "does this cart qualify by category/subtotal" — matches the classic "wrong
+ * product/cart too small" cases this feature targets.
  */
 
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { VOUCHER_ENGINE_MODULE } from "../../../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../../../modules/voucher-engine/service";
+import { toInt } from "../../../../../modules/voucher-engine/lib/money";
 import {
-  sumInts,
-  toInt,
-} from "../../../../../modules/voucher-engine/lib/money";
+  LineValue,
+  calculateOriginalSubtotal,
+  calculateVoucherDiscount,
+  resolveEligibleItems,
+} from "../../../../../modules/voucher-engine/lib/calculate-discount";
 import {
   v5MinOrder,
   v6Scope,
@@ -64,6 +94,10 @@ interface StoreVoucherDTO {
   /** Only present when `?cart_id=` was supplied. */
   eligible?: boolean;
   ineligible_reason?: string;
+  /** Integer VND, against the cart's ORIGINAL subtotal (not net of any other
+   * item promotion currently on the cart — see file header) — only present
+   * when `?cart_id=` was supplied. */
+  estimated_savings?: number;
 }
 
 /** The subset of `voucher_config` this route reads. Matches the model 1:1
@@ -99,15 +133,18 @@ function describeVoucher(voucher: {
   return `Giảm ${new Intl.NumberFormat("vi-VN").format(voucher.discount_value)}₫`;
 }
 
-/** Minimal cart read for the V5/V6 eligibility preview — original (pre-promotion)
- * subtotal + per-line product/category ids. No adjustments/promotion data needed:
- * V5 uses the ORIGINAL subtotal (decision D3), and V6 is pure product/category
- * matching. Returns null when the cart doesn't exist (never throws — an
- * unrecognized cart_id should degrade to "no eligibility info", not break the list). */
-async function loadEligibilityCartSnapshot(
+/** Cart read for the eligibility + "estimated savings" preview: original
+ * (pre-promotion) line values only. `item_promotion_discount` is fixed at 0
+ * for every line here, deliberately — this preview's basis is the cart's
+ * ORIGINAL subtotal, not net of whatever OTHER item-level promotion happens
+ * to be on the cart right now (see the file header for why: that basis is
+ * not stable). Returns null when the cart doesn't exist (never throws — an
+ * unrecognized cart_id should degrade to "no eligibility info", not break
+ * the list). */
+async function loadPreviewLines(
   scope: MedusaRequest["scope"],
   cartId: string,
-): Promise<CartSnapshot | null> {
+): Promise<LineValue[] | null> {
   const query = scope.resolve(ContainerRegistrationKeys.QUERY);
   const { data } = await query.graph({
     entity: "cart",
@@ -136,24 +173,15 @@ async function loadEligibilityCartSnapshot(
     | undefined;
   if (!rawCart) return null;
 
-  const items: CartLineSnapshot[] = (rawCart.items ?? []).map((item) => ({
-    product_id: item.product_id ?? "",
-    category_ids: (item.product?.categories ?? []).map((c) => c.id),
-    quantity: toInt(item.quantity, `item[${item.id}].quantity`),
+  return (rawCart.items ?? []).map((item) => ({
+    line_id: item.id,
     unit_price: toInt(item.unit_price, `item[${item.id}].unit_price`),
+    quantity: toInt(item.quantity, `item[${item.id}].quantity`),
+    item_promotion_discount: 0,
+    product_id: item.product_id ?? null,
+    category_ids: (item.product?.categories ?? []).map((c) => c.id),
+    is_eligible: false, // set per-voucher by resolveEligibleItems below.
   }));
-
-  const original_subtotal = sumInts(
-    items.map((i) => i.unit_price * i.quantity),
-    "eligibility.original_subtotal",
-  );
-
-  return {
-    original_subtotal,
-    items,
-    // V8 (stacking) is not evaluated by this preview — see file header.
-    has_item_promotion: false,
-  };
 }
 
 /** V5 + V6 only, fail-fast in that order (matches the real V1→V8 ordering). */
@@ -222,11 +250,12 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
 
   const cartId =
     typeof req.query.cart_id === "string" ? req.query.cart_id : undefined;
-  const cartSnapshot = cartId
-    ? await loadEligibilityCartSnapshot(req.scope, cartId)
+  const previewLines = cartId
+    ? await loadPreviewLines(req.scope, cartId)
     : null;
+  const globalCapBps = previewLines ? await ve.getActiveCap() : null;
 
-  const vouchers: StoreVoucherDTO[] = currentlyValid.map((v) => {
+  let vouchers: StoreVoucherDTO[] = currentlyValid.map((v) => {
     const base: StoreVoucherDTO = {
       code: v.code,
       description: describeVoucher(v),
@@ -238,9 +267,52 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         .map((id) => categoryNameById.get(id))
         .filter((name): name is string => !!name),
     };
-    if (!cartSnapshot) return base;
-    return { ...base, ...checkCartEligibility(v, cartSnapshot) };
+    if (!previewLines || globalCapBps == null) return base;
+
+    const cartSnapshot: CartSnapshot = {
+      original_subtotal: calculateOriginalSubtotal(previewLines),
+      items: previewLines.map(
+        (line): CartLineSnapshot => ({
+          product_id: line.product_id ?? "",
+          category_ids: line.category_ids ?? [],
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+        }),
+      ),
+      // V8 (stacking) is not evaluated by this preview — see file header.
+      has_item_promotion: false,
+    };
+
+    const scopedLines = resolveEligibleItems(previewLines, {
+      product_ids: v.applicable_product_ids ?? [],
+      category_ids: v.applicable_category_ids ?? [],
+    });
+    const { final_voucher_discount } = calculateVoucherDiscount({
+      lines: scopedLines,
+      discount_type: v.discount_type,
+      discount_value: v.discount_value,
+      max_discount_amount: v.max_discount_amount,
+      global_cap_bps: globalCapBps,
+    });
+
+    return {
+      ...base,
+      ...checkCartEligibility(v, cartSnapshot),
+      estimated_savings: final_voucher_discount,
+    };
   });
+
+  if (previewLines) {
+    // "Smart order": eligible vouchers before ineligible ones (an ineligible
+    // voucher's raw discount number is not something the customer can
+    // actually get right now, so it must never outrank an eligible one just
+    // because the formula produces a bigger figure); within each group,
+    // biggest actual savings first.
+    vouchers = [...vouchers].sort((a, b) => {
+      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      return (b.estimated_savings ?? 0) - (a.estimated_savings ?? 0);
+    });
+  }
 
   res.json({ vouchers });
 };
