@@ -15,6 +15,10 @@ import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import { VOUCHER_ENGINE_MODULE } from "../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../modules/voucher-engine/service";
 import type { PersistedVoucherConfig } from "../lib/mappers";
+import {
+  getCachedVoucherConfig,
+  setCachedVoucherConfig,
+} from "../../../lib/voucher-cache";
 
 export const lookupVoucherStepId = "lookup-voucher";
 
@@ -39,9 +43,20 @@ export const lookupVoucherStep = createStep(
       VOUCHER_ENGINE_MODULE,
     ) as VoucherEngineService;
 
-    const voucher = (await service.findByCode(
+    // 3.7.1/3.7.2 — cache ONLY the cart-independent config row; usage count
+    // and cap stay live/uncached (cart/customer-dependent).
+    let voucher = await getCachedVoucherConfig<PersistedVoucherConfig>(
+      container,
       input.code,
-    )) as PersistedVoucherConfig | null;
+    );
+    if (!voucher) {
+      voucher = (await service.findByCode(
+        input.code,
+      )) as PersistedVoucherConfig | null;
+      if (voucher) {
+        await setCachedVoucherConfig(container, input.code, voucher);
+      }
+    }
 
     const [user_usage_count, global_cap_bps] = await Promise.all([
       voucher
