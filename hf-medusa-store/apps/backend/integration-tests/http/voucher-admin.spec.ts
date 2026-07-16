@@ -119,5 +119,51 @@ medusaIntegrationTestRunner({
         );
       });
     });
+
+    describe("GET /admin/vouchers (list, admin table)", () => {
+      it("requires admin auth (SEC-04)", async () => {
+        const err = await api.get("/admin/vouchers").catch((e) => e.response);
+        expect(err.status).toBe(401);
+      });
+
+      it("lists created vouchers with the table's required fields", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "LISTME10" },
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const res = await api.get("/admin/vouchers", adminHeaders);
+        expect(res.status).toBe(200);
+        expect(typeof res.data.count).toBe("number");
+        expect(Array.isArray(res.data.vouchers)).toBe(true);
+
+        const row = res.data.vouchers.find((v: any) => v.id === id);
+        expect(row).toEqual(
+          expect.objectContaining({
+            id,
+            code: "LISTME10",
+            discount_type: "percentage",
+            discount_value: 1000,
+            usage_limit: null,
+            usage_count: 0,
+            is_active: true,
+          }),
+        );
+        expect(row.valid_from).toBeTruthy();
+        expect(row.valid_to).toBeTruthy();
+        expect(row.created_at).toBeTruthy();
+        expect(row.updated_at).toBeTruthy();
+      });
+
+      it("never includes native Promotion fields (reads voucher_config only)", async () => {
+        const res = await api.get("/admin/vouchers", adminHeaders);
+        for (const row of res.data.vouchers) {
+          expect(row).not.toHaveProperty("application_method");
+          expect(row).not.toHaveProperty("promotion_id");
+        }
+      });
+    });
   },
 });

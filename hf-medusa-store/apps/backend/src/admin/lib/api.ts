@@ -226,8 +226,22 @@ export const useSuggestionEvents = (filters: EventFilters = {}) =>
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — admin create + analytics only (SRS §6.4)            */
+/* VoucherEngine — admin list + create + analytics (SRS §6.4)          */
+/* Reads/writes ONLY the VoucherConfig table via /admin/vouchers* —    */
+/* never the native Promotion list (SPEC Decision C/G).                */
 /* ------------------------------------------------------------------ */
+
+const VOUCHERS_KEY = ["vouchers"];
+
+export const useVouchers = () =>
+  useQuery({
+    queryKey: VOUCHERS_KEY,
+    queryFn: () =>
+      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
+        "/admin/vouchers",
+        { query: { limit: 200 } },
+      ),
+  });
 
 export type CreateVoucherPayload = {
   code?: string;
@@ -245,14 +259,17 @@ export type CreateVoucherPayload = {
   is_active?: boolean;
 };
 
-export const useCreateVoucher = () =>
-  useMutation({
+export const useCreateVoucher = () => {
+  const qc = useQueryClient();
+  return useMutation({
     mutationFn: (body: CreateVoucherPayload) =>
       sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
         method: "POST",
         body,
       }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
   });
+};
 
 export const useVoucherAnalytics = (id: string) =>
   useQuery({
