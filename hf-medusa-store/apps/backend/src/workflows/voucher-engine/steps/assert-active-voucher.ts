@@ -10,11 +10,8 @@
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import {
-  VOUCHER_METADATA_KEY,
-  VoucherCartMetadata,
-} from "../lib/ephemeral-promotion";
+import { VoucherCartMetadata } from "../lib/ephemeral-promotion";
+import { readVoucherCartMetadata } from "../lib/read-voucher-cart-metadata";
 
 export const assertActiveVoucherStepId = "assert-active-voucher";
 
@@ -30,24 +27,12 @@ export interface AssertActiveVoucherOutput {
 export const assertActiveVoucherStep = createStep(
   assertActiveVoucherStepId,
   async (input: AssertActiveVoucherInput, { container }) => {
-    const query = container.resolve(ContainerRegistrationKeys.QUERY);
+    const { active, previous_metadata } = await readVoucherCartMetadata(
+      container,
+      input.cart_id,
+    );
 
-    const { data } = await query.graph({
-      entity: "cart",
-      filters: { id: input.cart_id },
-      fields: ["id", "metadata"],
-    });
-
-    const cart = data?.[0] as
-      | { metadata?: Record<string, unknown> }
-      | undefined;
-    const active = (cart?.metadata?.[VOUCHER_METADATA_KEY] ??
-      null) as VoucherCartMetadata | null;
-
-    const output: AssertActiveVoucherOutput = {
-      active,
-      previous_metadata: cart?.metadata ?? null,
-    };
+    const output: AssertActiveVoucherOutput = { active, previous_metadata };
     return new StepResponse(output);
   },
   // Read-only — no compensation.
