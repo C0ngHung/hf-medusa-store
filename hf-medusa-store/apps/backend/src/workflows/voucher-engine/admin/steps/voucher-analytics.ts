@@ -13,13 +13,14 @@ export const voucherAnalyticsStep = createStep(
   async (input: { id: string }, { container }) => {
     const service: any = container.resolve(VOUCHER_ENGINE_MODULE);
 
-    // 404 if missing (retrieve throws a MedusaError the framework maps to 404).
-    const voucher = await service.retrieveVoucherConfig(input.id);
-
-    const rows: UsageLogRow[] = await service.listVoucherUsageLogs(
-      { voucher_id: input.id },
-      { take: null },
-    );
+    // Independent reads — run concurrently. If the voucher doesn't exist,
+    // retrieveVoucherConfig throws a MedusaError the framework maps to 404;
+    // Promise.all rejects with that same error regardless of what
+    // listVoucherUsageLogs returned for the (about-to-404) id.
+    const [voucher, rows]: [{ id: string }, UsageLogRow[]] = await Promise.all([
+      service.retrieveVoucherConfig(input.id),
+      service.listVoucherUsageLogs({ voucher_id: input.id }, { take: null }),
+    ]);
 
     const analytics = computeAnalytics(rows ?? []);
     return new StepResponse({ voucher_id: voucher.id, ...analytics });
