@@ -9,11 +9,10 @@
  * actually carries the capped amount (Decision G, §14.2-A), and the
  * concurrency lock (§14.2-C).
  *
- * Deliberately EXCLUDES `checkRateLimitStep` (§11.1 step 2) — brute-force
- * rate-limiting is Hùng's Day 4 scope (tasks 3.7.1–3.7.8, `docs/tasks_grouped.md`),
- * not built yet. Inserting it later is additive (it slots in before
- * `checkActiveVoucherStep`, keyed on the same normalized code) and does not
- * require restructuring this workflow.
+ * Brute-force rate-limiting (§11.1 step 2, SEC-02/EC-10) is enforced at the
+ * HTTP boundary — `voucherRateLimitMiddleware` on the store route plus
+ * `recordFailedAttempt`/`resetFailedAttempts` in the route handler — not
+ * inside this workflow.
  */
 
 import {
@@ -33,6 +32,7 @@ import { PromotionActions } from "@medusajs/framework/utils";
 import { toVoucherScope } from "./lib/mappers";
 import { generateEphemeralPromotionCode } from "./lib/ephemeral-promotion";
 import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
+import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
@@ -63,9 +63,21 @@ export const applyVoucherWorkflow = createWorkflow(
 
     acquireLockStep({ key: lockKey, ttl: 10 });
 
+    // Existence check FIRST (SPEC V1) — a nonexistent/mistyped code must 404
+    // regardless of whether another voucher is already active on the cart;
+    // otherwise checkActiveVoucherStep's replace-confirmation gate below
+    // (which never sees `code`) would fire first and ask the customer to
+    // "replace" a code that was never valid in the first place.
+    const lookup = lookupVoucherStep({
+      code: input.code,
+      customer_id: transform({ input }, ({ input }) => input.customer_id ?? ""),
+    });
+    assertVoucherFoundStep({ voucher: lookup.voucher });
+
     // One-active-voucher / replace-confirmation gate (tasks 3.4.6/3.4.7/3.4.8) —
     // must run BEFORE any new Promotion is created (never remove a valid
-    // existing voucher before the replacement is validated).
+    // existing voucher before the replacement is validated). Only reached
+    // once the submitted code is confirmed to exist.
     const activeCheck = checkActiveVoucherStep({
       cart_id: input.cart_id,
       replace: input.replace,
@@ -103,11 +115,6 @@ export const applyVoucherWorkflow = createWorkflow(
           })),
         })
         .config({ name: "detach-old-ephemeral-promotion" });
-    });
-
-    const lookup = lookupVoucherStep({
-      code: input.code,
-      customer_id: transform({ input }, ({ input }) => input.customer_id ?? ""),
     });
 
     // Exclude the PREVIOUS voucher's own ephemeral adjustment (if replacing)
