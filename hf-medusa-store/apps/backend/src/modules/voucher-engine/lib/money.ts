@@ -108,6 +108,20 @@ export function assertSafeInt(value: number, label: string): void {
  * in VoucherEngine — `basisPoints` is an integer (2000 = 20.00%, §5.1).
  * Rounds DOWN (Math.floor) — favors the store, never produces fractional VND
  * (SPEC §10.2 rounding policy).
+ *
+ * Code-review Task 6.10: compared against `suggestive-selling/utils/money.ts`'s
+ * `roundMoney` (also `Math.floor`, same D1 floor-rounding decision). NOT
+ * reused here, deliberately: `bps` isn't just a floor call, it's a
+ * basis-points-specific division with its own safe-integer overflow guard on
+ * `amount * basisPoints` that must run before the divide — the actual
+ * `Math.floor` is one line of that, not the whole utility. Importing
+ * `roundMoney` for just that line would add a cross-module dependency onto
+ * this module's arithmetic (this file's own header says it stays
+ * "deliberately dependency-free" so it's trivially unit-testable in
+ * isolation), for zero behavioral gain since both already floor identically —
+ * and it would silently couple VoucherEngine's INT-01 rounding to whatever
+ * suggestive-selling decides `roundMoney` should do in the future. Not worth
+ * the coupling for a one-line dedup.
  */
 export function bps(amount: number, basisPoints: number): number {
   assertSafeInt(amount, "bps.amount");
