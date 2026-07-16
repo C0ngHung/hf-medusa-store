@@ -46,11 +46,9 @@ import type { ICartModuleService } from "@medusajs/framework/types";
 import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
-import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
-import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
 import { revalidateStep } from "./steps/revalidate-voucher";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
-import { toVoucherScope } from "./lib/mappers";
+import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import {
   VOUCHER_METADATA_KEY,
   generateEphemeralPromotionCode,
@@ -154,31 +152,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
     // (a Promotion's `value` is not mutated in place — Decision G).
     when({ shouldRecompute }, ({ shouldRecompute }) => shouldRecompute).then(
       () => {
-        const scope = transform({ lookup }, ({ lookup }) =>
-          toVoucherScope(
-            lookup.voucher ?? {
-              applicable_product_ids: null,
-              applicable_category_ids: null,
-            },
-          ),
-        );
-
-        const resolved = resolveEligibleItemsStep({
-          lines: cart.lines,
-          scope,
-        });
-
-        const voucherTerms = transform({ lookup }, ({ lookup }) => ({
-          discount_type: lookup.voucher!.discount_type,
-          discount_value: lookup.voucher!.discount_value,
-          max_discount_amount: lookup.voucher!.max_discount_amount,
-        }));
-
-        const discount = calculateVoucherDiscountStep({
-          lines: resolved.lines,
-          voucher: voucherTerms,
-          global_cap_bps: lookup.global_cap_bps,
-        });
+        const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
         const newPromotionInput = transform(
           { input, cart, discount, lookup },

@@ -29,16 +29,14 @@ import {
   updateCartPromotionsWorkflow,
 } from "@medusajs/core-flows";
 import { PromotionActions } from "@medusajs/framework/utils";
-import { toVoucherScope } from "./lib/mappers";
 import { generateEphemeralPromotionCode } from "./lib/ephemeral-promotion";
+import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
 import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { validateVoucherStep } from "./steps/validate-voucher";
-import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
-import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
 
@@ -135,28 +133,7 @@ export const applyVoucherWorkflow = createWorkflow(
       user_usage_count: lookup.user_usage_count,
     });
 
-    const scope = transform({ lookup }, ({ lookup }) =>
-      toVoucherScope(
-        lookup.voucher ?? {
-          applicable_product_ids: null,
-          applicable_category_ids: null,
-        },
-      ),
-    );
-
-    const resolved = resolveEligibleItemsStep({ lines: cart.lines, scope });
-
-    const voucherTerms = transform({ lookup }, ({ lookup }) => ({
-      discount_type: lookup.voucher!.discount_type,
-      discount_value: lookup.voucher!.discount_value,
-      max_discount_amount: lookup.voucher!.max_discount_amount,
-    }));
-
-    const discount = calculateVoucherDiscountStep({
-      lines: resolved.lines,
-      voucher: voucherTerms,
-      global_cap_bps: lookup.global_cap_bps,
-    });
+    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
     // EC-04: verify no concurrent mutation (e.g. an item removal) changed the
     // cart between loadCartContextStep's read and this point, right before we
