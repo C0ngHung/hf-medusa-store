@@ -42,10 +42,17 @@ export type ApplyVoucherBody = z.infer<typeof ApplyVoucherSchema>;
  * Query string for `POST /store/carts/:id/voucher` — `?replace=true` confirms
  * replacing an already-active voucher (API contract: otherwise `409
  * VOUCHER_REPLACE_REQUIRED`).
+ *
+ * Explicit string-literal match, NOT `z.coerce.boolean()` — Zod's coercion is
+ * `Boolean(value)`, and `Boolean("false")` is `true` (any non-empty string is
+ * truthy), which would silently invert `?replace=false`.
  */
 export const ApplyVoucherQuerySchema = z
   .object({
-    replace: z.coerce.boolean().optional(),
+    replace: z
+      .enum(["true", "false"])
+      .optional()
+      .transform((v) => v === "true"),
   })
   .strict();
 
