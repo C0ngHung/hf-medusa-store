@@ -76,6 +76,9 @@ export const POST = async (
   // `QueryConfig`, not suited to a single boolean flag.
   const { replace } = ApplyVoucherQuerySchema.parse(req.query);
   const customer_id = req.auth_context?.actor_id ?? null;
+  // Derive IP the SAME way `voucherRateLimitMiddleware` does (req.ip, never the
+  // spoofable X-Forwarded-For) so the counter key matches between the guard and
+  // this route (EC-10/SEC-02 identity).
   const ip = req.ip || null;
 
   try {
@@ -96,12 +99,11 @@ export const POST = async (
       cart_id,
       "apply-voucher",
     );
-    // Only a genuine "this code didn't work" outcome counts against the
-    // brute-force counter (V1-V8 rejections -> 404/422). A 409
-    // VOUCHER_REPLACE_REQUIRED means the code IS valid (just needs replace
-    // confirmation) and must never count as a failed guess; a 400/500 is an
-    // internal/calculation problem, not a guess (SEC-02/EC-10).
-    if (status === 404 || status === 422) {
+    // SPEC §9.3: only VOUCHER_NOT_FOUND is a guessing signal — every other
+    // rejection (incl. VOUCHER_INACTIVE 422, VOUCHER_REPLACE_REQUIRED 409, and
+    // 400/500 internal errors) means the code is known, so it must not count
+    // toward the brute-force counter.
+    if (body.code === "VOUCHER_NOT_FOUND") {
       await recordFailedAttempt(req.scope, customer_id, ip);
     }
     res.status(status).json(body);

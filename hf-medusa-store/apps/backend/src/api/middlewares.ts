@@ -30,10 +30,12 @@ import {
  * a single boolean flag).
  *
  * The voucher rate-limit middleware (api/middlewares/voucher-rate-limit.ts,
- * 3.7.3–3.7.5, SEC-02/EC-10) is registered on the store voucher POST route
- * below, BEFORE body validation — a request already in cooldown must 429
- * regardless of whether its payload is well-formed. DELETE is not
- * rate-limited: removing a voucher carries no code-guessing risk.
+ * 3.7.3–3.7.5, EC-10/SEC-02) runs before body validation on the apply route —
+ * SPEC §14.1 step 1 requires the cooldown check to gate the request before any
+ * validation runs — a request already in cooldown must 429 regardless of
+ * whether its payload is well-formed. DELETE is not rate-limited: removing a
+ * voucher carries no code-guessing risk. Admin writes need only body validation
+ * below.
  */
 export default defineMiddlewares({
   routes: [

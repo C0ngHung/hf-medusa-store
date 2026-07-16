@@ -71,13 +71,15 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     message: "original_subtotal < min_order_value",
     customer_message: "Mua thêm {remaining} nữa để dùng được mã này nhé!",
   },
-  // V6 — eligible items in scope. {categories} filled from details.
+  // V6 — eligible items in scope. `details.applicable_categories` carries raw
+  // category ids (v6Scope is a pure function — no I/O to resolve names here),
+  // so the message can't interpolate a human-readable list; it stays generic.
   VOUCHER_NO_ELIGIBLE_ITEMS: {
     code: "VOUCHER_NO_ELIGIBLE_ITEMS",
     http_status: 422,
     message: "no cart item matches applicable products/categories",
     customer_message:
-      "Mã này chỉ áp dụng cho {categories}. Giỏ hàng chưa có sản phẩm phù hợp.",
+      "Mã này chỉ áp dụng cho một số sản phẩm/danh mục nhất định. Giỏ hàng chưa có sản phẩm phù hợp.",
   },
   // V7 — segment (stubbed pass-through in Day 3; code kept for the boundary + future logic).
   VOUCHER_SEGMENT_NOT_ELIGIBLE: {

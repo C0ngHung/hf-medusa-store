@@ -8,7 +8,7 @@ import {
   SuggestionContext,
   SuggestionEventInput,
 } from "@modules/suggestions/types"
-import { getAuthHeaders, getCacheTag } from "./cookies"
+import { getAuthHeaders, getCacheTag, getSuggestionSessionId } from "./cookies"
 import {
   deleteLineItem,
   getOrSetCart,
@@ -40,7 +40,8 @@ export async function listProductSuggestions({
   sessionId?: string | null
 }): Promise<ProductSuggestionsResponse> {
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  if (sessionId) headers["x-session-id"] = sessionId
+  const resolvedSession = sessionId ?? (await getSuggestionSessionId())
+  if (resolvedSession) headers["x-session-id"] = resolvedSession
 
   return sdk.client
     .fetch<ProductSuggestionsResponse>(
@@ -73,7 +74,8 @@ export async function listCartSuggestions({
   sessionId?: string | null
 }): Promise<CartSuggestionsResponse> {
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  if (sessionId) headers["x-session-id"] = sessionId
+  const resolvedSession = sessionId ?? (await getSuggestionSessionId())
+  if (resolvedSession) headers["x-session-id"] = resolvedSession
 
   return sdk.client
     .fetch<CartSuggestionsResponse>(`/store/carts/${cartId}/suggestions`, {
@@ -97,7 +99,12 @@ export async function trackSuggestionEvents(
   if (!events.length) return
 
   const headers: Record<string, string> = { ...(await getAuthHeaders()) }
-  const sessionId = events.find((e) => e.session_id)?.session_id
+  // Prefer an explicit per-event session_id; else fall back to the browser's
+  // suggestion-session cookie so guest dismissals land in this browser's scope
+  // (and match the id the read path sends). Ignored server-side when logged in.
+  const sessionId =
+    events.find((e) => e.session_id)?.session_id ??
+    (await getSuggestionSessionId())
   if (sessionId) headers["x-session-id"] = sessionId
 
   try {
@@ -141,10 +148,20 @@ export async function undoAddSuggestedItem({
  * `add_to_cart` event server-side (2.6.10) — so the caller must NOT also track it.
  *
  * Creates the cart if none exists (getOrSetCart, mirroring addToCart) and
- * revalidates the cart cache so the storefront reflects the new line. Errors
- * (409 stock / 422 attribution·variant·inactive) propagate → the caller shows
- * the error toast.
+ * revalidates the cart cache so the storefront reflects the new line.
+ *
+ * Returns a typed result instead of throwing for expected outcomes. EC-07: the
+ * backend re-checks stock at execution and answers 409 SUGGESTION_STOCK_CONFLICT
+ * when the suggested item just went out of stock — we MUST detect that here on
+ * the server, because Next.js strips custom error fields (like `status`) when an
+ * error crosses the server-action boundary, so the client could never tell a
+ * 409 from any other failure. Unexpected setup failures still throw.
  */
+export type AddSuggestedItemResult =
+  | { status: "ok"; lineItemId: string | null; isReplay: boolean }
+  | { status: "out_of_stock" }
+  | { status: "error" }
+
 export async function addSuggestedItem({
   productId,
   variantId,
@@ -163,7 +180,7 @@ export async function addSuggestedItem({
     source_product_id?: string | null
   }
   slot?: number | null
-}): Promise<{ lineItemId: string | null; isReplay: boolean }> {
+}): Promise<AddSuggestedItemResult> {
   const cart = await getOrSetCart(countryCode)
   if (!cart) throw new Error("Error retrieving or creating cart")
 
@@ -172,22 +189,31 @@ export async function addSuggestedItem({
     "idempotency-key": idempotencyKey,
   }
 
-  const res = await sdk.client.fetch<{
+  let res: {
     line_item: { id: string } | null
     updated_cart_total: number
     is_idempotent_replay: boolean
-  }>(`/store/carts/${cart.id}/suggested-items`, {
-    method: "POST",
-    body: {
-      product_id: productId,
-      variant_id: variantId,
-      quantity: 1,
-      ...(slot != null ? { slot } : {}),
-      attribution,
-    },
-    headers,
-    cache: "no-store",
-  })
+  }
+  try {
+    res = await sdk.client.fetch(`/store/carts/${cart.id}/suggested-items`, {
+      method: "POST",
+      body: {
+        product_id: productId,
+        variant_id: variantId,
+        quantity: 1,
+        ...(slot != null ? { slot } : {}),
+        attribution,
+      },
+      headers,
+      cache: "no-store",
+    })
+  } catch (e) {
+    // FetchError carries the numeric HTTP status (readable here, on the server).
+    // 409 → the item sold out between render and tap (EC-07); any other status
+    // is an unexpected add failure.
+    const status = (e as { status?: number })?.status
+    return status === 409 ? { status: "out_of_stock" } : { status: "error" }
+  }
 
   const cartCacheTag = await getCacheTag("carts")
   revalidateTag(cartCacheTag)
@@ -195,6 +221,7 @@ export async function addSuggestedItem({
   revalidateTag(fulfillmentCacheTag)
 
   return {
+    status: "ok",
     lineItemId: res.line_item?.id ?? null,
     isReplay: res.is_idempotent_replay,
   }

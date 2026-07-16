@@ -33,9 +33,12 @@ export async function voucherRateLimitMiddleware(
 
   const blocked = await isRateLimited(req.scope, customerId, ip);
   if (blocked) {
-    // Matches the shared ErrorEnvelope/VoucherErrorEnvelope contract
-    // (workflows/voucher-engine/lib/errors.ts) so the storefront's
-    // `customer_message`-only rendering path works for this response too.
+    // Same `ErrorEnvelope` shape every other VoucherEngine error uses
+    // (`lib/errors.ts`) — `customer_message` (VI, verbatim to the FE) is the
+    // field the storefront's generic error handling reads; `message` (EN) is
+    // for logs only. This response bypasses `toErrorEnvelope` (it's a
+    // middleware short-circuit, not a workflow error), so the shape is kept
+    // in sync with it by hand.
     res.status(429).json({
       type: "rate_limited",
       code: "VOUCHER_RATE_LIMITED",
