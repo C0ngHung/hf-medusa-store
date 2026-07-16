@@ -102,3 +102,38 @@ export const CONDITION_TYPES: ConditionType[] = [
 ];
 
 export const RULE_TIERS: RuleTier[] = ["manual", "category", "behavioral"];
+
+/** VoucherEngine — admin create + analytics (SRS §6.4). */
+export type VoucherDiscountType = "percentage" | "fixed_amount";
+
+export const VOUCHER_DISCOUNT_TYPES: VoucherDiscountType[] = [
+  "percentage",
+  "fixed_amount",
+];
+
+export type VoucherConfig = {
+  id: string;
+  code: string;
+  discount_type: VoucherDiscountType;
+  discount_value: number;
+  min_order_value?: number | null;
+  max_discount_amount?: number | null;
+  applicable_product_ids?: string[] | null;
+  applicable_category_ids?: string[] | null;
+  stackable_with_promotions: boolean;
+  per_user_limit: number;
+  usage_limit?: number | null;
+  valid_from: string;
+  valid_to: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type VoucherAnalytics = {
+  total_uses: number;
+  total_discount_given: number;
+  avg_order_value: number;
+  capped_count: number;
+  conversion_rate: number;
+};

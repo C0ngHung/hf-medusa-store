@@ -20,6 +20,10 @@ import { ApplyVoucherBody, ApplyVoucherQuerySchema } from "./validators";
 import { applyVoucherWorkflow } from "../../../../../workflows/voucher-engine/apply-voucher";
 import { removeVoucherWorkflow } from "../../../../../workflows/voucher-engine/remove-voucher";
 import { toErrorEnvelope } from "../../../../../workflows/voucher-engine/lib/errors";
+import {
+  recordFailedAttempt,
+  resetFailedAttempts,
+} from "../../../../../lib/voucher-rate-limit";
 
 /**
  * Unwraps a Medusa workflow's thrown error to the real underlying cause when
@@ -37,6 +41,15 @@ function unwrapWorkflowError(err: unknown): unknown {
   return err;
 }
 
+/** Same derivation as `voucherRateLimitMiddleware` (EC-10/SEC-02 identity). */
+function extractIp(req: MedusaRequest): string | null {
+  return (
+    (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+    req.ip ||
+    null
+  );
+}
+
 export const POST = async (
   req: MedusaStoreRequest<ApplyVoucherBody>,
   res: MedusaResponse,
@@ -47,6 +60,7 @@ export const POST = async (
   // `QueryConfig`, not suited to a single boolean flag.
   const { replace } = ApplyVoucherQuerySchema.parse(req.query);
   const customer_id = req.auth_context?.actor_id ?? null;
+  const ip = extractIp(req);
 
   try {
     const { result } = await applyVoucherWorkflow(req.scope).run({
@@ -57,6 +71,7 @@ export const POST = async (
         replace,
       },
     });
+    await resetFailedAttempts(req.scope, customer_id, ip);
     res.json(result);
   } catch (rawErr) {
     const logger = req.scope.resolve(ContainerRegistrationKeys.LOGGER);
@@ -71,6 +86,12 @@ export const POST = async (
       unwrapWorkflowError(rawErr),
       req.requestId,
     );
+    // SPEC §9.3: only VOUCHER_NOT_FOUND is a guessing signal — every other
+    // rejection means the code is known, so it must not count toward the
+    // brute-force counter.
+    if (body.code === "VOUCHER_NOT_FOUND") {
+      await recordFailedAttempt(req.scope, customer_id, ip);
+    }
     res.status(status).json(body);
   }
 };
