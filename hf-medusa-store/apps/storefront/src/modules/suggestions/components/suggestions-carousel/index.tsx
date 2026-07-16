@@ -43,10 +43,11 @@ type SuggestionsCarouselProps = {
 const TOAST_MS = 3000 // Undo / error window (4.4.3 / 4.4.3b)
 const IMPRESSION_FLUSH_MS = 400 // debounce so cards visible together batch into one POST (4.4.10)
 
-/** Success carries the variant for Undo; error is informational only (4.4.3b). */
+/** Success carries the variant for Undo; error is informational only (4.4.3b).
+ * `message` overrides the default error copy (used for the EC-07 stock message). */
 type Toast =
   | { type: "success"; name: string; lineItemId: string | null }
-  | { type: "error"; name: string }
+  | { type: "error"; name: string; message?: string }
 
 /**
  * Client shell for a suggestion row (tasks 4.4.1/4.4.3/4.4.4/4.4.8/4.4.9-consumer).
@@ -89,12 +90,12 @@ const SuggestionsCarousel = ({
   // and skips the "Added" state; the error is surfaced as a red toast (4.4.3b).
   const handleAdd = async (item: SuggestionItem): Promise<boolean> => {
     if (!item.variant_id) return false
-    let lineItemId: string | null = null
+    let res: Awaited<ReturnType<typeof addSuggestedItem>>
     try {
       // Attributed one-tap add (SUGG-003): the endpoint persists attribution onto
       // the line item + emits the authoritative add_to_cart event server-side
       // (2.6.10), so we do NOT track it client-side here (would double-count).
-      const res = await addSuggestedItem({
+      res = await addSuggestedItem({
         productId: item.product_id,
         variantId: item.variant_id,
         countryCode,
@@ -105,13 +106,31 @@ const SuggestionsCarousel = ({
           source_product_id: sourceProductId,
         },
       })
-      lineItemId = res.lineItemId
     } catch {
-      // 409 stock / 422 attribution·variant·inactive → error toast (4.4.3b).
+      // Unexpected setup failure (e.g. cart create) → generic error toast (4.4.3b).
       showToast({ type: "error", name: item.name })
       return false
     }
-    showToast({ type: "success", name: item.name, lineItemId })
+
+    // EC-07: the item sold out between render and tap. Drop its card from the row
+    // ("we've updated your suggestions") and tell the shopper why. Removing it
+    // locally is what actually refreshes the section — the cart-suggestion cache
+    // only invalidates on cart.updated, which a failed add never emits.
+    if (res.status === "out_of_stock") {
+      setItems((prev) => prev.filter((i) => i.product_id !== item.product_id))
+      showToast({
+        type: "error",
+        name: item.name,
+        message: `${item.name} vừa hết hàng. Gợi ý đã được cập nhật.`,
+      })
+      return false
+    }
+    if (res.status === "error") {
+      showToast({ type: "error", name: item.name })
+      return false
+    }
+
+    showToast({ type: "success", name: item.name, lineItemId: res.lineItemId })
     return true
   }
 
@@ -348,10 +367,15 @@ const SuggestionsCarousel = ({
           ) : (
             <Text className="flex items-center gap-2 text-sm text-white">
               <XCircleSolid />
-              Không thể thêm <span className="font-semibold">
-                {toast.name}
-              </span>{" "}
-              vào giỏ. Vui lòng thử lại.
+              {toast.message ? (
+                toast.message
+              ) : (
+                <>
+                  Không thể thêm{" "}
+                  <span className="font-semibold">{toast.name}</span> vào giỏ.
+                  Vui lòng thử lại.
+                </>
+              )}
             </Text>
           )}
         </div>
