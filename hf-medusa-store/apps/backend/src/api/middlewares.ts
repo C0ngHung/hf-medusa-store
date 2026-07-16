@@ -11,6 +11,7 @@ import {
   ApplyVoucherSchema,
   RemoveVoucherSchema,
 } from "./store/carts/[id]/voucher/validators";
+import { voucherRateLimitMiddleware } from "./middlewares/voucher-rate-limit";
 import {
   CreateBulkMappingSchema,
   UpdateBulkMappingSchema,
@@ -28,11 +29,11 @@ import {
  * (validateAndTransformQuery needs a list/retrieve QueryConfig, not suited to
  * a single boolean flag).
  *
- * NOTE (Day 4/5): the voucher rate-limit middleware
- * (api/middlewares/voucher-rate-limit.ts, 3.7.3–3.7.5) is built and unit/module
- * tested. The store voucher route (/store/carts/:id/voucher) now exists, so wire
- * the rate-limiter onto it in Day 5 (reconcile with SEC-02/EC-10). Admin writes
- * need only body validation below.
+ * The voucher rate-limit middleware (api/middlewares/voucher-rate-limit.ts,
+ * 3.7.3–3.7.5, SEC-02/EC-10) is registered on the store voucher POST route
+ * below, BEFORE body validation — a request already in cooldown must 429
+ * regardless of whether its payload is well-formed. DELETE is not
+ * rate-limited: removing a voucher carries no code-guessing risk.
  */
 export default defineMiddlewares({
   routes: [
@@ -54,7 +55,10 @@ export default defineMiddlewares({
     {
       matcher: "/store/carts/:id/voucher",
       method: "POST",
-      middlewares: [validateAndTransformBody(ApplyVoucherSchema)],
+      middlewares: [
+        voucherRateLimitMiddleware,
+        validateAndTransformBody(ApplyVoucherSchema),
+      ],
     },
     {
       matcher: "/store/carts/:id/voucher",
