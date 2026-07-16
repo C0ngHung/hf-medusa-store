@@ -52,8 +52,19 @@ export const writeVoucherCartMetadataStep = createStep(
     const cartModuleService: ICartModuleService = container.resolve(
       Modules.CART,
     );
+    // `updateCarts`'s `metadata` patch is a MERGE, not a replace (see
+    // `2026-07-14-cart-metadata-merge-patch.md`) — omitting the voucher key
+    // here would be a no-op and leave the just-written snapshot in place.
+    // Explicitly restore the previous value, or clear it with `""` when there
+    // was none, so a failed apply never leaves a stale voucher snapshot
+    // pointing at a Promotion that compensation elsewhere rolled back.
+    const previous = compensationInput.previous_metadata ?? {};
     await cartModuleService.updateCarts(compensationInput.cart_id, {
-      metadata: { ...(compensationInput.previous_metadata ?? {}) },
+      metadata: {
+        ...previous,
+        [VOUCHER_METADATA_KEY]:
+          (previous as Record<string, unknown>)[VOUCHER_METADATA_KEY] ?? "",
+      },
     });
   },
 );

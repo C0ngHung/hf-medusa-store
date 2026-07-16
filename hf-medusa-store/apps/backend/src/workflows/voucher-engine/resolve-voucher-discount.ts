@@ -100,6 +100,10 @@ export const resolveVoucherDiscountWorkflow = createWorkflow(
         promotion_id: input.promotion_id!,
         final_voucher_discount: discount.final_voucher_discount,
         expected_final_cart_total: discount.expected_final_cart_total,
+        // CONFLICT-8/PD-15: `loadCartContextStep` above ran before any
+        // promotion was attached by this workflow, so this is the voucher-free
+        // baseline.
+        pre_apply_item_promotion_discount: discount.item_promotion_discount,
       }),
     );
 

@@ -1,23 +1,23 @@
 /**
- * recordVoucherUsageWorkflow — REAL workflow integration (SPEC §11.4/§13.3;
- * tasks 3.6.2, 3.6.3, 3.6.4). Proves the redemption path end-to-end:
+ * recordVoucherUsageWorkflow — REAL workflow integration (SPEC §11.4/§14.3;
+ * tasks 4.3.7, 4.3.8).
  *
- *  - 3.6.2 — the workflow resolves the applied voucher FROM THE ORDER via
- *    `order.metadata.voucher` (Decision G identity channel), not the ephemeral
- *    adjustment; a no-voucher order is a clean no-op.
- *  - 3.6.3 — the voucher discount that landed in the order is recorded: the
- *    `VoucherUsageLog.discount_applied` equals the order snapshot's
- *    `discount_amount` (= the final voucher discount in the order total).
- *  - 3.6.4 — running the workflow twice for the same order writes ONE log
- *    (idempotency at the workflow level: pre-check + unique index, §14.3).
+ * `service.integration.spec.ts` already pins `redeemVoucherAtomic`'s own DB
+ * transaction (increment + append-only log, fail-closed on exhaustion, unique-
+ * index idempotency) in isolation. This file is the one seam that had NO
+ * coverage: the workflow itself (`assertOrderHasVoucherStep` →
+ * `idempotencyCheckStep` → `atomicRedeemStep`) run against a REAL order row —
+ * the same call the `order.placed` subscriber makes.
  *
- * `service.integration.spec.ts` already pins `redeemVoucherAtomic` (the atomic
- * increment + immutable insert + concurrency/idempotency) against a real DB;
- * this file proves the WORKFLOW glue that reads the order and feeds that step.
- *
- * Boots the full app via `medusaIntegrationTestRunner` so a real Order module +
- * VoucherEngine module are exercised. Calls the workflow directly (the
- * `order.placed` subscriber only adds fire-and-forget wiring around this call).
+ * Deliberately does NOT drive a full `completeCartWorkflow` checkout (no
+ * region/shipping/payment scaffolding exists anywhere in this repo's tests) —
+ * `assertOrderHasVoucherStep` only ever reads `order.metadata.voucher` via
+ * `query.graph`, so a directly-created Order carrying that same metadata shape
+ * exercises the exact same code path a real checkout completion would drive.
+ * The cart.metadata → order.metadata propagation itself is separately verified
+ * (SPEC Decision G, `@medusajs/core-flows/dist/cart/workflows/complete-cart.js:404`)
+ * and exercised live by the existing apply-voucher cart-total assertions — this
+ * file is not re-proving that hop, only the redemption workflow beyond it.
  */
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
 import { Modules } from "@medusajs/framework/utils";
@@ -34,7 +34,7 @@ jest.retryTimes(2);
 
 medusaIntegrationTestRunner({
   testSuite: ({ getContainer }) => {
-    describe("recordVoucherUsageWorkflow (real workflow, tasks 3.6.2/3.6.3/3.6.4)", () => {
+    describe("recordVoucherUsageWorkflow (real workflow, tasks 4.3.7/4.3.8)", () => {
       const FAR_PAST = new Date("2020-01-01T00:00:00Z");
       const FAR_FUTURE = new Date("2999-01-01T00:00:00Z");
 
@@ -42,134 +42,131 @@ medusaIntegrationTestRunner({
         return getContainer();
       }
 
-      function voucherService() {
-        return container().resolve(
+      async function createVoucher(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        overrides: Record<string, any>,
+      ) {
+        const service = container().resolve(
           VOUCHER_ENGINE_MODULE,
         ) as VoucherEngineService;
+        return service.createVoucherConfigs({
+          valid_from: FAR_PAST,
+          valid_to: FAR_FUTURE,
+          ...overrides,
+        } as any);
       }
 
-      // Builds the `cart.metadata.voucher` snapshot that `completeCartWorkflow`
-      // copies onto `order.metadata` (verified §13.3) — the redemption identity
-      // + amount channel.
-      function voucherSnapshot(voucherId: string, code: string) {
-        return {
-          voucher_id: voucherId,
-          code,
-          ephemeral_promotion_id: "promo_ephemeral_test",
-          ephemeral_code: "VEPH-TEST",
-          discount_type: "percentage" as const,
-          discount_value: 1000,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async function createOrderWithVoucherMetadata(voucher: any) {
+        const orderModuleService: IOrderModuleService = container().resolve(
+          Modules.ORDER,
+        );
+        const snapshot = {
+          voucher_id: voucher.id,
+          code: voucher.code,
+          ephemeral_promotion_id: "promo_test_fixture",
+          ephemeral_code: "VEPH-TEST-FIXTURE",
+          discount_type: voucher.discount_type,
+          discount_value: voucher.discount_value,
           raw_voucher_discount: 200_000,
           voucher_discount_after_voucher_cap: 200_000,
-          discount_amount: 200_000, // = final voucher discount in the order total
+          discount_amount: 200_000,
           discount_capped: false,
           original_discount: 200_000,
           cap_percentage_bps: 5000,
           original_subtotal: 2_000_000,
           item_promotion_discount: 0,
-          revalidation_marker: "",
+          revalidation_marker: "test-fixture",
         };
+        const order = await orderModuleService.createOrders({
+          currency_code: "vnd",
+          email: "voucher-usage-test@example.com",
+          items: [
+            {
+              title: "Racket",
+              quantity: 1,
+              unit_price: 1_800_000,
+            },
+          ],
+          metadata: { [VOUCHER_METADATA_KEY]: snapshot },
+        } as any);
+        return Array.isArray(order) ? order[0] : order;
       }
 
-      async function createOrder(metadata: Record<string, unknown> | null) {
+      it("records exactly one VoucherUsageLog row and increments usage_count when a real order carries a voucher snapshot (task 4.3.7)", async () => {
+        const voucher = await createVoucher({
+          code: "USAGE10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+          usage_count: 0,
+        });
+        const order = await createOrderWithVoucherMetadata(voucher);
+
+        const result = await recordVoucherUsageWorkflow(container()).run({
+          input: { order_id: order.id },
+        });
+        expect(result.result.processed).toBe(true);
+
+        const voucherService = container().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        const [logs, count] = await voucherService.listAndCountVoucherUsageLogs(
+          { voucher_id: voucher.id, order_id: order.id },
+        );
+        expect(count).toBe(1);
+        expect(logs[0].order_id).toBe(order.id);
+        expect(logs[0].discount_applied).toBe(200_000);
+
+        const reloaded = await voucherService.retrieveVoucherConfig(voucher.id);
+        expect(reloaded.usage_count).toBe(1);
+      });
+
+      it("does not create a duplicate VoucherUsageLog or double-increment usage_count when the same order is processed twice (task 4.3.8, idempotency)", async () => {
+        const voucher = await createVoucher({
+          code: "USAGE10DUP",
+          discount_type: "percentage",
+          discount_value: 1000,
+          usage_count: 0,
+        });
+        const order = await createOrderWithVoucherMetadata(voucher);
+
+        await recordVoucherUsageWorkflow(container()).run({
+          input: { order_id: order.id },
+        });
+        // Simulates a duplicate order.placed event delivery.
+        const second = await recordVoucherUsageWorkflow(container()).run({
+          input: { order_id: order.id },
+        });
+        expect(second.result.processed).toBe(true);
+
+        const voucherService = container().resolve(
+          VOUCHER_ENGINE_MODULE,
+        ) as VoucherEngineService;
+        const [, count] = await voucherService.listAndCountVoucherUsageLogs({
+          voucher_id: voucher.id,
+          order_id: order.id,
+        });
+        expect(count).toBe(1); // still exactly one — no duplicate
+
+        const reloaded = await voucherService.retrieveVoucherConfig(voucher.id);
+        expect(reloaded.usage_count).toBe(1); // not double-incremented
+      });
+
+      it("is a no-op for an order with no voucher metadata (most orders)", async () => {
         const orderModuleService: IOrderModuleService = container().resolve(
           Modules.ORDER,
         );
         const order = await orderModuleService.createOrders({
           currency_code: "vnd",
-          customer_id: "cus_redeem_wf",
-          items: [
-            {
-              title: "Racket",
-              quantity: 1,
-              unit_price: 2_000_000,
-            },
-          ],
-          ...(metadata ? { metadata } : {}),
+          email: "no-voucher-order@example.com",
+          items: [{ title: "Racket", quantity: 1, unit_price: 1_800_000 }],
         } as any);
-        return (Array.isArray(order) ? order[0] : order) as { id: string };
-      }
+        const created = Array.isArray(order) ? order[0] : order;
 
-      it("records the order's voucher usage: identity from order.metadata + discount_applied from the snapshot (3.6.2/3.6.3)", async () => {
-        const voucher = await voucherService().createVoucherConfigs({
-          code: "ORDERREDEEM10",
-          discount_type: "percentage",
-          discount_value: 1000,
-          usage_limit: 10,
-          valid_from: FAR_PAST,
-          valid_to: FAR_FUTURE,
+        const result = await recordVoucherUsageWorkflow(container()).run({
+          input: { order_id: created.id },
         });
-
-        const order = await createOrder({
-          [VOUCHER_METADATA_KEY]: voucherSnapshot(voucher.id, "ORDERREDEEM10"),
-        });
-
-        await recordVoucherUsageWorkflow(container()).run({
-          input: { order_id: order.id },
-        });
-
-        // 3.6.2 — usage recorded for the voucher resolved from order.metadata.
-        const reloaded = await voucherService().retrieveVoucherConfig(
-          voucher.id,
-        );
-        expect(reloaded.usage_count).toBe(1);
-
-        const [logs, count] =
-          await voucherService().listAndCountVoucherUsageLogs({
-            voucher_id: voucher.id,
-            order_id: order.id,
-          });
-        expect(count).toBe(1);
-        // 3.6.3 — the discount that was in the order total is recorded.
-        expect(logs[0].discount_applied).toBe(200_000);
-        expect(logs[0].order_id).toBe(order.id);
-        expect(logs[0].voucher_code).toBe("ORDERREDEEM10");
-      });
-
-      it("is idempotent: running twice for the same order writes ONE usage log (3.6.4)", async () => {
-        const voucher = await voucherService().createVoucherConfigs({
-          code: "ORDERIDEMPOTENT10",
-          discount_type: "percentage",
-          discount_value: 1000,
-          usage_limit: 10,
-          valid_from: FAR_PAST,
-          valid_to: FAR_FUTURE,
-        });
-
-        const order = await createOrder({
-          [VOUCHER_METADATA_KEY]: voucherSnapshot(
-            voucher.id,
-            "ORDERIDEMPOTENT10",
-          ),
-        });
-
-        await recordVoucherUsageWorkflow(container()).run({
-          input: { order_id: order.id },
-        });
-        // Duplicate delivery of order.placed — must not double-count.
-        await recordVoucherUsageWorkflow(container()).run({
-          input: { order_id: order.id },
-        });
-
-        const reloaded = await voucherService().retrieveVoucherConfig(
-          voucher.id,
-        );
-        expect(reloaded.usage_count).toBe(1);
-        const [, count] = await voucherService().listAndCountVoucherUsageLogs({
-          voucher_id: voucher.id,
-          order_id: order.id,
-        });
-        expect(count).toBe(1);
-      });
-
-      it("is a no-op for an order that carries no voucher (3.6.2)", async () => {
-        const order = await createOrder(null);
-
-        const { result } = await recordVoucherUsageWorkflow(container()).run({
-          input: { order_id: order.id },
-        });
-
-        expect(result.processed).toBe(false);
+        expect(result.result.processed).toBe(false);
       });
     });
   },

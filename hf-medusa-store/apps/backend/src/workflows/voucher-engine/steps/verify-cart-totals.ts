@@ -44,6 +44,7 @@ import {
 } from "@medusajs/framework/utils";
 import type { ICartModuleService } from "@medusajs/framework/types";
 import { sumInts, toInt } from "../../../modules/voucher-engine/lib/money";
+import { throwVoucherError } from "../lib/errors";
 
 export const verifyCartTotalsStepId = "verify-cart-totals";
 
@@ -55,6 +56,16 @@ export interface VerifyTotalsInput {
   final_voucher_discount: number;
   /** VoucherEngine's internally calculated expected final Cart total — verification oracle ONLY. */
   expected_final_cart_total: number;
+  /**
+   * CONFLICT-8/PD-15 (2026-07-15): the VOUCHER-FREE sum of non-voucher item
+   * adjustments, observed by `loadCartContextStep` BEFORE the ephemeral
+   * voucher Promotion was attached. Used only to detect (never to fix) a
+   * Rule-11 violation — see the step-4 shrink guard below. On first apply
+   * this is a pre-ADD `loadCartContextStep` read; on any replace/revalidate
+   * path it MUST be captured AFTER the old ephemeral promotion is removed/
+   * deleted (SPEC §11.3), never while an old ephemeral is still attached.
+   */
+  pre_apply_item_promotion_discount: number;
 }
 
 export interface VerifyTotalsOutput {
@@ -139,13 +150,50 @@ export const verifyCartTotalsStep = createStep(
           },
         )}`,
       );
-      throw new MedusaError(
-        MedusaError.Types.UNEXPECTED_STATE,
-        "VOUCHER_CALCULATION_FAILED",
-      );
+      throwVoucherError("VOUCHER_CALCULATION_FAILED");
     }
 
-    // 4. Exact-equality check: the Cart Module's own recomputed total must equal
+    // 4. MANDATORY Rule-11-shrink guard (CONFLICT-8/PD-15, SPEC §10.2/§23.4).
+    //    Medusa's promotion engine processes active promotions in
+    //    `application_method.value DESC` order over one shared
+    //    `appliedPromotionsMap` — the ephemeral voucher's fixed money value
+    //    ~always sorts before a coexisting percentage item/order promotion's
+    //    rate, so that promotion's OWN adjustment can silently shrink. This
+    //    step detects (does not fix — the carrier is BLOCKED under PD-15)
+    //    any decrease in the non-voucher adjustment total vs. the
+    //    voucher-free baseline the caller observed before attaching the
+    //    voucher.
+    const nonVoucherAdjustmentAmounts = (cart.items ?? [])
+      .flatMap((item) => item.adjustments ?? [])
+      .filter((adjustment) => adjustment.promotion_id !== input.promotion_id)
+      .map((adjustment) =>
+        toInt(
+          adjustment.amount,
+          "verify-cart-totals.non_voucher_adjustment.amount",
+        ),
+      );
+    const post_apply_item_promotion_discount = sumInts(
+      nonVoucherAdjustmentAmounts,
+      "verify-cart-totals.post_apply_item_promotion_discount",
+    );
+    if (
+      post_apply_item_promotion_discount <
+      input.pre_apply_item_promotion_discount
+    ) {
+      logger.error(
+        `[voucher-engine] verify-cart-totals: Rule-11 shrink detected (CONFLICT-8/PD-15) ${JSON.stringify(
+          {
+            cart_id: input.cart_id,
+            pre_apply_item_promotion_discount:
+              input.pre_apply_item_promotion_discount,
+            post_apply_item_promotion_discount,
+          },
+        )}`,
+      );
+      throwVoucherError("VOUCHER_STACKING_UNSUPPORTED");
+    }
+
+    // 5. Exact-equality check: the Cart Module's own recomputed total must equal
     //    VoucherEngine's internal `expected_final_cart_total`.
     const authoritative_total = toInt(
       cart.total,
@@ -159,10 +207,7 @@ export const verifyCartTotalsStep = createStep(
           actual: authoritative_total,
         })}`,
       );
-      throw new MedusaError(
-        MedusaError.Types.UNEXPECTED_STATE,
-        "VOUCHER_CALCULATION_FAILED",
-      );
+      throwVoucherError("VOUCHER_CALCULATION_FAILED");
     }
 
     // 6. Success — return the REFETCHED cart. No custom total is constructed,

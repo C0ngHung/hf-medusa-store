@@ -2,7 +2,7 @@ import { getLocaleHeader } from "@lib/util/get-locale-header"
 import Medusa, { FetchArgs, FetchInput } from "@medusajs/js-sdk"
 
 // Defaults to the hf backend port (9009); override via NEXT_PUBLIC_MEDUSA_BACKEND_URL
-let MEDUSA_BACKEND_URL = "http://localhost:9009"
+export let MEDUSA_BACKEND_URL = "http://localhost:9009"
 
 if (process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL) {
   MEDUSA_BACKEND_URL = process.env.NEXT_PUBLIC_MEDUSA_BACKEND_URL

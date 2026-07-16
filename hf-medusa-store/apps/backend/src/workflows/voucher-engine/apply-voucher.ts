@@ -234,6 +234,12 @@ export const applyVoucherWorkflow = createWorkflow(
       promotion_id: ephemeralPromotion.id,
       final_voucher_discount: discount.final_voucher_discount,
       expected_final_cart_total: discount.expected_final_cart_total,
+      // CONFLICT-8/PD-15: voucher-free baseline. `loadCartContextStep` (above)
+      // ran AFTER the old ephemeral promotion (if replacing) was already
+      // detached and BEFORE the new one was created/attached, so
+      // `discount.item_promotion_discount` is the correct voucher-free
+      // Rule-11 baseline for both first-apply and replace.
+      pre_apply_item_promotion_discount: discount.item_promotion_discount,
     });
 
     // Replace: only now (after the NEW voucher is verified) irreversibly

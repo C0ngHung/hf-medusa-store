@@ -74,7 +74,10 @@ evidence → required tests` traceability map. Full detail: `references/workflow
    tests for persistence requirements, isolated-only passes, never-called workflow steps, etc.).
 8. **Verification** — run the full relevant test surface (unit, module-integration, HTTP
    integration, typecheck, lint, build, migrations, seed) through the repo's `pnpm` scripts, not
-   raw `jest`. Do not hide skips/retries/flakes/warnings. Full detail: `references/testing.md`.
+   raw `jest`. Do not hide skips/retries/flakes/warnings. Full detail: `references/testing.md`. If
+   the scope includes Thức's Day 5 storefront/checkout tasks, also read and run
+   `references/storefront-day5-testing.md`'s manual browser verification — it supplements, never
+   replaces, this backend test surface.
 9. **Capture lessons** — if this slice produced reusable knowledge (a non-obvious bug, verified
    framework behavior, a resolved edge case, an architectural pattern, a SPEC/runtime/API-contract
    conflict, or a testing/migration/concurrency/idempotency/compensation finding), create or update
@@ -124,7 +127,14 @@ evidence → required tests` traceability map. Full detail: `references/workflow
   what does not, and the exact `pnpm` scripts to run (never raw `jest`).
 - `references/progress-format.md` — Phase 10: the exact structure for the current-summary block,
   each dated entry, and each lesson record, in `.claude/progress/voucher-engine-progress.md`.
-
+- `references/storefront-day5-testing.md` — when the selected scope includes any of Thức's Day 5
+  storefront/checkout tasks (`4.1.2`, `4.1.3`, `4.1.5`, `4.1.6`, `4.1.8`, `4.2.1`–`4.2.7`,
+  `4.3.4`–`4.3.8`), also read this file alongside `references/testing.md` during Phases 7–8. It
+  supplements, never replaces, the backend test requirements in `references/testing.md` — a Day 5
+  task is `Done` only when both the applicable backend tests still pass and the manual
+  browser/UI verification it describes has actually been run. Use it for the browser/manual
+  verification matrix, confirming the unified `DiscountCode` component is the only visible
+  promotion/voucher UI, and mapping evidence back to Day 5 task IDs.
 
 ## Member ownership boundary
 
