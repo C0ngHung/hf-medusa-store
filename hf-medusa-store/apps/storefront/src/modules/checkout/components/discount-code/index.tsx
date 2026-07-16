@@ -66,7 +66,7 @@ function toDisplayedVoucher(meta: VoucherCartMetadata): DisplayedVoucher {
 type VoucherApplyAttempt =
   | { kind: "success" }
   | { kind: "replaceRequired" }
-  | { kind: "notFound" }
+  | { kind: "notFound"; message: string }
   | { kind: "rejected"; message: string }
 
 const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
@@ -158,7 +158,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         return { kind: "replaceRequired" }
       }
       if (err.code === "VOUCHER_NOT_FOUND") {
-        return { kind: "notFound" }
+        return { kind: "notFound", message: err.customer_message }
       }
       // Any other VoucherEngine rejection (expired, min order not met, no
       // eligible items, segment, stacking conflict) means the code IS a
@@ -301,7 +301,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     setPhase("applying")
     const attempt = await attemptVoucherApply(replaceConfirm.pendingCode, true)
     setPhase("idle")
-    if (attempt.kind === "rejected") {
+    if (attempt.kind === "rejected" || attempt.kind === "notFound") {
       setReplaceConfirm(null)
       setErrorMessage(attempt.message)
     }
