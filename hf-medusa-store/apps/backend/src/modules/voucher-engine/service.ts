@@ -1,4 +1,5 @@
 import {
+  InjectManager,
   InjectTransactionManager,
   MedusaContext,
   MedusaError,
@@ -10,6 +11,13 @@ import VoucherUsageLog from "./models/voucher-usage-log";
 import DiscountCapConfig from "./models/discount-cap-config";
 import { DEFAULT_CAP_PCT } from "./constants";
 import { normalizeCode } from "../../workflows/voucher-engine/lib/normalize";
+import { toInt } from "./lib/money";
+
+export interface UsageAnalyticsAggregate {
+  total_uses: number;
+  total_discount_given: number;
+  capped_count: number;
+}
 
 export interface UsageLogEntry {
   voucher_id: string;
@@ -127,6 +135,56 @@ class VoucherEngineService extends MedusaService({
 
     const [log] = await this.createVoucherUsageLogs([logEntry], sharedContext);
     return { incremented: true, usage_log_id: log.id };
+  }
+
+  /**
+   * 3.4.12, SRS §6.4 — code-review Task 7.2: aggregate `voucher_usage_log` at
+   * the DB layer (`COUNT`/`SUM`/`COUNT ... FILTER`) instead of
+   * `listVoucherUsageLogs` fetching every row so the caller can reduce them in
+   * JS. Scoped to exactly the 3 fields real rows can vary — `discount_applied`
+   * and `was_capped` are `integer`/`boolean not null` columns (see the
+   * migrations), so `SUM`/`COUNT` need no floor/null-guard the way the old
+   * per-row JS reduce did. `avg_order_value`/`conversion_rate` are NOT
+   * computed here: `voucher_usage_log` has no `order_value` column at all
+   * (see the OPEN ISSUE in `workflows/voucher-engine/lib/analytics.ts`), so
+   * both were always a constant 0 for every real DB-backed row before this
+   * change too — the caller (`voucherAnalyticsStep`) fills them in directly.
+   * Read-only, so `@InjectManager` (a fresh, non-transactional manager) is
+   * enough — no `@InjectTransactionManager` needed.
+   */
+  @InjectManager()
+  async getUsageAnalyticsAggregate(
+    voucherId: string,
+    @MedusaContext() sharedContext: Context = {},
+  ): Promise<UsageAnalyticsAggregate> {
+    const manager = sharedContext.manager as any;
+    const knex = manager.getKnex();
+
+    const row = await knex("voucher_usage_log")
+      .where({ voucher_id: voucherId })
+      .whereNull("deleted_at")
+      .first(
+        knex.raw('count(*) as "total_uses"'),
+        knex.raw(
+          'coalesce(sum(discount_applied), 0) as "total_discount_given"',
+        ),
+        knex.raw('count(*) filter (where was_capped) as "capped_count"'),
+      );
+
+    return {
+      total_uses: toInt(
+        row.total_uses,
+        "getUsageAnalyticsAggregate.total_uses",
+      ),
+      total_discount_given: toInt(
+        row.total_discount_given,
+        "getUsageAnalyticsAggregate.total_discount_given",
+      ),
+      capped_count: toInt(
+        row.capped_count,
+        "getUsageAnalyticsAggregate.capped_count",
+      ),
+    };
   }
 }
 

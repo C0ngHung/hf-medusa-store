@@ -7,7 +7,9 @@ import {
   bps,
   clampMin,
   sumInts,
+  sumRawToInt,
   toInt,
+  toRawNumber,
 } from "../money";
 
 // SRS INT-01 / Rule 19 — integer-only monetary calculation (SPEC §23.1).
@@ -127,6 +129,71 @@ describe("voucher-engine lib/money", () => {
     it("throws on running-total overflow", () => {
       expect(() =>
         sumInts([Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER], "test"),
+      ).toThrow(MoneyError);
+    });
+  });
+
+  describe("toRawNumber", () => {
+    it("unwraps the same BigNumberValue shapes toInt does, without the integer check", () => {
+      expect(toRawNumber(30000, "test")).toBe(30000);
+      expect(toRawNumber({ value: "30000" }, "test")).toBe(30000);
+      expect(toRawNumber({ numeric: 45000 }, "test")).toBe(45000);
+      expect(toRawNumber({ toNumber: () => 12000 }, "test")).toBe(12000);
+    });
+
+    it("does NOT reject a non-integer numeric value (unlike toInt)", () => {
+      expect(toRawNumber(114285.714285714, "test")).toBeCloseTo(
+        114285.714285714,
+      );
+    });
+
+    it("rejects an unrecognized value shape", () => {
+      expect(() => toRawNumber(undefined, "test")).toThrow(MoneyError);
+      expect(() => toRawNumber(null, "test")).toThrow(MoneyError);
+      expect(() => toRawNumber({}, "test")).toThrow(MoneyError);
+    });
+  });
+
+  // 2026-07-15-scoped-voucher-across-split-fractional-adjustment.md: Medusa's
+  // `fixed`/`across` promotion allocation spreads one whole-VND value
+  // proportionally over every discountable line, so each individual line
+  // adjustment can be fractional even though the intended total is an integer.
+  describe("sumRawToInt", () => {
+    it("sums exact integers to their exact total", () => {
+      expect(sumRawToInt([100_000, 200_000], "test")).toBe(300_000);
+    });
+
+    it("reproduces the scoped-voucher across-split repro: two fractional per-line adjustments summing to the exact integer voucher discount", () => {
+      // racket 2,000,000 + shoes 1,500,000, scoped 10% voucher on racket ->
+      // final_voucher_discount = 200,000, split "across" both lines by value.
+      const racketAdjustment = (200_000 * 2_000_000) / 3_500_000; // 114285.714285714...
+      const shoesAdjustment = (200_000 * 1_500_000) / 3_500_000; // 85714.285714286...
+      expect(sumRawToInt([racketAdjustment, shoesAdjustment], "test")).toBe(
+        200_000,
+      );
+    });
+
+    it("tolerates BigNumberValue-shaped per-line inputs, not just raw numbers", () => {
+      expect(
+        sumRawToInt(
+          [{ numeric: 114285.714285714 }, { value: "85714.285714286" }],
+          "test",
+        ),
+      ).toBe(200_000);
+    });
+
+    it("rejects a total that is genuinely fractional, not just an allocation artifact", () => {
+      expect(() => sumRawToInt([100.5, 200], "test")).toThrow(MoneyError);
+    });
+
+    it("rejects a non-finite element", () => {
+      expect(() => sumRawToInt([Infinity, 100], "test")).toThrow(MoneyError);
+      expect(() => sumRawToInt([NaN, 100], "test")).toThrow(MoneyError);
+    });
+
+    it("rejects an unsafe integer total", () => {
+      expect(() =>
+        sumRawToInt([Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER], "test"),
       ).toThrow(MoneyError);
     });
   });

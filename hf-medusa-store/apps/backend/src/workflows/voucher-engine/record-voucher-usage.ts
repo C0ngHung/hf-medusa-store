@@ -78,7 +78,7 @@ export const recordVoucherUsageWorkflow = createWorkflow(
               voucher_code: snapshot.code,
               discount_type: snapshot.discount_type,
               discount_value: snapshot.discount_value,
-              raw_voucher_discount: snapshot.raw_voucher_discount,
+              raw_voucher_discount: snapshot.uncapped_voucher_discount,
               voucher_discount_after_voucher_cap:
                 snapshot.voucher_discount_after_voucher_cap,
               final_voucher_discount: snapshot.discount_amount,

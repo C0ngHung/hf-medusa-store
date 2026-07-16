@@ -18,7 +18,10 @@ export type VoucherCartMetadata = {
   ephemeral_code: string
   discount_type: "percentage" | "fixed_amount"
   discount_value: number
-  raw_voucher_discount: number
+  /** = raw_voucher_discount (§10) — named without the `raw_` prefix on this
+   * JSONB snapshot to avoid colliding with Medusa's generic BigNumber-raw-field
+   * decoration convention (see the backend's `ephemeral-promotion.ts`). */
+  uncapped_voucher_discount: number
   voucher_discount_after_voucher_cap: number
   /** = final_voucher_discount — the amount actually charged. */
   discount_amount: number
@@ -117,6 +120,11 @@ export type AvailableVoucher = {
  * API_CONTRACT §4 error envelope (SPEC §8.3) — the one shape every
  * VoucherEngine store-route error response uses, verified against
  * `workflows/voucher-engine/lib/errors.ts`'s `toErrorEnvelope`.
+ *
+ * SOURCE OF TRUTH: `apps/backend/src/workflows/voucher-engine/lib/errors.ts`
+ * (`ErrorEnvelope`). No cross-app type-sharing convention exists in this repo
+ * (separate tsconfigs/builds), so this is a manually-mirrored copy — if you
+ * change one, check the other for drift.
  */
 export type VoucherErrorEnvelope = {
   type:

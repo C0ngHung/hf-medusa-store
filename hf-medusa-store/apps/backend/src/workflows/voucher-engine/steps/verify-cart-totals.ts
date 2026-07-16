@@ -43,7 +43,11 @@ import {
   Modules,
 } from "@medusajs/framework/utils";
 import type { ICartModuleService } from "@medusajs/framework/types";
-import { sumInts, toInt } from "../../../modules/voucher-engine/lib/money";
+import {
+  sumInts,
+  sumRawToInt,
+  toInt,
+} from "../../../modules/voucher-engine/lib/money";
 import { throwVoucherError } from "../lib/errors";
 
 export const verifyCartTotalsStepId = "verify-cart-totals";
@@ -123,14 +127,18 @@ export const verifyCartTotalsStep = createStep(
     }
 
     // 2. Sum the adjustment(s) that belong to the voucher's backing Promotion.
-    const appliedAdjustmentAmounts = (cart.items ?? [])
+    //    NOTE: each individual adjustment can be FRACTIONAL — Medusa's
+    //    `fixed`/`across` allocation spreads the ephemeral promotion's whole-VND
+    //    value proportionally over every discountable line (not only the
+    //    voucher-eligible ones), so only the AGGREGATE is guaranteed integer
+    //    (see 2026-07-15-scoped-voucher-across-split-fractional-adjustment.md).
+    //    `sumRawToInt` sums at full precision and rounds/validates the total.
+    const appliedAdjustmentRawAmounts = (cart.items ?? [])
       .flatMap((item) => item.adjustments ?? [])
       .filter((adjustment) => adjustment.promotion_id === input.promotion_id)
-      .map((adjustment) =>
-        toInt(adjustment.amount, "verify-cart-totals.adjustment.amount"),
-      );
-    const applied_adjustment_total = sumInts(
-      appliedAdjustmentAmounts,
+      .map((adjustment) => adjustment.amount);
+    const applied_adjustment_total = sumRawToInt(
+      appliedAdjustmentRawAmounts,
       "verify-cart-totals.applied_adjustment_total",
     );
 

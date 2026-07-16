@@ -6,11 +6,8 @@
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import {
-  VOUCHER_METADATA_KEY,
-  VoucherCartMetadata,
-} from "../lib/ephemeral-promotion";
+import { VoucherCartMetadata } from "../lib/ephemeral-promotion";
+import { readVoucherCartMetadata } from "../lib/read-voucher-cart-metadata";
 
 export const checkVoucherExistsStepId = "check-voucher-exists";
 
@@ -19,6 +16,14 @@ export interface CheckVoucherExistsInput {
 }
 
 export interface CheckVoucherExistsOutput {
+  /**
+   * Not derivable-for-free at the call site — `revalidateVoucherWorkflow`
+   * reads this 3 times (`shouldRecompute`/`shouldRemove`/the final
+   * `revalidated` output) inside `transform()` callbacks that don't have
+   * `active` in scope unless it's explicitly destructured each time.
+   * Intentional, not redundant with `active` — do not remove (code-review
+   * Task 6.6).
+   */
   has_voucher: boolean;
   active: VoucherCartMetadata | null;
   previous_metadata: Record<string, unknown> | null;
@@ -27,24 +32,15 @@ export interface CheckVoucherExistsOutput {
 export const checkVoucherExistsStep = createStep(
   checkVoucherExistsStepId,
   async (input: CheckVoucherExistsInput, { container }) => {
-    const query = container.resolve(ContainerRegistrationKeys.QUERY);
-
-    const { data } = await query.graph({
-      entity: "cart",
-      filters: { id: input.cart_id },
-      fields: ["id", "metadata"],
-    });
-
-    const cart = data?.[0] as
-      | { metadata?: Record<string, unknown> }
-      | undefined;
-    const active = (cart?.metadata?.[VOUCHER_METADATA_KEY] ??
-      null) as VoucherCartMetadata | null;
+    const { active, previous_metadata } = await readVoucherCartMetadata(
+      container,
+      input.cart_id,
+    );
 
     const output: CheckVoucherExistsOutput = {
       has_voucher: !!active,
       active,
-      previous_metadata: cart?.metadata ?? null,
+      previous_metadata,
     };
     return new StepResponse(output);
   },
