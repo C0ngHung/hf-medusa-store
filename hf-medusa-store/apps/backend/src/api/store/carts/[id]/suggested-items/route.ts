@@ -1,5 +1,8 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import {
+  ContainerRegistrationKeys,
+  MedusaError,
+} from "@medusajs/framework/utils";
 import { randomUUID } from "crypto";
 import { addSuggestedItemWorkflow } from "../../../../../workflows/suggestive-selling/add-suggested-item";
 import { isSuggestedItemError } from "../../../../../workflows/suggestive-selling/lib/suggested-item-errors";
@@ -79,8 +82,16 @@ export const POST = async (req: MedusaRequest, res: MedusaResponse) => {
       return;
     }
     // addToCart's authoritative inventory confirm throws on OOS → 409 (EC-07).
-    const msg = err instanceof Error ? err.message : String(err);
-    if (/stock|inventory|not enough|insufficient|quantity/i.test(msg)) {
+    // The workflow wraps that error so `err.message` is an object that
+    // stringifies to "[object Object]" — matching on the message text is
+    // unreliable. Key off the stable MedusaError code (INSUFFICIENT_INVENTORY)
+    // instead, keeping the message regex only as a defensive fallback.
+    const errCode = (err as { code?: string }).code;
+    const msg = err instanceof Error ? String(err.message) : String(err);
+    const isStockConflict =
+      errCode === MedusaError.Codes.INSUFFICIENT_INVENTORY ||
+      /stock|inventory|not enough|insufficient|quantity/i.test(msg);
+    if (isStockConflict) {
       res.status(409).json({
         code: "SUGGESTION_STOCK_CONFLICT",
         message: "Sản phẩm vừa hết hàng. Gợi ý đã được cập nhật.",

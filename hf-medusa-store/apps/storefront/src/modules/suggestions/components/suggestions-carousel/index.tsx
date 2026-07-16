@@ -43,10 +43,11 @@ type SuggestionsCarouselProps = {
 const TOAST_MS = 3000 // Undo / error window (4.4.3 / 4.4.3b)
 const IMPRESSION_FLUSH_MS = 400 // debounce so cards visible together batch into one POST (4.4.10)
 
-/** Success carries the variant for Undo; error is informational only (4.4.3b). */
+/** Success carries the variant for Undo; error is informational only (4.4.3b).
+ * `message` overrides the default error copy (used for the EC-07 stock message). */
 type Toast =
   | { type: "success"; name: string; lineItemId: string | null }
-  | { type: "error"; name: string }
+  | { type: "error"; name: string; message?: string }
 
 /**
  * Client shell for a suggestion row (tasks 4.4.1/4.4.3/4.4.4/4.4.8/4.4.9-consumer).
@@ -89,12 +90,12 @@ const SuggestionsCarousel = ({
   // and skips the "Added" state; the error is surfaced as a red toast (4.4.3b).
   const handleAdd = async (item: SuggestionItem): Promise<boolean> => {
     if (!item.variant_id) return false
-    let lineItemId: string | null = null
+    let res: Awaited<ReturnType<typeof addSuggestedItem>>
     try {
       // Attributed one-tap add (SUGG-003): the endpoint persists attribution onto
       // the line item + emits the authoritative add_to_cart event server-side
       // (2.6.10), so we do NOT track it client-side here (would double-count).
-      const res = await addSuggestedItem({
+      res = await addSuggestedItem({
         productId: item.product_id,
         variantId: item.variant_id,
         countryCode,
@@ -105,13 +106,31 @@ const SuggestionsCarousel = ({
           source_product_id: sourceProductId,
         },
       })
-      lineItemId = res.lineItemId
     } catch {
-      // 409 stock / 422 attribution·variant·inactive → error toast (4.4.3b).
+      // Unexpected setup failure (e.g. cart create) → generic error toast (4.4.3b).
       showToast({ type: "error", name: item.name })
       return false
     }
-    showToast({ type: "success", name: item.name, lineItemId })
+
+    // EC-07: the item sold out between render and tap. Drop its card from the row
+    // ("we've updated your suggestions") and tell the shopper why. Removing it
+    // locally is what actually refreshes the section — the cart-suggestion cache
+    // only invalidates on cart.updated, which a failed add never emits.
+    if (res.status === "out_of_stock") {
+      setItems((prev) => prev.filter((i) => i.product_id !== item.product_id))
+      showToast({
+        type: "error",
+        name: item.name,
+        message: `${item.name} vừa hết hàng. Gợi ý đã được cập nhật.`,
+      })
+      return false
+    }
+    if (res.status === "error") {
+      showToast({ type: "error", name: item.name })
+      return false
+    }
+
+    showToast({ type: "success", name: item.name, lineItemId: res.lineItemId })
     return true
   }
 
@@ -241,82 +260,91 @@ const SuggestionsCarousel = ({
     })
   }
 
-  // 4.4.8 — hide the entire section once nothing is left to show.
-  if (!items.length) return null
+  // 4.4.8 — hide the section once nothing is left to show, but keep rendering
+  // while a toast is active so the EC-07 stock message still appears even after
+  // the LAST suggestion is removed (otherwise the component unmounts silently
+  // and the shopper never sees why the section vanished).
+  if (!items.length && !toast) return null
 
   return (
-    <div className="w-full" data-testid={`suggestions-${context}`}>
-      <div className="mb-4 flex items-end justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <Heading level="h3" className="text-lg">
-            {heading}
-          </Heading>
-          {threshold && threshold.remaining > 0 ? (
-            <Text className="text-sm text-ui-fg-subtle">
-              Thêm{" "}
-              <span className="font-semibold text-green-600">
-                {convertToLocale({
-                  amount: threshold.remaining,
-                  currency_code: currencyCode,
-                })}
-              </span>{" "}
-              nữa để được miễn phí vận chuyển 🚚
-            </Text>
-          ) : (
-            subheading && (
-              <Text className="text-sm text-ui-fg-subtle">{subheading}</Text>
-            )
-          )}
+    <>
+      {items.length > 0 && (
+        <div className="w-full" data-testid={`suggestions-${context}`}>
+          <div className="mb-4 flex items-end justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <Heading level="h3" className="text-lg">
+                {heading}
+              </Heading>
+              {threshold && threshold.remaining > 0 ? (
+                <Text className="text-sm text-ui-fg-subtle">
+                  Thêm{" "}
+                  <span className="font-semibold text-green-600">
+                    {convertToLocale({
+                      amount: threshold.remaining,
+                      currency_code: currencyCode,
+                    })}
+                  </span>{" "}
+                  nữa để được miễn phí vận chuyển 🚚
+                </Text>
+              ) : (
+                subheading && (
+                  <Text className="text-sm text-ui-fg-subtle">
+                    {subheading}
+                  </Text>
+                )
+              )}
+            </div>
+
+            {/* Desktop-only scroll arrows (hidden on touch/mobile) */}
+            {edges.overflow && (
+              <div className="hidden shrink-0 gap-2 small:flex">
+                <IconButton
+                  onClick={() => scrollByCards(-1)}
+                  disabled={edges.atStart}
+                  aria-label="Cuộn trái"
+                  className="border border-gray-200"
+                >
+                  <ChevronLeftMini />
+                </IconButton>
+                <IconButton
+                  onClick={() => scrollByCards(1)}
+                  disabled={edges.atEnd}
+                  aria-label="Cuộn phải"
+                  className="border border-gray-200"
+                >
+                  <ChevronRightMini />
+                </IconButton>
+              </div>
+            )}
+          </div>
+
+          <div
+            ref={scrollerRef}
+            onScroll={syncEdges}
+            className={clx(
+              "flex gap-4 overflow-x-auto scroll-smooth pb-2",
+              // Native horizontal swipe on mobile without hijacking vertical page
+              // scroll; contain the bounce so it doesn't chain to the page (point 3).
+              "snap-x snap-mandatory overscroll-x-contain [scrollbar-width:thin]",
+            )}
+          >
+            {items.map((item, index) => (
+              <div key={item.product_id} className="snap-start h-full">
+                <SuggestionCard
+                  item={item}
+                  currencyCode={currencyCode}
+                  variant={variant}
+                  slot={index + 1}
+                  onAdd={handleAdd}
+                  onDismiss={handleDismiss}
+                  onImpression={handleImpression}
+                  onTap={handleTap}
+                />
+              </div>
+            ))}
+          </div>
         </div>
-
-        {/* Desktop-only scroll arrows (hidden on touch/mobile) */}
-        {edges.overflow && (
-          <div className="hidden shrink-0 gap-2 small:flex">
-            <IconButton
-              onClick={() => scrollByCards(-1)}
-              disabled={edges.atStart}
-              aria-label="Cuộn trái"
-              className="border border-gray-200"
-            >
-              <ChevronLeftMini />
-            </IconButton>
-            <IconButton
-              onClick={() => scrollByCards(1)}
-              disabled={edges.atEnd}
-              aria-label="Cuộn phải"
-              className="border border-gray-200"
-            >
-              <ChevronRightMini />
-            </IconButton>
-          </div>
-        )}
-      </div>
-
-      <div
-        ref={scrollerRef}
-        onScroll={syncEdges}
-        className={clx(
-          "flex gap-4 overflow-x-auto scroll-smooth pb-2",
-          // Native horizontal swipe on mobile without hijacking vertical page
-          // scroll; contain the bounce so it doesn't chain to the page (point 3).
-          "snap-x snap-mandatory overscroll-x-contain [scrollbar-width:thin]",
-        )}
-      >
-        {items.map((item, index) => (
-          <div key={item.product_id} className="snap-start h-full">
-            <SuggestionCard
-              item={item}
-              currencyCode={currencyCode}
-              variant={variant}
-              slot={index + 1}
-              onAdd={handleAdd}
-              onDismiss={handleDismiss}
-              onImpression={handleImpression}
-              onTap={handleTap}
-            />
-          </div>
-        ))}
-      </div>
+      )}
 
       {/* One-tap-add toast: success → Undo (4.4.3); failure → red error (4.4.3b) */}
       {toast && (
@@ -348,15 +376,20 @@ const SuggestionsCarousel = ({
           ) : (
             <Text className="flex items-center gap-2 text-sm text-white">
               <XCircleSolid />
-              Không thể thêm <span className="font-semibold">
-                {toast.name}
-              </span>{" "}
-              vào giỏ. Vui lòng thử lại.
+              {toast.message ? (
+                toast.message
+              ) : (
+                <>
+                  Không thể thêm{" "}
+                  <span className="font-semibold">{toast.name}</span> vào giỏ.
+                  Vui lòng thử lại.
+                </>
+              )}
             </Text>
           )}
         </div>
       )}
-    </div>
+    </>
   )
 }
 

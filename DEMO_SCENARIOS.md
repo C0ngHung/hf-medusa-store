@@ -239,6 +239,8 @@ docker exec hf_medusa_postgres psql -U hfmedusa -d hfmedusa -c \
 > ```bash
 > docker exec hf_medusa_redis sh -c "redis-cli --scan --pattern '*suggest:product*' | xargs -r redis-cli del"
 > ```
+xóa sạch((product + cart + dismiss) ): docker exec hf_medusa_redis sh -c "redis-cli --scan --pattern 'medusa:suggest:*' | xargs -r redis-cli del"
+
 >
 > Key: `suggest:product:v3:{productId}` (TTL 300s) cho nhánh không có `cart_id`.
 

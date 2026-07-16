@@ -148,10 +148,20 @@ export async function undoAddSuggestedItem({
  * `add_to_cart` event server-side (2.6.10) — so the caller must NOT also track it.
  *
  * Creates the cart if none exists (getOrSetCart, mirroring addToCart) and
- * revalidates the cart cache so the storefront reflects the new line. Errors
- * (409 stock / 422 attribution·variant·inactive) propagate → the caller shows
- * the error toast.
+ * revalidates the cart cache so the storefront reflects the new line.
+ *
+ * Returns a typed result instead of throwing for expected outcomes. EC-07: the
+ * backend re-checks stock at execution and answers 409 SUGGESTION_STOCK_CONFLICT
+ * when the suggested item just went out of stock — we MUST detect that here on
+ * the server, because Next.js strips custom error fields (like `status`) when an
+ * error crosses the server-action boundary, so the client could never tell a
+ * 409 from any other failure. Unexpected setup failures still throw.
  */
+export type AddSuggestedItemResult =
+  | { status: "ok"; lineItemId: string | null; isReplay: boolean }
+  | { status: "out_of_stock" }
+  | { status: "error" }
+
 export async function addSuggestedItem({
   productId,
   variantId,
@@ -170,7 +180,7 @@ export async function addSuggestedItem({
     source_product_id?: string | null
   }
   slot?: number | null
-}): Promise<{ lineItemId: string | null; isReplay: boolean }> {
+}): Promise<AddSuggestedItemResult> {
   const cart = await getOrSetCart(countryCode)
   if (!cart) throw new Error("Error retrieving or creating cart")
 
@@ -179,22 +189,31 @@ export async function addSuggestedItem({
     "idempotency-key": idempotencyKey,
   }
 
-  const res = await sdk.client.fetch<{
+  let res: {
     line_item: { id: string } | null
     updated_cart_total: number
     is_idempotent_replay: boolean
-  }>(`/store/carts/${cart.id}/suggested-items`, {
-    method: "POST",
-    body: {
-      product_id: productId,
-      variant_id: variantId,
-      quantity: 1,
-      ...(slot != null ? { slot } : {}),
-      attribution,
-    },
-    headers,
-    cache: "no-store",
-  })
+  }
+  try {
+    res = await sdk.client.fetch(`/store/carts/${cart.id}/suggested-items`, {
+      method: "POST",
+      body: {
+        product_id: productId,
+        variant_id: variantId,
+        quantity: 1,
+        ...(slot != null ? { slot } : {}),
+        attribution,
+      },
+      headers,
+      cache: "no-store",
+    })
+  } catch (e) {
+    // FetchError carries the numeric HTTP status (readable here, on the server).
+    // 409 → the item sold out between render and tap (EC-07); any other status
+    // is an unexpected add failure.
+    const status = (e as { status?: number })?.status
+    return status === 409 ? { status: "out_of_stock" } : { status: "error" }
+  }
 
   const cartCacheTag = await getCacheTag("carts")
   revalidateTag(cartCacheTag)
@@ -202,6 +221,7 @@ export async function addSuggestedItem({
   revalidateTag(fulfillmentCacheTag)
 
   return {
+    status: "ok",
     lineItemId: res.line_item?.id ?? null,
     isReplay: res.is_idempotent_replay,
   }
