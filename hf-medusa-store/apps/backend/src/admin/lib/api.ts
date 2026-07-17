@@ -3,6 +3,7 @@ import { sdk } from "./sdk";
 import type {
   CategoryComplementMapping,
   CategoryTopSeller,
+  DiscountCapConfig,
   ProductBulkMapping,
   RuleType,
   SuggestionEvent,
@@ -281,3 +282,32 @@ export const useVoucherAnalytics = (id: string) =>
         `/admin/vouchers/${id}/analytics`,
       ),
   });
+
+/* ------------------------------------------------------------------ */
+/* DiscountCapConfig — global cap, single active record (SRS §5.2;    */
+/* Rebuild Phase 3A). GET/POST only — no :id, it's a singleton.        */
+/* ------------------------------------------------------------------ */
+
+const DISCOUNT_CAP_CONFIG_KEY = ["discount-cap-config"];
+
+export const useDiscountCapConfig = () =>
+  useQuery({
+    queryKey: DISCOUNT_CAP_CONFIG_KEY,
+    queryFn: () =>
+      sdk.client.fetch<{ discount_cap_config: DiscountCapConfig }>(
+        "/admin/discount-cap-config",
+      ),
+  });
+
+export const useUpsertDiscountCapConfig = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { max_discount_percentage: number }) =>
+      sdk.client.fetch<{ discount_cap_config: DiscountCapConfig }>(
+        "/admin/discount-cap-config",
+        { method: "POST", body },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: DISCOUNT_CAP_CONFIG_KEY }),
+  });
+};

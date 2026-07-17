@@ -1,3 +1,14 @@
+## Token-control defaults
+
+- Do not spawn subagents by default.
+- Do not use Explore, general-purpose, medusa-module-reviewer, test-writer, or security-auditor unless
+  the user explicitly asks, or the current task clearly reaches a documented review/security/test gate.
+- Do not invoke `medusa-dev:building-with-medusa` or other broad medusa-dev plugin skills by default.
+- Prefer local project examples and installed Medusa 2.16 source for targeted verification.
+- If a subagent or medusa-dev skill would materially help, ask first with a short reason before using
+  it.
+- Keep context small: read only the files directly needed for the current task.
+
 # hf-medusa-store
 
 Headless e-commerce platform on **Medusa 2.16**. pnpm + Turborepo monorepo.

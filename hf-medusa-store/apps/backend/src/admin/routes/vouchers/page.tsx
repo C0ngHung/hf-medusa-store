@@ -13,6 +13,7 @@ import { useVouchers } from "../../lib/api";
 import type { VoucherConfig } from "../../lib/types";
 import { CreateVoucherModal } from "../../components/create-voucher-modal";
 import { VoucherAnalyticsDrawer } from "../../components/voucher-analytics-drawer";
+import { DiscountCapConfigSection } from "../../components/discount-cap-config-section";
 
 function formatDiscount(v: VoucherConfig): string {
   if (v.discount_type === "percentage") {
@@ -60,106 +61,110 @@ const VouchersPage = () => {
   };
 
   return (
-    <Container className="p-0">
-      <div className="flex items-center justify-between px-6 py-4">
-        <div>
-          <Heading level="h1">Vouchers</Heading>
-          <Text size="small" className="text-ui-fg-subtle">
-            VoucherEngine voucher configuration and usage.
-          </Text>
-        </div>
-        <Button size="small" onClick={() => setCreateOpen(true)}>
-          Create voucher
-        </Button>
-      </div>
-
-      {isLoading ? (
-        <div className="border-ui-border-base border-t px-6 py-8">
-          <Text size="small" className="text-ui-fg-muted">
-            Loading…
-          </Text>
-        </div>
-      ) : isError ? (
-        <div className="border-ui-border-base flex flex-col items-start gap-y-3 border-t px-6 py-8">
-          <Text size="small" className="text-ui-fg-error">
-            Failed to load vouchers.
-          </Text>
-          <Button size="small" variant="secondary" onClick={() => refetch()}>
-            Retry
-          </Button>
-        </div>
-      ) : vouchers.length === 0 ? (
-        <div className="border-ui-border-base flex flex-col items-start gap-y-3 border-t px-6 py-8">
-          <Text size="small" className="text-ui-fg-muted">
-            No vouchers yet.
-          </Text>
+    <div className="flex flex-col gap-y-4">
+      <Container className="p-0">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div>
+            <Heading level="h1">Vouchers</Heading>
+            <Text size="small" className="text-ui-fg-subtle">
+              VoucherEngine voucher configuration and usage.
+            </Text>
+          </div>
           <Button size="small" onClick={() => setCreateOpen(true)}>
             Create voucher
           </Button>
         </div>
-      ) : (
-        <Table>
-          <Table.Header>
-            <Table.Row>
-              <Table.HeaderCell>Code</Table.HeaderCell>
-              <Table.HeaderCell>Discount</Table.HeaderCell>
-              <Table.HeaderCell>Min order</Table.HeaderCell>
-              <Table.HeaderCell>Usage</Table.HeaderCell>
-              <Table.HeaderCell>Active</Table.HeaderCell>
-              <Table.HeaderCell>Validity</Table.HeaderCell>
-              <Table.HeaderCell>Created</Table.HeaderCell>
-              <Table.HeaderCell />
-            </Table.Row>
-          </Table.Header>
-          <Table.Body>
-            {vouchers.map((v) => (
-              <Table.Row key={v.id}>
-                <Table.Cell className="font-mono font-medium">
-                  {v.code}
-                </Table.Cell>
-                <Table.Cell>{formatDiscount(v)}</Table.Cell>
-                <Table.Cell>{formatMoney(v.min_order_value)}</Table.Cell>
-                <Table.Cell>
-                  {v.usage_count ?? 0} / {v.usage_limit ?? "∞"}
-                </Table.Cell>
-                <Table.Cell>
-                  <StatusBadge color={v.is_active ? "green" : "grey"}>
-                    {v.is_active ? "Active" : "Inactive"}
-                  </StatusBadge>
-                </Table.Cell>
-                <Table.Cell>
-                  {formatDate(v.valid_from)} – {formatDate(v.valid_to)}
-                </Table.Cell>
-                <Table.Cell>
-                  {v.created_at ? formatDate(v.created_at) : "—"}
-                </Table.Cell>
-                <Table.Cell>
-                  <Button
-                    size="small"
-                    variant="secondary"
-                    onClick={() => setAnalyzing({ id: v.id, code: v.code })}
-                  >
-                    Analyze
-                  </Button>
-                </Table.Cell>
+
+        {isLoading ? (
+          <div className="border-ui-border-base border-t px-6 py-8">
+            <Text size="small" className="text-ui-fg-muted">
+              Loading…
+            </Text>
+          </div>
+        ) : isError ? (
+          <div className="border-ui-border-base flex flex-col items-start gap-y-3 border-t px-6 py-8">
+            <Text size="small" className="text-ui-fg-error">
+              Failed to load vouchers.
+            </Text>
+            <Button size="small" variant="secondary" onClick={() => refetch()}>
+              Retry
+            </Button>
+          </div>
+        ) : vouchers.length === 0 ? (
+          <div className="border-ui-border-base flex flex-col items-start gap-y-3 border-t px-6 py-8">
+            <Text size="small" className="text-ui-fg-muted">
+              No vouchers yet.
+            </Text>
+            <Button size="small" onClick={() => setCreateOpen(true)}>
+              Create voucher
+            </Button>
+          </div>
+        ) : (
+          <Table>
+            <Table.Header>
+              <Table.Row>
+                <Table.HeaderCell>Code</Table.HeaderCell>
+                <Table.HeaderCell>Discount</Table.HeaderCell>
+                <Table.HeaderCell>Min order</Table.HeaderCell>
+                <Table.HeaderCell>Usage</Table.HeaderCell>
+                <Table.HeaderCell>Active</Table.HeaderCell>
+                <Table.HeaderCell>Validity</Table.HeaderCell>
+                <Table.HeaderCell>Created</Table.HeaderCell>
+                <Table.HeaderCell />
               </Table.Row>
-            ))}
-          </Table.Body>
-        </Table>
-      )}
+            </Table.Header>
+            <Table.Body>
+              {vouchers.map((v) => (
+                <Table.Row key={v.id}>
+                  <Table.Cell className="font-mono font-medium">
+                    {v.code}
+                  </Table.Cell>
+                  <Table.Cell>{formatDiscount(v)}</Table.Cell>
+                  <Table.Cell>{formatMoney(v.min_order_value)}</Table.Cell>
+                  <Table.Cell>
+                    {v.usage_count ?? 0} / {v.usage_limit ?? "∞"}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <StatusBadge color={v.is_active ? "green" : "grey"}>
+                      {v.is_active ? "Active" : "Inactive"}
+                    </StatusBadge>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {formatDate(v.valid_from)} – {formatDate(v.valid_to)}
+                  </Table.Cell>
+                  <Table.Cell>
+                    {v.created_at ? formatDate(v.created_at) : "—"}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Button
+                      size="small"
+                      variant="secondary"
+                      onClick={() => setAnalyzing({ id: v.id, code: v.code })}
+                    >
+                      Analyze
+                    </Button>
+                  </Table.Cell>
+                </Table.Row>
+              ))}
+            </Table.Body>
+          </Table>
+        )}
 
-      <CreateVoucherModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleCreated}
-      />
+        <CreateVoucherModal
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          onCreated={handleCreated}
+        />
 
-      <VoucherAnalyticsDrawer
-        voucherId={analyzing?.id ?? null}
-        voucherCode={analyzing?.code}
-        onClose={() => setAnalyzing(null)}
-      />
-    </Container>
+        <VoucherAnalyticsDrawer
+          voucherId={analyzing?.id ?? null}
+          voucherCode={analyzing?.code}
+          onClose={() => setAnalyzing(null)}
+        />
+      </Container>
+
+      <DiscountCapConfigSection />
+    </div>
   );
 };
 

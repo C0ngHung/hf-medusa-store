@@ -138,3 +138,16 @@ export type VoucherAnalytics = {
   capped_count: number;
   conversion_rate: number;
 };
+
+/**
+ * DiscountCapConfig — global discount cap (SRS §5.2/§5.3; Rebuild Phase 3A).
+ * `id: null` means no active row exists yet — the API returns the effective
+ * default (`DEFAULT_CAP_PCT`) in that case, not a 404.
+ */
+export type DiscountCapConfig = {
+  id: string | null;
+  max_discount_percentage: number;
+  is_active: boolean;
+  updated_at: string | null;
+  updated_by: string | null;
+};

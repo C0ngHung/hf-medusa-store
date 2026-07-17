@@ -4,9 +4,18 @@ import { normalizeCode } from "../../lib/normalize";
 import { generateVoucherCode } from "../../lib/gen-code";
 
 /**
- * Create a voucher_config row (3.4.11, SRS §6.4). Code is auto-generated when the
- * admin omits it, then normalized to canonical UPPERCASE (SEC-03). Compensation
- * deletes the created voucher so a later step failure rolls back.
+ * SUPERSEDED — Rebuild Phase 1 (2026-07-17). `../create-voucher.ts` no longer
+ * imports this step: voucher creation is now Promotion-first (see
+ * `../lib/build-promotion-input.ts` + `workflows/hooks/voucher-config-promotion-created.ts`),
+ * not a direct `voucher_config` insert. This file is unreferenced dead code —
+ * kept in place (not renamed/underscore-prefixed) because file deletion is
+ * denied by this environment's permission system. Physical removal is Phase 6
+ * cleanup work (or sooner, once a session with delete permission is available).
+ *
+ * Original docstring: Create a voucher_config row (3.4.11, SRS §6.4). Code is
+ * auto-generated when the admin omits it, then normalized to canonical
+ * UPPERCASE (SEC-03). Compensation deletes the created voucher so a later
+ * step failure rolls back.
  */
 export type CreateVoucherStepInput = {
   code?: string | null;

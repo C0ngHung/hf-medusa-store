@@ -20,6 +20,7 @@ import {
   CreateComplementMappingSchema,
   UpdateComplementMappingSchema,
 } from "./admin/category-complement-mappings/validators";
+import { UpsertDiscountCapConfigSchema } from "./admin/discount-cap-config/validators";
 
 /**
  * API middlewares. Body validation for admin config writes (SRS §6.1, §6.4) and
@@ -86,6 +87,11 @@ export default defineMiddlewares({
       matcher: "/admin/category-complement-mappings/:id",
       method: "PUT",
       middlewares: [validateAndTransformBody(UpdateComplementMappingSchema)],
+    },
+    {
+      matcher: "/admin/discount-cap-config",
+      method: "POST",
+      middlewares: [validateAndTransformBody(UpsertDiscountCapConfigSchema)],
     },
   ],
 });

@@ -120,7 +120,15 @@ type VoucherApplyAttempt =
 
 const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   const currencyCode = cart.currency_code
-  const { promotions: allPromotions = [] } = cart
+  // Medusa can return `cart.promotions` containing `null` entries (a
+  // promotion whose linked entity failed to resolve, e.g. removed/expired
+  // between the cart snapshot and this render) — filtered out here, once, so
+  // every downstream consumer (`displayedPromotions`, `applyGenericCode`,
+  // `removeGenericCode`, the render map) can assume non-null elements.
+  const allPromotions = (cart.promotions ?? []).filter(
+    (promotion): promotion is NonNullable<typeof promotion> =>
+      promotion != null,
+  )
 
   const voucherMeta = readVoucherMetadata(cart)
   const voucherPromotionId = voucherMeta?.ephemeral_promotion_id
@@ -134,6 +142,14 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   // active voucher — see `applyGenericCode`/`removeGenericCode` below, which
   // always build their arrays from `allPromotions` (unfiltered), never
   // `displayedPromotions`.
+  //
+  // Rebuild Phase 4 review (confirms this filtering is still required, does
+  // NOT remove it): Phase 2 shipped verification-only and left the ephemeral
+  // per-cart Promotion carrier completely unchanged, so the ephemeral
+  // Promotion still appears in `cart.promotions` exactly as before — this
+  // filter still exists to keep that internal, VEPH-prefixed transport
+  // Promotion from ever rendering as a customer-facing generic promotion
+  // code. Nothing about Phase 1–3 changed what this line needs to do.
   const displayedPromotions = allPromotions.filter(
     (promotion) => promotion.id !== voucherPromotionId,
   )

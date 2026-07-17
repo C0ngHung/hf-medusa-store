@@ -47,6 +47,22 @@ medusaIntegrationTestRunner({
         expect(res.data.voucher.code).toMatch(/^[A-Z0-9]{6,}$/);
       });
 
+      // Rebuild Phase 1 (SRS §5.2 "VoucherConfig extends Promotion") —
+      // response-contract compatibility: the `{ voucher: {...} }` shape is
+      // unchanged, but `promotion_id` is now a REAL, non-null Promotion id
+      // (previously null/absent, since no Promotion was ever created).
+      it("response contract stays { voucher: {...} } and promotion_id is now a real, non-null Promotion id", async () => {
+        const res = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "PROMOLINKED1" },
+          adminHeaders,
+        );
+        expect(res.status).toBe(201);
+        expect(Object.keys(res.data)).toEqual(["voucher"]);
+        expect(res.data.voucher.promotion_id).toEqual(expect.any(String));
+        expect(res.data.voucher.promotion_id).not.toBeNull();
+      });
+
       it("normalizes a supplied lowercase code to UPPERCASE (SEC-03)", async () => {
         const res = await api.post(
           "/admin/vouchers",
