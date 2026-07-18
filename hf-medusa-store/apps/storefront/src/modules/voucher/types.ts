@@ -113,6 +113,13 @@ export type AvailableVoucher = {
    */
   eligible?: boolean
   ineligible_reason?: string
+  /**
+   * Estimated discount this voucher would apply to the cart passed to
+   * `fetchAvailableVouchers`, computed server-side (Task 6). Only meaningful
+   * when `eligible` is not `false` — never rendered for ineligible vouchers,
+   * since that savings amount isn't attainable.
+   */
+  estimated_savings?: number
 }
 
 /**
