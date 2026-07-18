@@ -6,7 +6,10 @@ import {
   CreateSuggestionRuleSchema,
   UpdateSuggestionRuleSchema,
 } from "./admin/suggestion-rules/validators";
-import { CreateOrAttachVoucherSchema } from "./admin/vouchers/validators";
+import {
+  CreateOrAttachVoucherSchema,
+  UpdateVoucherSchema,
+} from "./admin/vouchers/validators";
 import {
   ApplyVoucherSchema,
   RemoveVoucherSchema,
@@ -60,6 +63,11 @@ export default defineMiddlewares({
       matcher: "/admin/vouchers",
       method: "POST",
       middlewares: [validateAndTransformBody(CreateOrAttachVoucherSchema)],
+    },
+    {
+      matcher: "/admin/vouchers/:id",
+      method: "PUT",
+      middlewares: [validateAndTransformBody(UpdateVoucherSchema)],
     },
     {
       matcher: "/store/carts/:id/voucher",

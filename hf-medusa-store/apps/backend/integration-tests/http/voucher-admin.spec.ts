@@ -447,5 +447,78 @@ medusaIntegrationTestRunner({
         }
       });
     });
+
+    describe("PUT/DELETE /admin/vouchers/:id (Task 5, admin widget edit/delete flow)", () => {
+      it("updates a voucher-only field (max_discount_amount) and persists the new value", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "EDITME01", max_discount_amount: 100_000 },
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const res = await api.put(
+          `/admin/vouchers/${id}`,
+          { max_discount_amount: 250_000 },
+          adminHeaders,
+        );
+        expect(res.status).toBe(200);
+        expect(res.data.voucher.max_discount_amount).toBe(250_000);
+
+        const list = await api.get("/admin/vouchers", adminHeaders);
+        const row = list.data.vouchers.find((v: any) => v.id === id);
+        expect(row.max_discount_amount).toBe(250_000);
+      });
+
+      it("rejects a PUT body carrying a forbidden discount field with 400 (.strict())", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "EDITME02" },
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const err = await api
+          .put(`/admin/vouchers/${id}`, { discount_value: 5000 }, adminHeaders)
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+
+      it("rejects a PUT body carrying promotion_id with 400 (.omit + .strict())", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "EDITME03" },
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const err = await api
+          .put(
+            `/admin/vouchers/${id}`,
+            { promotion_id: "promo_123" },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+
+      it("soft-deletes a voucher — it no longer appears in GET /admin/vouchers", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          { ...validBody(), code: "DELETEME1" },
+          adminHeaders,
+        );
+        const id = created.data.voucher.id;
+
+        const res = await api.delete(`/admin/vouchers/${id}`, adminHeaders);
+        expect(res.status).toBe(200);
+        expect(res.data).toEqual({ id, deleted: true });
+
+        const list = await api.get("/admin/vouchers", adminHeaders);
+        expect(
+          list.data.vouchers.find((v: any) => v.id === id),
+        ).toBeUndefined();
+      });
+    });
   },
 });

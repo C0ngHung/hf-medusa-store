@@ -95,3 +95,23 @@ export const CreateOrAttachVoucherSchema = z.union([
 export type CreateOrAttachVoucherBody = z.infer<
   typeof CreateOrAttachVoucherSchema
 >;
+
+/**
+ * Update mode (Task 5 — admin widget edit flow): `PUT /admin/vouchers/:id`
+ * may only touch voucher-only fields (cap, min order, scope, stacking,
+ * per-user, segment) — never `promotion_id` (immutable link to the backing
+ * Promotion, Decision C) and never discount/window/code fields (those belong
+ * to the Promotion snapshot, not editable here). Built from
+ * `AttachVoucherSchema` so the field set can't drift from attach-mode; `.omit`
+ * drops `promotion_id`, `.partial` makes every remaining field optional (PUT
+ * is a partial patch), and `.strict()` rejects any unknown/forbidden key
+ * (e.g. `discount_value`, `promotion_id`) with a 400 instead of silently
+ * ignoring it.
+ */
+export const UpdateVoucherSchema = AttachVoucherSchema.omit({
+  promotion_id: true,
+})
+  .partial()
+  .strict();
+
+export type UpdateVoucherBody = z.infer<typeof UpdateVoucherSchema>;
