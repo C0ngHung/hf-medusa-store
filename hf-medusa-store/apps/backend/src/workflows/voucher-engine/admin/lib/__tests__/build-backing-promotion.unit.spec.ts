@@ -90,4 +90,12 @@ describe("buildBackingPromotion (Decision H / Phase 2 backing promotion)", () =>
     expect(build({ is_active: false }).status).toBe("inactive");
     expect(build({ is_active: true }).status).toBe("active");
   });
+
+  it("stamps voucher_engine metadata for guardrail + identification", () => {
+    const promo = build({}, "SAVE10");
+    expect(promo.metadata).toEqual({
+      voucher_engine: true,
+      voucher_code: "SAVE10",
+    });
+  });
 });

@@ -34,10 +34,23 @@ import type { CreateVoucherStepInput } from "../steps/create-voucher";
 const CURRENCY = "vnd";
 const BPS_PER_PERCENT = 100;
 
+/**
+ * `@medusajs/types`' `CreatePromotionDTO` omits `metadata`, but the
+ * underlying Promotion DML model DOES declare `metadata: model.json()`
+ * (see `@medusajs/promotion/dist/models/promotion.js`) and Medusa persists +
+ * returns it at runtime (our integration tests read `metadata.voucher_engine`
+ * back via `query.graph`). This is a type-generation gap, not a runtime
+ * restriction — extend rather than widen with `as any` so the rest of the
+ * DTO stays fully checked.
+ */
+export type CreatePromotionWithMetadataDTO = CreatePromotionDTO & {
+  metadata?: Record<string, unknown> | null;
+};
+
 export function buildBackingPromotion(
   input: CreateVoucherStepInput,
   code: string,
-): CreatePromotionDTO[] {
+): CreatePromotionWithMetadataDTO[] {
   const isPercentage = input.discount_type === "percentage";
 
   // V5 — minimum order value as an order-scope rule.
@@ -70,11 +83,12 @@ export function buildBackingPromotion(
     });
   }
 
-  const promotion: CreatePromotionDTO = {
+  const promotion: CreatePromotionWithMetadataDTO = {
     code,
     type: "standard",
     status: input.is_active === false ? "inactive" : "active",
     is_automatic: false,
+    metadata: { voucher_engine: true, voucher_code: code },
     // V3 — global usage limit (null/undefined ⇒ unlimited).
     ...(input.usage_limit != null ? { limit: input.usage_limit } : {}),
     application_method: {
