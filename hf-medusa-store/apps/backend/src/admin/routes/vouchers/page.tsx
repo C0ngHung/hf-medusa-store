@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { defineRouteConfig } from "@medusajs/admin-sdk";
 import { ReceiptPercent } from "@medusajs/icons";
 import {
@@ -11,7 +12,6 @@ import {
 } from "@medusajs/ui";
 import { useVouchers } from "../../lib/api";
 import type { VoucherConfig } from "../../lib/types";
-import { CreateVoucherModal } from "../../components/create-voucher-modal";
 import { VoucherAnalyticsDrawer } from "../../components/voucher-analytics-drawer";
 
 function formatDiscount(v: VoucherConfig): string {
@@ -39,25 +39,37 @@ function formatDate(s: string): string {
  * Admin Voucher Engine management page. Reads/writes ONLY the VoucherConfig
  * table via /admin/vouchers* — never the native Promotion list (a voucher's
  * backing/ephemeral Promotions are internal transport, not admin-visible
- * rows, SPEC Decision C/G). List/create/analyze only — no update, delete, or
+ * rows, SPEC Decision C/G). List/analyze only — no update, delete, or
  * deactivate yet.
+ *
+ * Task 8: creation moved OUT of this page — a voucher is now created via the
+ * native Promotion "Create" wizard + the "Voucher settings" widget on the
+ * promotion detail page (Task 7). Each row here is read-through from its
+ * linked Promotion (Task 6) and navigates to that Promotion's detail page.
  */
 const VouchersPage = () => {
+  const navigate = useNavigate();
   const { data, isLoading, isError, refetch } = useVouchers();
   const vouchers = data?.vouchers ?? [];
 
-  const [createOpen, setCreateOpen] = useState(false);
   const [analyzing, setAnalyzing] = useState<{
     id: string;
     code: string;
   } | null>(null);
 
-  const handleCreated = (voucher: VoucherConfig) => {
-    // Offer the newly created voucher's analytics immediately — it will be
-    // all zeros (fresh voucher), but keeps the create→analyze flow smooth
-    // without requiring a second click to find the row.
-    setAnalyzing({ id: voucher.id, code: voucher.code });
+  const goToPromotion = (v: VoucherConfig) => {
+    if (v.promotion_id) navigate(`/promotions/${v.promotion_id}`);
   };
+
+  const createCta = (
+    <Button
+      size="small"
+      variant="secondary"
+      onClick={() => navigate("/promotions/create")}
+    >
+      Tạo voucher từ Promotions › Create
+    </Button>
+  );
 
   return (
     <Container className="p-0">
@@ -68,9 +80,13 @@ const VouchersPage = () => {
             VoucherEngine voucher configuration and usage.
           </Text>
         </div>
-        <Button size="small" onClick={() => setCreateOpen(true)}>
-          Create voucher
-        </Button>
+        <div className="flex flex-col items-end gap-y-1">
+          {createCta}
+          <Text size="xsmall" className="text-ui-fg-subtle">
+            Tạo voucher từ Promotions › Create, sau đó bật ở tab Voucher
+            settings.
+          </Text>
+        </div>
       </div>
 
       {isLoading ? (
@@ -93,9 +109,7 @@ const VouchersPage = () => {
           <Text size="small" className="text-ui-fg-muted">
             No vouchers yet.
           </Text>
-          <Button size="small" onClick={() => setCreateOpen(true)}>
-            Create voucher
-          </Button>
+          {createCta}
         </div>
       ) : (
         <Table>
@@ -113,7 +127,11 @@ const VouchersPage = () => {
           </Table.Header>
           <Table.Body>
             {vouchers.map((v) => (
-              <Table.Row key={v.id}>
+              <Table.Row
+                key={v.id}
+                className={v.promotion_id ? "cursor-pointer" : undefined}
+                onClick={() => goToPromotion(v)}
+              >
                 <Table.Cell className="font-mono font-medium">
                   {v.code}
                 </Table.Cell>
@@ -137,7 +155,10 @@ const VouchersPage = () => {
                   <Button
                     size="small"
                     variant="secondary"
-                    onClick={() => setAnalyzing({ id: v.id, code: v.code })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAnalyzing({ id: v.id, code: v.code });
+                    }}
                   >
                     Analyze
                   </Button>
@@ -147,12 +168,6 @@ const VouchersPage = () => {
           </Table.Body>
         </Table>
       )}
-
-      <CreateVoucherModal
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={handleCreated}
-      />
 
       <VoucherAnalyticsDrawer
         voucherId={analyzing?.id ?? null}

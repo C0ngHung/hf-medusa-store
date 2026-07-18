@@ -129,6 +129,10 @@ export type VoucherConfig = {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
+  /** Linked native Promotion id — used by the admin Vouchers list to
+   * navigate a row to its Promotion detail page (Task 8). Internal FK,
+   * already surfaced elsewhere (e.g. the `?promotion_id=` list filter). */
+  promotion_id?: string | null;
 };
 
 export type VoucherAnalytics = {
