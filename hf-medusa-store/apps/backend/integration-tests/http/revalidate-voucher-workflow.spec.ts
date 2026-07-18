@@ -5,14 +5,14 @@
  * `revalidate-voucher.unit.spec.ts` already pins the PURE V1/V2/V5/V6/V8
  * subset logic in isolation. This file exercises the actual production
  * workflow (`revalidateVoucherWorkflow`) end-to-end against a real cart +
- * ephemeral Promotion — the same workflow the `cart.updated` subscriber
+ * voucher credit line — the same workflow the `cart.updated` subscriber
  * (`../../src/subscribers/voucher-cart-updated.ts`) invokes — so the
- * recompute/auto-remove branches are proven against real Promotion
- * create/attach/detach/delete calls, not just the pure validator subset.
+ * recompute/auto-remove branches are proven against real credit-line
+ * create/delete calls, not just the pure validator subset.
  *
  * Boots the full app via `medusaIntegrationTestRunner` (same pattern as
- * `apply-remove-voucher.spec.ts`) so a real Cart module + Promotion module
- * + ephemeral-promotion machinery is exercised. Calls the workflow directly
+ * `apply-remove-voucher.spec.ts`) so a real Cart module + credit-line
+ * carrier is exercised. Calls the workflow directly
  * (not via the subscriber) since the subscriber only adds async
  * fire-and-forget wiring around this same call (proven working, but
  * unreliable to await in a test without artificial polling).
@@ -24,7 +24,7 @@ import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
 import type VoucherEngineService from "../../src/modules/voucher-engine/service";
 import { applyVoucherWorkflow } from "../../src/workflows/voucher-engine/apply-voucher";
 import { revalidateVoucherWorkflow } from "../../src/workflows/voucher-engine/revalidate-voucher-on-cart-change";
-import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/ephemeral-promotion";
+import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/voucher-cart-metadata";
 import { VOUCHER_NOTICE_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/auto-remove-notice";
 
 jest.setTimeout(60_000);
@@ -365,7 +365,7 @@ medusaIntegrationTestRunner({
         expect(notice?.voucher_code).toBe("RACKETONLY10");
       });
 
-      it("acquires the voucher:cart:{id} lock so two concurrent revalidations on the same cart don't corrupt the ephemeral promotion (EC-04)", async () => {
+      it("acquires the voucher:cart:{id} lock so two concurrent revalidations on the same cart don't corrupt the voucher credit line (EC-04)", async () => {
         const cart = await createCart([
           {
             title: "Racket",
@@ -398,10 +398,9 @@ medusaIntegrationTestRunner({
         // catches/logs (this workflow "Never throws" by design, see file
         // header), so a lost race is a silent no-op, not a corruption. Without
         // the EC-04 lock, BOTH would instead proceed, read the same stale
-        // `existing.active!.ephemeral_promotion_id`, and race to
-        // create+attach a new promotion + delete the old one — leaving either
-        // a duplicate attached promotion or a crash from double-deleting the
-        // same one.
+        // `existing.active!.credit_line_id`, and race to create a new credit
+        // line + delete the old one — leaving either a duplicate credit line or
+        // a crash from double-deleting the same one.
         const results = await Promise.allSettled([
           revalidateVoucherWorkflow(container()).run({
             input: { cart_id: cart.id },
@@ -428,7 +427,7 @@ medusaIntegrationTestRunner({
         const snapshot = (
           afterCart.metadata as Record<string, unknown> | null
         )?.[VOUCHER_METADATA_KEY] as
-          | { discount_amount: number; ephemeral_promotion_id: string }
+          | { discount_amount: number; credit_line_id: string }
           | undefined;
         expect(snapshot?.discount_amount).toBe(400_000);
       });

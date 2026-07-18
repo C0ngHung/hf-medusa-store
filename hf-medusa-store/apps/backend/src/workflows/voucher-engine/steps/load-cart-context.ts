@@ -42,13 +42,6 @@ export const loadCartContextStepId = "load-cart-context";
 
 export interface LoadCartContextInput {
   cart_id: string;
-  /**
-   * The backing Promotion id for the voucher being applied/revalidated, when
-   * known. Adjustments carrying this `promotion_id` are VoucherEngine's OWN
-   * discount and are excluded from `item_promotion_discount` (Rule 11).
-   * Optional because a first-apply has no promotion yet to exclude.
-   */
-  voucher_promotion_id?: string;
 }
 
 /** Authoritative Cart context, mapped to the pure calculator's plain-integer shape. */
@@ -125,13 +118,12 @@ export const loadCartContextStep = createStep(
       const unit_price = toInt(item.unit_price, `item[${item.id}].unit_price`);
       const quantity = toInt(item.quantity, `item[${item.id}].quantity`);
 
-      // Rule 11 / SPEC §10.7: exclude VoucherEngine's own adjustment, identified
-      // by `promotion_id`, from the item-level promotion discount.
-      const nonVoucherAdjustments = (item.adjustments ?? []).filter(
-        (adjustment) => adjustment.promotion_id !== input.voucher_promotion_id,
-      );
+      // Option-B carrier: the voucher discount is a `cart.credit_lines` entry,
+      // NOT a promotion adjustment, so EVERY `items.adjustments` entry is an
+      // item-level promotion (Rule 11 — VoucherEngine never contributes an
+      // adjustment here). No voucher-own exclusion needed.
       const item_promotion_discount = sumInts(
-        nonVoucherAdjustments.map((adjustment) =>
+        (item.adjustments ?? []).map((adjustment) =>
           toInt(adjustment.amount, `item[${item.id}].adjustment.amount`),
         ),
         `item[${item.id}].item_promotion_discount`,

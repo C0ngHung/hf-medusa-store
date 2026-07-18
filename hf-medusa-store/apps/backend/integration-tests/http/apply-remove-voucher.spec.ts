@@ -5,8 +5,8 @@
  * Exercises the actual `POST`/`DELETE /store/carts/:id/voucher` routes (not
  * just the workflow directly) against a real seeded Cart, boots the full app
  * via `medusaIntegrationTestRunner`. Covers: tamper rejection (SEC-01), a
- * real apply creating a real ephemeral Promotion and reconciling
- * `updated_cart_total`, the one-active-voucher replace-confirmation gate
+ * real apply carrying the discount on a `cart.credit_lines` entry and
+ * reconciling `updated_cart_total`, the one-active-voucher replace-confirmation gate
  * (409 → `?replace=true`), and remove (idempotent, no usage increment).
  *
  * Store routes require a publishable API key (`x-publishable-api-key`
@@ -15,11 +15,13 @@
  * same core workflows the repo's own `initial-data-seed.ts` uses.
  */
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
-import { Modules } from "@medusajs/framework/utils";
+import { Modules, PromotionActions } from "@medusajs/framework/utils";
 import {
   createApiKeysWorkflow,
+  createPromotionsWorkflow,
   createSalesChannelsWorkflow,
   linkSalesChannelsToApiKeyWorkflow,
+  updateCartPromotionsWorkflow,
 } from "@medusajs/medusa/core-flows";
 import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
 import type VoucherEngineService from "../../src/modules/voucher-engine/service";
@@ -118,7 +120,7 @@ medusaIntegrationTestRunner({
         });
       });
 
-      it("applies a valid voucher: attaches a real ephemeral Promotion and returns the authoritative cart total (tasks 3.4.1/3.4.4/3.4.14)", async () => {
+      it("applies a valid voucher: carries the discount on a credit line and returns the authoritative cart total (tasks 3.4.1/3.4.4/3.4.14)", async () => {
         const cart = await createCart([
           {
             title: "Racket",
@@ -148,6 +150,89 @@ medusaIntegrationTestRunner({
         expect(data.voucher_details.code).toBe("HTTPAPPLY10");
         expect(data.voucher_details.type).toBe("percentage");
         expect(data.voucher_details.value).toBe(1000);
+      });
+
+      it("preserves a coexisting percentage item-promotion's discount when a voucher is applied on top — Rule 11 regression (credit-line carrier, CONFLICT-8/PD-15 fix)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_rule11",
+          },
+        ]);
+
+        // A coexisting item-level PERCENTAGE promotion (40%) — the exact case
+        // the former ephemeral-fixed-Promotion carrier corrupted: it re-sorted
+        // and re-compounded through `computeActions`, shrinking THIS
+        // promotion's own adjustment. The credit-line carrier never enters
+        // `computeActions`, so it cannot.
+        await createPromotionsWorkflow(container()).run({
+          input: {
+            promotionsData: [
+              {
+                code: "ITEMPROMO40",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 40,
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        await updateCartPromotionsWorkflow(container()).run({
+          input: {
+            cart_id: cart.id,
+            promo_codes: ["ITEMPROMO40"],
+            action: PromotionActions.ADD,
+          },
+        });
+
+        await createVoucher({
+          code: "STACK20",
+          discount_type: "percentage",
+          discount_value: 2000, // 20%
+        });
+
+        const { status, data } = await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "STACK20" },
+          publishableKeyHeaders,
+        );
+
+        // item promo 40% = 400,000; voucher 20% of the eligible post-promo
+        // subtotal (600,000) = 120,000; combined 520,000 > 50% cap (500,000);
+        // voucher trimmed to the remaining cap capacity (100,000); total 500,000.
+        expect(status).toBe(200);
+        expect(data.discount_amount).toBe(100_000);
+        expect(data.discount_capped).toBe(true);
+        expect(data.updated_cart_total).toBe(500_000);
+
+        // THE Rule-11 proof: the item promotion's OWN adjustment is UNCHANGED
+        // (400,000) — never shrunk by the voucher.
+        const cartModuleService = container().resolve(Modules.CART);
+        const reloaded = await cartModuleService.retrieveCart(cart.id, {
+          select: ["id", "total", "credit_line_total"],
+          relations: ["items", "items.adjustments", "credit_lines"],
+        });
+        const itemAdjustmentTotal = (
+          (reloaded.items ?? []) as { adjustments?: { amount: unknown }[] }[]
+        )
+          .flatMap((item) => item.adjustments ?? [])
+          .reduce((sum, adj) => sum + Number(adj.amount), 0);
+        expect(itemAdjustmentTotal).toBe(400_000);
+
+        // The voucher discount lives on a credit line of exactly 100,000.
+        const creditLineTotal = (
+          (reloaded.credit_lines ?? []) as { amount: unknown }[]
+        ).reduce((sum, cl) => sum + Number(cl.amount), 0);
+        expect(creditLineTotal).toBe(100_000);
+        expect(Number(reloaded.total)).toBe(500_000);
       });
 
       it("returns 409 VOUCHER_REPLACE_REQUIRED when applying a second voucher without ?replace=true (tasks 3.4.6/3.4.7)", async () => {

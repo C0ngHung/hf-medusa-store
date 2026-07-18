@@ -11,13 +11,11 @@
  * workflow's output (`discount`) as their input once built.
  *
  * `verifyCartTotalsStep` (task 3.3.14/3.8.4) is included but conditional: it
- * only runs when the caller already knows the voucher's backing Promotion id
- * (`promotion_id`), i.e. after some other flow has attached it to the cart via
- * Medusa's core `updateCartPromotionsWorkflow` (API_CONTRACT §7.3 — Promotion
- * attach/recalculation is core Cart/Promotion capability, not a VoucherEngine
- * Day 4 feature). This lets the same workflow serve as both a pre-attach
- * "preview" (Day 2/3 scope, no promotion yet) and, later, the post-attach leg
- * of the real `applyVoucherWorkflow` — without duplicating any calculation.
+ * only runs when the caller already knows the voucher's carrier credit-line id
+ * (`credit_line_id`), i.e. after some other flow has created it on the cart via
+ * `createVoucherCreditLine`. This lets the same workflow serve as both a
+ * pre-carrier "preview" (Day 2/3 scope, no credit line yet) and, later, the
+ * post-carrier verification leg — without duplicating any calculation.
  */
 
 import {
@@ -38,19 +36,14 @@ export interface ResolveVoucherDiscountInput {
   cart_id: string;
   code: string;
   customer_id: string;
-  /** Rule 11 — VoucherEngine's own adjustment on the cart, excluded from item_promotion_discount. */
-  voucher_promotion_id?: string;
-  /** When set, the voucher's Promotion is already attached — run `verifyCartTotalsStep` against it. */
-  promotion_id?: string;
+  /** When set, the voucher's carrier credit line already exists — run `verifyCartTotalsStep` against it. */
+  credit_line_id?: string;
 }
 
 export const resolveVoucherDiscountWorkflow = createWorkflow(
   resolveVoucherDiscountWorkflowId,
   (input: ResolveVoucherDiscountInput) => {
-    const cart = loadCartContextStep({
-      cart_id: input.cart_id,
-      voucher_promotion_id: input.voucher_promotion_id,
-    });
+    const cart = loadCartContextStep({ cart_id: input.cart_id });
 
     const lookup = lookupVoucherStep({
       code: input.code,
@@ -67,16 +60,15 @@ export const resolveVoucherDiscountWorkflow = createWorkflow(
 
     const verification = when(
       { input, discount },
-      ({ input }) => !!input.promotion_id,
+      ({ input }) => !!input.credit_line_id,
     ).then(() =>
       verifyCartTotalsStep({
         cart_id: input.cart_id,
-        promotion_id: input.promotion_id!,
+        credit_line_id: input.credit_line_id!,
         final_voucher_discount: discount.final_voucher_discount,
         expected_final_cart_total: discount.expected_final_cart_total,
-        // CONFLICT-8/PD-15: `loadCartContextStep` above ran before any
-        // promotion was attached by this workflow, so this is the voucher-free
-        // baseline.
+        // Credit lines are not adjustments, so `discount.item_promotion_discount`
+        // is the voucher-free Rule-11 baseline by construction.
         pre_apply_item_promotion_discount: discount.item_promotion_discount,
       }),
     );

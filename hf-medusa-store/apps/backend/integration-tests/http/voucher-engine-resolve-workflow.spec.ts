@@ -172,7 +172,7 @@ medusaIntegrationTestRunner({
         expect(result.discount.eligible_post_promotion_subtotal).toBe(300_000);
       });
 
-      it("excludes VoucherEngine's own Promotion adjustment from item_promotion_discount while counting an independent item promo (Rule 11, Phase-3 item 12)", async () => {
+      it("counts ALL cart promotion adjustments as item_promotion_discount — the voucher carrier is a credit line, not an adjustment (Rule 11, credit-line carrier)", async () => {
         const cart = await createCart([
           {
             title: "Racket",
@@ -186,9 +186,9 @@ medusaIntegrationTestRunner({
                 promotion_id: "promo_item",
               },
               {
-                code: "VOUCHERCODEDD",
+                code: "ITEMPROMO2",
                 amount: 50_000,
-                promotion_id: "promo_voucher_dd",
+                promotion_id: "promo_item_2",
               },
             ],
           },
@@ -206,15 +206,16 @@ medusaIntegrationTestRunner({
             cart_id: cart.id,
             code: "MIXEDPROMODD",
             customer_id: "cus_1",
-            voucher_promotion_id: "promo_voucher_dd",
           },
           throwOnError: false,
         });
 
         expect(errors).toEqual([]);
-        // Only the non-voucher adjustment (100,000) counts as item_promotion_discount.
-        expect(result.discount.item_promotion_discount).toBe(100_000);
-        expect(result.discount.post_promotion_subtotal).toBe(900_000);
+        // Under the Option-B carrier the voucher is a `cart.credit_lines` entry,
+        // never an adjustment, so EVERY adjustment on the cart is an item-level
+        // promotion — nothing is excluded (100,000 + 50,000).
+        expect(result.discount.item_promotion_discount).toBe(150_000);
+        expect(result.discount.post_promotion_subtotal).toBe(850_000);
       });
 
       it("resolves the active custom DiscountCapConfig into the calculation (task 3.3.10)", async () => {
@@ -258,27 +259,15 @@ medusaIntegrationTestRunner({
         expect(result.discount.cap_explanation?.message_vi).toContain("10%");
       });
 
-      it("verifyCartTotalsStep reconciles against the REAL authoritative Cart total after a real Promotion attach (task 3.3.14/3.8.4)", async () => {
-        // CORRECTED FINDING (this session; supersedes the prior session's
-        // "unreconciled totals" note): `cart.total`/`discount_total` are
-        // `model.bigNumber().computed()` fields (@medusajs/cart's Cart model).
-        // They are populated ONLY by `decorateCartTotals` inside
-        // `CartModuleService.retrieveCart`/`listCarts` when the caller's
-        // `select` requests a total-like field — NOT by `query.graph`/
-        // `remoteQuery` (the generic remote-query data loader never runs that
-        // decoration, so any computed total field reads back `0` there,
-        // regardless of how the cart was created). Verified empirically: even
-        // `remoteQueryObjectFromString` — the exact mechanism the shipped
-        // `refetchCart` helper (`@medusajs/medusa/dist/api/store/carts/
-        // helpers.js`) uses for `GET /store/carts/:id` — returns `total: 0`
-        // for this same cart, while `cartModuleService.retrieveCart` does not.
-        // This was a real bug in `verifyCartTotalsStep` (it read totals via
-        // `query.graph`), not a property of how the test cart was seeded.
-        // Fixed this session: `verifyCartTotalsStep` now reads the
-        // authoritative cart via the Cart module service directly. This test
-        // proves the full reconciliation succeeds end-to-end — no fixture
-        // workaround (e.g. `addToCartWorkflow`) was needed once the step
-        // itself queried through the right path.
+      it("reads a REAL attached percentage item Promotion as item_promotion_discount and stacks the voucher on top (credit-line carrier)", async () => {
+        // A coexisting item-level percentage Promotion is a real cart
+        // adjustment. Under the Option-B carrier the voucher rides a credit
+        // line (not an adjustment), so this attached promotion is counted as
+        // `item_promotion_discount` and the voucher applies to the eligible
+        // POST-promotion subtotal on top of it (Rule 5/6/11). Full
+        // credit-line reconciliation (verifyCartTotalsStep) is exercised
+        // end-to-end by the apply/remove HTTP spec, which actually creates the
+        // credit line.
         const cart = await createCart([
           {
             title: "Racket",
@@ -288,36 +277,34 @@ medusaIntegrationTestRunner({
           },
         ]);
         await createVoucher({
-          code: "REALPROMOFF",
+          code: "VOUCHERONTOP",
           discount_type: "percentage",
           discount_value: 1000, // 10%, well under the 50% default cap
         });
 
-        const [promotion] = await createPromotionsWorkflow(container())
-          .run({
-            input: {
-              promotionsData: [
-                {
-                  code: "REALPROMOFF",
-                  type: "standard",
-                  status: "active",
-                  application_method: {
-                    type: "percentage",
-                    target_type: "items",
-                    allocation: "across",
-                    value: 10,
-                    currency_code: "vnd",
-                  },
+        await createPromotionsWorkflow(container()).run({
+          input: {
+            promotionsData: [
+              {
+                code: "ITEMPROMO10",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 10,
+                  currency_code: "vnd",
                 },
-              ],
-            },
-          })
-          .then((r) => r.result);
+              },
+            ],
+          },
+        });
 
         await updateCartPromotionsWorkflow(container()).run({
           input: {
             cart_id: cart.id,
-            promo_codes: ["REALPROMOFF"],
+            promo_codes: ["ITEMPROMO10"],
             action: PromotionActions.ADD,
           },
         });
@@ -327,29 +314,19 @@ medusaIntegrationTestRunner({
         ).run({
           input: {
             cart_id: cart.id,
-            code: "REALPROMOFF",
+            code: "VOUCHERONTOP",
             customer_id: "cus_1",
-            voucher_promotion_id: promotion.id,
-            promotion_id: promotion.id,
           },
           throwOnError: false,
         });
 
-        // The voucher's own backing Promotion IS the only adjustment on the
-        // cart here, so item_promotion_discount = 0 (Rule 11 exclusion) and
-        // the voucher's 10% applies to the full 1,000,000 subtotal.
         expect(errors).toEqual([]);
-        expect(result.discount.item_promotion_discount).toBe(0);
-        expect(result.discount.final_voucher_discount).toBe(100_000);
-        expect(result.discount.expected_final_cart_total).toBe(900_000);
-
-        // The real reconciliation: verify-cart-totals refetched the cart
-        // through the Cart module service and confirmed the Cart Module's own
-        // recomputed total exactly matches VoucherEngine's calculation.
-        expect(result.verification).not.toBeNull();
-        expect(result.verification?.verified).toBe(true);
-        expect(Number(result.verification?.cart.total)).toBe(900_000);
-        expect(Number(result.verification?.cart.discount_total)).toBe(100_000);
+        // The attached 10% item promotion is a real 100,000 adjustment, counted
+        // as item_promotion_discount (the voucher is not an adjustment).
+        expect(result.discount.item_promotion_discount).toBe(100_000);
+        // Voucher 10% of the eligible post-promotion subtotal (900,000) = 90,000.
+        expect(result.discount.final_voucher_discount).toBe(90_000);
+        expect(result.discount.expected_final_cart_total).toBe(810_000);
       });
     });
   },

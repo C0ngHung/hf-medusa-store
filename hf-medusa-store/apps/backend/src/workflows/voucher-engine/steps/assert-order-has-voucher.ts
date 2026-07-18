@@ -24,7 +24,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import {
   VOUCHER_METADATA_KEY,
   VoucherCartMetadata,
-} from "../lib/ephemeral-promotion";
+} from "../lib/voucher-cart-metadata";
 
 export const assertOrderHasVoucherStepId = "assert-order-has-voucher";
 

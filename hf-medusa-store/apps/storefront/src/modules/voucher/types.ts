@@ -2,7 +2,7 @@
  * Storefront-side wire shapes for VoucherEngine (VOUCH-001..005, SPEC Decision
  * G). `VoucherCartMetadata` mirrors the EXACT snapshot the backend persists to
  * `cart.metadata.voucher` — verified against
- * `apps/backend/src/workflows/voucher-engine/lib/ephemeral-promotion.ts`
+ * `apps/backend/src/workflows/voucher-engine/lib/voucher-cart-metadata.ts`
  * (`VoucherCartMetadata`) and `apply-voucher.ts`'s `voucherSnapshot` transform,
  * NOT the idealized shape assumed in `docs/voucher-engine-ui/UX-FLOW.md` §2.
  * Notably: there is NO `cap_explanation` string and NO `expires_at` persisted
@@ -13,9 +13,8 @@
 export type VoucherCartMetadata = {
   voucher_id: string
   code: string
-  /** The ephemeral Promotion's own id — used to identify/filter it out of the generic promotions list (D4). */
-  ephemeral_promotion_id: string
-  ephemeral_code: string
+  /** The `cart.credit_lines` entry id carrying this voucher's discount (SPEC Decision H). */
+  credit_line_id: string
   discount_type: "percentage" | "fixed_amount"
   discount_value: number
   /** = raw_voucher_discount (§10) — named without the `raw_` prefix on this
