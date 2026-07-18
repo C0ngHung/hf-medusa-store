@@ -3,6 +3,7 @@ import { CreateOrAttachVoucherBody } from "./validators";
 import { createVoucherWorkflow } from "../../../workflows/voucher-engine/admin/create-voucher";
 import { VOUCHER_ENGINE_MODULE } from "../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../modules/voucher-engine/service";
+import { hydrateVouchersFromPromotions } from "../../../workflows/voucher-engine/lib/hydrate-voucher-from-promotion";
 
 /**
  * POST /admin/vouchers — create a voucher (3.4.11, SRS §6.4), or attach one to
@@ -30,6 +31,14 @@ export const POST = async (
  * Reads `voucher_config` directly: NEVER the native Promotion list (a
  * VoucherConfig's backing/ephemeral Promotions are internal transport, not
  * admin-visible voucher rows — SPEC Decision C/G).
+ *
+ * Task 6 (read-through list, Decision I): `code`/`discount_type`/
+ * `discount_value`/`valid_from`/`valid_to` now live on the linked Promotion,
+ * so each row is overlaid via the shared `hydrateVouchersFromPromotions`
+ * helper (batch `query.graph` for every distinct `promotion_id` in the page,
+ * same helper used by `GET /store/customers/me/vouchers` — Task 6 L1 dedupe)
+ * before being returned — the admin table shows the promotion-sourced values,
+ * not a possibly-stale voucher_config snapshot.
  */
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   const ve = req.scope.resolve(VOUCHER_ENGINE_MODULE) as VoucherEngineService;
@@ -54,6 +63,7 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         "valid_to",
         "created_at",
         "updated_at",
+        "promotion_id",
       ],
       order: { created_at: "DESC" },
       take: limit,
@@ -61,5 +71,10 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
     },
   );
 
-  res.json({ vouchers, count, limit, offset });
+  const hydratedVouchers = await hydrateVouchersFromPromotions(
+    req.scope,
+    vouchers as Array<{ promotion_id: string | null }>,
+  );
+
+  res.json({ vouchers: hydratedVouchers, count, limit, offset });
 };

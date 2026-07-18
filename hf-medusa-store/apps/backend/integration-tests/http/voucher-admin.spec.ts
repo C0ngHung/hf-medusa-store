@@ -439,12 +439,64 @@ medusaIntegrationTestRunner({
         expect(row.updated_at).toBeTruthy();
       });
 
-      it("never includes native Promotion fields (reads voucher_config only)", async () => {
+      it("never includes native Promotion NESTED fields (reads voucher_config only; promotion_id itself IS exposed for Task 8 admin-list navigation)", async () => {
         const res = await api.get("/admin/vouchers", adminHeaders);
         for (const row of res.data.vouchers) {
           expect(row).not.toHaveProperty("application_method");
-          expect(row).not.toHaveProperty("promotion_id");
         }
+      });
+
+      // Task 6 (read-through list, Decision I): the list must show the
+      // linked Promotion's LIVE discount, not a possibly-stale
+      // voucher_config snapshot — drift the backing Promotion directly
+      // (bypassing voucher_config entirely) and confirm the list reflects it.
+      it("reflects the linked Promotion's LIVE discount_value/code, drifted after creation, without touching voucher_config", async () => {
+        const created = await api.post(
+          "/admin/vouchers",
+          {
+            ...validBody(),
+            code: "LISTDRIFT1",
+            discount_type: "percentage",
+            discount_value: 2000, // 20.00% -> backing Promotion value = 20
+          },
+          adminHeaders,
+        );
+        expect(created.status).toBe(201);
+        const id = created.data.voucher.id;
+        const promotionId = created.data.voucher.promotion_id as string;
+        expect(promotionId).toBeTruthy();
+
+        const beforeList = await api.get("/admin/vouchers", adminHeaders);
+        const beforeRow = beforeList.data.vouchers.find(
+          (v: any) => v.id === id,
+        );
+        expect(beforeRow.discount_value).toBe(2000);
+        expect(beforeRow.code).toBe("LISTDRIFT1");
+
+        // Mutate the backing Promotion directly — voucher_config's own
+        // discount_value/code columns are left completely untouched.
+        const { errors } = await updatePromotionsWorkflow(getContainer()).run({
+          input: {
+            promotionsData: [
+              {
+                id: promotionId,
+                code: "LISTDRIFTED",
+                application_method: { value: 35 },
+              },
+            ],
+          },
+          throwOnError: false,
+        });
+        expect(errors).toEqual([]);
+
+        const afterList = await api.get("/admin/vouchers", adminHeaders);
+        const afterRow = afterList.data.vouchers.find((v: any) => v.id === id);
+        // Reflects the drifted 35% / new code, not the stale 2000 bps / old code.
+        expect(afterRow.discount_value).toBe(3500);
+        expect(afterRow.code).toBe("LISTDRIFTED");
+        // promotion_id itself IS exposed (Task 8: admin list row navigates to
+        // the promotion detail page) — only nested Promotion fields are hidden.
+        expect(afterRow.promotion_id).toBe(promotionId);
       });
     });
 
