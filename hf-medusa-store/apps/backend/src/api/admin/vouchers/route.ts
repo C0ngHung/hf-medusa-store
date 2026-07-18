@@ -1,17 +1,20 @@
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
-import { CreateVoucherBody } from "./validators";
+import { CreateOrAttachVoucherBody } from "./validators";
 import { createVoucherWorkflow } from "../../../workflows/voucher-engine/admin/create-voucher";
 import { VOUCHER_ENGINE_MODULE } from "../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../modules/voucher-engine/service";
 
 /**
- * POST /admin/vouchers — create a voucher (3.4.11, SRS §6.4). Thin route →
- * workflow (no service logic here). Body is validated by CreateVoucherSchema via
- * middlewares. Auth: /admin/* requires an authenticated admin (SEC-04, framework
- * default) — no extra guard needed here.
+ * POST /admin/vouchers — create a voucher (3.4.11, SRS §6.4), or attach one to
+ * an existing native Promotion (Task 4, admin widget "enable as voucher" flow).
+ * Thin route → workflow (no branching/service logic here) — the workflow
+ * itself decides create-vs-attach based on whether `promotion_id` is present.
+ * Body is validated by `CreateOrAttachVoucherSchema` via middlewares. Auth:
+ * /admin/* requires an authenticated admin (SEC-04, framework default) — no
+ * extra guard needed here.
  */
 export const POST = async (
-  req: MedusaRequest<CreateVoucherBody>,
+  req: MedusaRequest<CreateOrAttachVoucherBody>,
   res: MedusaResponse,
 ) => {
   const { result } = await createVoucherWorkflow(req.scope).run({

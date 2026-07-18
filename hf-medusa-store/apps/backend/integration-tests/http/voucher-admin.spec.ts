@@ -163,6 +163,159 @@ medusaIntegrationTestRunner({
       });
     });
 
+    describe("POST /admin/vouchers — attach mode (Task 4, admin widget flow)", () => {
+      it("attaches a voucher to an existing promotion (widget flow)", async () => {
+        const { result: createdPromotions } = await createPromotionsWorkflow(
+          getContainer(),
+        ).run({
+          input: {
+            promotionsData: [
+              {
+                code: "ATTACHME",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 15, // 15% -> discount_value 1500 bps
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        const promo = createdPromotions[0];
+
+        const res = await api.post(
+          "/admin/vouchers",
+          {
+            promotion_id: promo.id,
+            max_discount_amount: 500_000,
+            min_order_value: 200_000,
+            per_user_limit: 2,
+          },
+          adminHeaders,
+        );
+        expect(res.status).toBe(201);
+        expect(res.data.voucher.promotion_id).toBe(promo.id);
+        expect(res.data.voucher.max_discount_amount).toBe(500_000);
+        expect(res.data.voucher.min_order_value).toBe(200_000);
+        expect(res.data.voucher.discount_type).toBe("percentage");
+        expect(res.data.voucher.discount_value).toBe(1500);
+        expect(res.data.voucher.code).toBe("ATTACHME");
+
+        // Guardrail (Decision C/G): the referenced Promotion — created here
+        // directly via createPromotionsWorkflow, bypassing the admin voucher
+        // create-mode that normally stamps this metadata — must now carry it
+        // too, so block-voucher-promotion/analytics guardrails cover it.
+        const promotionService = getContainer().resolve(Modules.PROMOTION);
+        const promotion = (await promotionService.retrievePromotion(
+          promo.id,
+        )) as { metadata?: Record<string, unknown> | null };
+        expect(promotion.metadata?.voucher_engine).toBe(true);
+      });
+
+      // Code-review Task 4 FIX 1 (HIGH, money-critical): attach mode derives
+      // discount_value straight from the Promotion with no sanity bounds.
+      // Medusa itself only bounds `percentage` to (0,100]; a `fixed_amount`
+      // (Medusa type "fixed") promotion can have value 0. resolvePromotionSnapshotStep
+      // must reject this with the SAME >= 1 bound create-mode enforces (INT-01).
+      it("rejects attaching a fixed_amount promotion whose value is 0 with 400 (INVALID_DATA)", async () => {
+        const { result: createdPromotions } = await createPromotionsWorkflow(
+          getContainer(),
+        ).run({
+          input: {
+            promotionsData: [
+              {
+                code: "ZEROFIXED",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "fixed",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 0,
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        const promo = createdPromotions[0];
+
+        const err = await api
+          .post("/admin/vouchers", { promotion_id: promo.id }, adminHeaders)
+          .catch((e) => e.response);
+        expect(err.status).toBe(400);
+      });
+
+      // Code-review Task 4 FIX 2 (MEDIUM): missing promotion previously threw
+      // a plain Error (500) instead of a MedusaError NOT_FOUND (404).
+      it("returns 404 when attaching a non-existent promotion_id", async () => {
+        const err = await api
+          .post(
+            "/admin/vouchers",
+            { promotion_id: "promo_does_not_exist_123" },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBe(404);
+      });
+
+      // Task 7 code-review FIX 2 (MEDIUM, race condition): two "Enable as
+      // voucher" calls for the SAME promotion_id must not create two
+      // voucher_config rows — the second attempt must be rejected and only
+      // one row must exist afterward.
+      it("rejects attaching a SECOND voucher to a promotion that already has one (400), leaving only one row", async () => {
+        const { result: createdPromotions } = await createPromotionsWorkflow(
+          getContainer(),
+        ).run({
+          input: {
+            promotionsData: [
+              {
+                code: "DUPEATTACH",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 10,
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        const promo = createdPromotions[0];
+
+        const first = await api.post(
+          "/admin/vouchers",
+          { promotion_id: promo.id, per_user_limit: 1 },
+          adminHeaders,
+        );
+        expect(first.status).toBe(201);
+
+        const err = await api
+          .post(
+            "/admin/vouchers",
+            { promotion_id: promo.id, per_user_limit: 1 },
+            adminHeaders,
+          )
+          .catch((e) => e.response);
+        expect(err.status).toBeGreaterThanOrEqual(400);
+        expect(err.status).toBeLessThan(500);
+
+        const res = await api.get(
+          `/admin/vouchers?promotion_id=${promo.id}`,
+          adminHeaders,
+        );
+        expect(res.data.vouchers).toHaveLength(1);
+        expect(res.data.vouchers[0].id).toBe(first.data.voucher.id);
+      });
+    });
+
     describe("GET /admin/vouchers/:id/analytics (3.4.12)", () => {
       it("returns the analytics shape for a fresh voucher (all zeros)", async () => {
         const created = await api.post(
