@@ -1,5 +1,108 @@
 # VoucherEngine Implementation Progress
 
+## 2026-07-18 — Promotion-native voucher pivot: Decision I implemented + full regression green (branch `feat/voucher-credit-line-carrier`, NOT committed)
+
+Implemented `docs/superpowers/plans/2026-07-18-promotion-native-voucher.md` (Phases 1–5, Tasks 1–10) on top of
+the 2026-07-17 Option-B work. **Goal:** allow creating a voucher via the native Promotion wizard + a
+"Voucher settings" widget, with SHARED config fields (`code`, `discount_type`/`discount_value`, validity
+window, `is_active`, global `usage_limit`) read fresh from the linked Promotion/Campaign at runtime instead of
+living only on `voucher_config` — eliminating drift between the two. Credit-line carrier (Decision H) is
+unchanged; the backing Promotion is still never cart-attached.
+
+**Files created:** `workflows/voucher-engine/lib/hydrate-voucher-from-promotion.ts` (pure overlay fn),
+`api/middlewares/block-voucher-promotion.ts` (guardrail on native `POST /store/carts/:id/promotions`),
+`api/admin/vouchers/[id]/route.ts` (PUT/DELETE), `admin/widgets/voucher-settings.tsx` (Promotion-detail
+widget), `workflows/voucher-engine/admin/steps/resolve-promotion-snapshot.ts` +
+`admin/steps/resolve-voucher-code.ts`, plus new tests `block-voucher-promotion.spec.ts`,
+`voucher-hydrate-from-promotion.spec.ts`, `voucher-store-vouchers.spec.ts`,
+`hydrate-voucher-from-promotion.unit.spec.ts`, `integration-tests/http/helpers/create-store-customer.ts`.
+
+**Files modified:** `admin/create-voucher.ts` + `admin/steps/create-voucher.ts` (attach-mode: skip promotion
+creation when `promotion_id` given), `api/admin/vouchers/route.ts` + `validators.ts`
+(`CreateOrAttachVoucherSchema` union, list read-through enrich), `api/middlewares.ts` (guardrail + new schema
+registration), `api/store/customers/me/vouchers/route.ts` (hydrate + `estimated_savings` + eligible-first
+sort), `steps/lookup-voucher.ts` (hydrate seam), `admin/routes/vouchers/page.tsx` (list read-through,
+Create-voucher CTA replaces modal), storefront `discount-code/available-vouchers-modal.tsx` +
+`voucher/types.ts` (show `estimated_savings`). **Removed:** `admin/components/create-voucher-modal.tsx`
+(superseded by the widget).
+
+**SPEC:** updated via `voucher-spec-advisor` — new **Decision I** (Promotion/Campaign is now source of truth
+for SHARED fields, read-through at runtime; `VoucherConfig` keeps voucher-only fields + deprecated-but-retained
+shared columns as a create-time fallback). Re-scopes Decision C; does NOT change Decision H. Also records the
+shipped `PUT /admin/vouchers/:id` / `DELETE /admin/vouchers/:id` routes (CONFLICT-4 still open for sign-off).
+
+**Full regression (Task 11 Step 1, real Docker Postgres/Redis, each suite run alone per the runInBand-isolation
+lesson):**
+
+- `test:unit` — **249/249 passed, 20 suites** (the previously-known pre-existing `COOLDOWN_S` failure is gone).
+- `apply-remove-voucher` **7/7**, `voucher-engine-resolve-workflow` **6/6**, `revalidate-voucher-workflow`
+  **7/7**, `record-voucher-usage-workflow` **3/3**, `voucher-admin` **23/23** (incl. new attach-mode +
+  PUT/DELETE cases), `block-voucher-promotion` **2/2**, `voucher-store-vouchers` **3/3**.
+- Module integration: `service.integration` **14/14**, `cache-ratelimit.integration` **5/5** (running both
+  together under one `voucher-engine` jest match reproduces the known combined-run `Map.prototype.set
+incompatible receiver` isolation flake — confirmed test-infra, not a regression, per
+  [[integration-test-runinband-isolation]]).
+- `npx tsc --noEmit` — only the 2 previously-known pre-existing errors (`jsonwebtoken` missing types in
+  `create-admin-user.ts`, now also in the new `create-store-customer.ts` helper via the same import;
+  `import.meta` in `admin/lib/sdk.ts`). No new type errors from this session's diff.
+
+**Task 11 Step 2 (live E2E UI verify of the Rule-11 scenario) explicitly SKIPPED per Cealus (2026-07-18) —
+deferred, not done.**
+
+**STATUS:** Decision I implementation + regression COMPLETE on branch `feat/voucher-credit-line-carrier` (still
+NOT committed, stacked on top of the 2026-07-17 Option-B work which is also not committed). **NEXT:** commit in
+logical chunks per the plan's per-task commit messages (Task 1–10), pending Cealus's go-ahead per commit; live
+UI verification remains outstanding whenever picked back up.
+
+## 2026-07-17 — Option-B pivot: Phase 1 (credit-line carrier) DONE + VERIFIED (branch `feat/voucher-credit-line-carrier`, NOT committed)
+
+Cealus approved pivoting VoucherEngine to **Option B** (leverage native Promotion/Campaign for config +
+thin custom layer + `cart.credit_lines` carrier). **Phase 1 = carrier swap only**, implemented + verified.
+
+**Why:** the ephemeral fixed-Promotion carrier violated Rule 11 (CONFLICT-8/PD-15) — `computeActions` sorts
+by `application_method.value` DESC + compounds %, shrinking a coexisting % item-promotion. A credit line is
+not a promotion, never enters `computeActions` → item promos untouched. `cart.total` nets credit lines
+(`@medusajs/utils/dist/totals/cart/index.js:112`); propagate cart→order (`complete-cart.js:361-406`).
+
+**Files:** new `lib/create-voucher-credit-line.ts` (`createCartCreditLinesWorkflow`); renamed
+`lib/ephemeral-promotion.ts`→`lib/voucher-cart-metadata.ts` (snapshot `credit_line_id`); rewired
+`apply-voucher.ts`/`remove-voucher.ts`/`revalidate-voucher-on-cart-change.ts` (credit-line create/delete);
+`verify-cart-totals.ts` (credit-line amount check + `cart.total` oracle; Rule-11 guard → defensive
+invariant); `load-cart-context.ts` (dropped voucher-exclusion); `resolve-voucher-discount.ts` preview.
+Deleted `create-and-attach-ephemeral-promotion.ts`, `ephemeral-promotion.ts`,
+`__tests__/ephemeral-promotion.unit.spec.ts`. **Kept byte-for-byte:** `lib/calculate-discount.ts`, `lib/money.ts`.
+
+**Verified (real Docker stack, each HTTP suite alone):** `test:unit` **234/235** (1 fail = PRE-EXISTING
+`COOLDOWN_S=60` bug in `constants.ts`, should be 1800/30min per SEC-02, NOT on this diff); `apply-remove-voucher`
+**7/7** incl. NEW Rule-11 regression (item 40% + voucher 20% → item adj stays 400,000, credit line 100,000,
+total 500,000, capped); `voucher-engine-resolve-workflow` **6/6**; `revalidate-voucher-workflow` **7/7**;
+`record-voucher-usage-workflow` **3/3**; module `service.integration` **14/14**; `tsc` clean (2 pre-existing).
+
+**SPEC:** updated via `voucher-spec-advisor` — new **Decision H** supersedes Decision G; PD-15/CONFLICT-8 RESOLVED;
+business rules unchanged. Accepted tradeoff: voucher = `credit_line_total`, not `discount_total`. HARD
+ASSUMPTION: credit lines net after tax (valid at 0 tax rates today).
+
+**Phase 2 (native Promotion/Campaign backing) ALSO DONE + VERIFIED** (same branch). `voucher_config.campaign_id`
+(migration `Migration20260717080006`, applied); read-only Link `src/links/voucher-config-promotion.ts`; admin
+`create-voucher` workflow provisions a real Promotion + inline Campaign via `createPromotionsWorkflow` (pure
+`admin/lib/build-backing-promotion.ts` — V3→`Promotion.limit`, V4→campaign `use_by_attribute` budget, V5→`item_total
+gte` rule, V6→product/category target_rule single-attribute only, %bps→percent) + `resolveVoucherCodeStep`; stores
+`promotion_id`/`campaign_id`. Backing Promotion NEVER cart-attached (advisory/admin only). Verified: `voucher-admin`
+HTTP **12/12** (incl. provisioning-assertion — all native rule attributes accepted); `build-backing-promotion` unit
+**10/10**; unit total 243/244 (same pre-existing `COOLDOWN_S` fail); tsc clean.
+
+**Phase 4 (backfill + seed) ALSO DONE + VERIFIED.** New `src/scripts/backfill-voucher-promotions.ts` (idempotent
+`provisionMissingBackingPromotions`); `seed-voucher-engine.ts` deletes old backing promotions/campaigns on wipe +
+provisions after insert (RACKET2M comment fixed — percentage generic promos now supported). Verified on dev DB:
+seed → 3 vouchers each with promotion_id+campaign_id + backing promotion, SHUTTLE20 with item_total-gte rule +
+category target_rule; backfill re-run skips 3 (idempotent); re-seed no code collision. **Phase 3 intentionally
+minimal** (defense-in-depth `promotion.used` reads skipped — always 0, promotion never cart-attached; refs exposed
+via columns + Link).
+
+**STATUS: Option B COMPLETE** (Phases 1/2/4 done+verified; Phase 3 reduced w/ rationale) on branch
+`feat/voucher-credit-line-carrier` (NOT committed). **NEXT:** Cealus commits (logical commits: carrier swap / native
+backing / backfill+seed) + MR to develop; fix `COOLDOWN_S` bug separately. Plan: `~/.claude/plans/i-want-you-to-cheeky-sedgewick.md`.
+
 ## Current summary (latest authoritative verification: 2026-07-15 — Hùng session 6 + Thức sessions 1-3, merged)
 
 - **Day 1:** Done (Solution Define / SPEC / API contract / Redis-usage decisions).
