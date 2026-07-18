@@ -39,15 +39,24 @@ export const POST = async (
  * same helper used by `GET /store/customers/me/vouchers` — Task 6 L1 dedupe)
  * before being returned — the admin table shows the promotion-sourced values,
  * not a possibly-stale voucher_config snapshot.
+ *
+ * Task 7: optional `?promotion_id=` filter — used by the promotion-detail
+ * "Voucher settings" widget to look up the (at most one) voucher_config
+ * attached to the promotion currently being viewed. Omitted ⇒ unfiltered
+ * list, unchanged behavior.
  */
 export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   const ve = req.scope.resolve(VOUCHER_ENGINE_MODULE) as VoucherEngineService;
 
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const offset = Number(req.query.offset) || 0;
+  const promotionId =
+    typeof req.query.promotion_id === "string"
+      ? req.query.promotion_id
+      : undefined;
 
   const [vouchers, count] = await ve.listAndCountVoucherConfigs(
-    {},
+    promotionId ? { promotion_id: promotionId } : {},
     {
       select: [
         "id",
@@ -56,6 +65,11 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         "discount_value",
         "min_order_value",
         "max_discount_amount",
+        "applicable_product_ids",
+        "applicable_category_ids",
+        "stackable_with_promotions",
+        "per_user_limit",
+        "user_segment_conditions",
         "usage_limit",
         "usage_count",
         "is_active",

@@ -243,6 +243,86 @@ export const useVouchers = () =>
       ),
   });
 
+export const useVoucherAnalytics = (id: string) =>
+  useQuery({
+    queryKey: ["voucher-analytics", id],
+    enabled: !!id,
+    retry: false,
+    queryFn: () =>
+      sdk.client.fetch<{ analytics: VoucherAnalytics }>(
+        `/admin/vouchers/${id}/analytics`,
+      ),
+  });
+
+/* ------------------------------------------------------------------ */
+/* VoucherEngine — promotion-detail "Voucher settings" widget (Task 7). */
+/* Attach/edit/detach a voucher_config directly from the native         */
+/* Promotion detail page (@medusajs/admin-sdk zone                      */
+/* "promotion.details.side.after") — same /admin/vouchers* endpoints,   */
+/* attach mode (Task 4) / PUT (Task 5) / DELETE (Task 5), never the     */
+/* full create-mode body (discount/window/code live on the Promotion).  */
+/* ------------------------------------------------------------------ */
+
+/** The voucher-only fields both attach (POST) and edit (PUT) accept. */
+export type VoucherOnlyFields = {
+  min_order_value?: number | null;
+  max_discount_amount?: number | null;
+  applicable_product_ids?: string[] | null;
+  applicable_category_ids?: string[] | null;
+  stackable_with_promotions?: boolean;
+  per_user_limit?: number;
+  user_segment_conditions?: Record<string, unknown> | null;
+};
+
+export type AttachVoucherPayload = VoucherOnlyFields & {
+  promotion_id: string;
+};
+
+/** Look up the (at most one) voucher_config attached to a Promotion. */
+export const useVoucherByPromotion = (promotionId?: string) =>
+  useQuery({
+    queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+    enabled: !!promotionId,
+    queryFn: () =>
+      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
+        "/admin/vouchers",
+        { query: { promotion_id: promotionId, limit: 1 } },
+      ),
+  });
+
+export const useAttachVoucher = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AttachVoucherPayload) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
+        method: "POST",
+        body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};
+
+export const useUpdateVoucherFields = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VoucherOnlyFields) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>(`/admin/vouchers/${id}`, {
+        method: "PUT",
+        body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};
+
+export const useDeleteVoucher = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      sdk.client.fetch(`/admin/vouchers/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};
+
 export type CreateVoucherPayload = {
   code?: string;
   discount_type: VoucherDiscountType;
@@ -270,14 +350,3 @@ export const useCreateVoucher = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
   });
 };
-
-export const useVoucherAnalytics = (id: string) =>
-  useQuery({
-    queryKey: ["voucher-analytics", id],
-    enabled: !!id,
-    retry: false,
-    queryFn: () =>
-      sdk.client.fetch<{ analytics: VoucherAnalytics }>(
-        `/admin/vouchers/${id}/analytics`,
-      ),
-  });

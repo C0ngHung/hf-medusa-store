@@ -446,6 +446,119 @@ medusaIntegrationTestRunner({
         }
       });
 
+      // Task 7: the promotion-detail "Voucher settings" widget looks up its
+      // (at most one) voucher via `?promotion_id=`.
+      it("filters by ?promotion_id= — only the matching voucher is returned", async () => {
+        const { result: createdPromotions } = await createPromotionsWorkflow(
+          getContainer(),
+        ).run({
+          input: {
+            promotionsData: [
+              {
+                code: "PROMOFILT1",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 10,
+                  currency_code: "vnd",
+                },
+              },
+              {
+                code: "PROMOFILT2",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 10,
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        const [promoA, promoB] = createdPromotions;
+
+        const voucherA = await api.post(
+          "/admin/vouchers",
+          { promotion_id: promoA.id, per_user_limit: 1 },
+          adminHeaders,
+        );
+        const voucherB = await api.post(
+          "/admin/vouchers",
+          { promotion_id: promoB.id, per_user_limit: 1 },
+          adminHeaders,
+        );
+        expect(voucherA.status).toBe(201);
+        expect(voucherB.status).toBe(201);
+
+        const res = await api.get(
+          `/admin/vouchers?promotion_id=${promoA.id}`,
+          adminHeaders,
+        );
+        expect(res.status).toBe(200);
+        expect(res.data.vouchers).toHaveLength(1);
+        expect(res.data.vouchers[0].id).toBe(voucherA.data.voucher.id);
+        expect(res.data.vouchers[0].code).toBe("PROMOFILT1");
+      });
+
+      // Task 7 code-review FIX 1 (CRITICAL, data loss): the GET select list
+      // previously omitted applicable_product_ids/applicable_category_ids/
+      // stackable_with_promotions/per_user_limit/user_segment_conditions, so
+      // the "Voucher settings" widget's pre-fill silently overwrote real
+      // scope/limit data with defaults on every Save. Pin that the real
+      // (non-default) values round-trip through GET ?promotion_id=.
+      it("returns the real applicable_product_ids/per_user_limit/stackable_with_promotions (not defaults) via ?promotion_id= (regression)", async () => {
+        const { result: createdPromotions } = await createPromotionsWorkflow(
+          getContainer(),
+        ).run({
+          input: {
+            promotionsData: [
+              {
+                code: "FIXFIELDS1",
+                type: "standard",
+                status: "active",
+                application_method: {
+                  type: "percentage",
+                  target_type: "items",
+                  allocation: "across",
+                  value: 10,
+                  currency_code: "vnd",
+                },
+              },
+            ],
+          },
+        });
+        const promo = createdPromotions[0];
+
+        const attached = await api.post(
+          "/admin/vouchers",
+          {
+            promotion_id: promo.id,
+            applicable_product_ids: ["p1"],
+            per_user_limit: 3,
+            stackable_with_promotions: false,
+          },
+          adminHeaders,
+        );
+        expect(attached.status).toBe(201);
+
+        const res = await api.get(
+          `/admin/vouchers?promotion_id=${promo.id}`,
+          adminHeaders,
+        );
+        expect(res.status).toBe(200);
+        expect(res.data.vouchers).toHaveLength(1);
+        const row = res.data.vouchers[0];
+        expect(row.applicable_product_ids).toEqual(["p1"]);
+        expect(row.per_user_limit).toBe(3);
+        expect(row.stackable_with_promotions).toBe(false);
+      });
+
       // Task 6 (read-through list, Decision I): the list must show the
       // linked Promotion's LIVE discount, not a possibly-stale
       // voucher_config snapshot — drift the backing Promotion directly
