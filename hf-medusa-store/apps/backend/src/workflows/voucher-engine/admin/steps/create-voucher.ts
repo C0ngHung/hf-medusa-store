@@ -23,6 +23,10 @@ export type CreateVoucherStepInput = {
   valid_from: Date;
   valid_to: Date;
   is_active?: boolean;
+  /** Canonical backing Promotion id (Decision C/H) — provisioned earlier in the workflow. */
+  promotion_id?: string | null;
+  /** Backing Promotion's Campaign id (Phase 2) — provisioned earlier in the workflow. */
+  campaign_id?: string | null;
 };
 
 export const createVoucherStep = createStep(
@@ -30,7 +34,10 @@ export const createVoucherStep = createStep(
   async (input: CreateVoucherStepInput, { container }) => {
     const service: any = container.resolve(VOUCHER_ENGINE_MODULE);
 
-    // Auto-generate when absent; always store canonical UPPERCASE (SEC-03, V1).
+    // Code is normally resolved up front by `resolveVoucherCodeStep` (so the
+    // backing Promotion and this row share it); the `|| generateVoucherCode()`
+    // fallback keeps this step correct if ever called standalone. Always store
+    // canonical UPPERCASE (SEC-03, V1).
     const code = normalizeCode(input.code || generateVoucherCode());
 
     const voucher = await service.createVoucherConfigs({

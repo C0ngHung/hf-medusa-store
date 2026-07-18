@@ -1,4 +1,9 @@
 import { medusaIntegrationTestRunner } from "@medusajs/test-utils";
+import { Modules } from "@medusajs/framework/utils";
+import {
+  createPromotionsWorkflow,
+  updatePromotionsWorkflow,
+} from "@medusajs/core-flows";
 import { createAdminUser } from "./helpers/create-admin-user";
 import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
 import type VoucherEngineService from "../../src/modules/voucher-engine/service";
@@ -92,6 +97,69 @@ medusaIntegrationTestRunner({
           )
           .catch((e) => e.response);
         expect(err.status).toBe(400);
+      });
+    });
+
+    describe("POST /admin/vouchers — backing Promotion+Campaign provisioning (Decision H, Phase 2)", () => {
+      it("provisions a real Promotion + Campaign mirroring the voucher config (V3 limit, V4 budget, V5 rule, V6 target_rule) and links promotion_id/campaign_id", async () => {
+        const res = await api.post(
+          "/admin/vouchers",
+          {
+            ...validBody(),
+            code: "backing1",
+            discount_type: "percentage",
+            discount_value: 2000, // 20.00% -> Medusa value 20
+            min_order_value: 500_000, // V5
+            applicable_product_ids: ["prod_scoped_1"], // V6 product-only scope
+            usage_limit: 100, // V3
+            per_user_limit: 2, // V4
+          },
+          adminHeaders,
+        );
+        expect(res.status).toBe(201);
+        const voucher = res.data.voucher;
+        expect(voucher.promotion_id).toBeTruthy();
+        expect(voucher.campaign_id).toBeTruthy();
+
+        const promotionService = getContainer().resolve(Modules.PROMOTION);
+        const promotion = await promotionService.retrievePromotion(
+          voucher.promotion_id,
+          {
+            relations: [
+              "application_method",
+              "application_method.target_rules",
+              "rules",
+              "campaign",
+              "campaign.budget",
+            ],
+          },
+        );
+
+        expect(promotion.code).toBe("BACKING1");
+        expect(promotion.status).toBe("active");
+        expect(promotion.limit).toBe(100); // V3 global limit
+        expect(promotion.application_method?.type).toBe("percentage");
+        expect(Number(promotion.application_method?.value)).toBe(20); // 2000 bps -> 20
+        expect(promotion.application_method?.target_type).toBe("items");
+
+        // V6 product scope → single-attribute target_rule
+        const targetRules = promotion.application_method?.target_rules ?? [];
+        expect(
+          targetRules.some((r) => r.attribute === "items.product.id"),
+        ).toBe(true);
+
+        // V5 min-order → order-scope rule
+        const rules = promotion.rules ?? [];
+        expect(
+          rules.some(
+            (r) => r.attribute === "item_total" && r.operator === "gte",
+          ),
+        ).toBe(true);
+
+        // V2 window + V4 per-customer usage budget
+        expect(promotion.campaign?.id).toBe(voucher.campaign_id);
+        expect(promotion.campaign?.budget?.type).toBe("use_by_attribute");
+        expect(Number(promotion.campaign?.budget?.limit)).toBe(2);
       });
     });
 

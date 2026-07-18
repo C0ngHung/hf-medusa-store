@@ -18,11 +18,19 @@ const VoucherConfig = model
     id: model.id().primaryKey(),
     // V1 — stored UPPERCASE + trimmed (see workflows/voucher-engine/lib/normalize).
     code: model.text(),
-    // SPEC Decision C — backing Medusa Promotion used to apply this voucher to a
-    // cart (§14.2-A). Populated/updated only by the admin create/update workflow
-    // (out of this session's scope); client input is never trusted for this
-    // value. Null until a backing Promotion exists for this voucher.
+    // SPEC Decision C — CANONICAL backing Medusa Promotion for this voucher,
+    // provisioned by the admin create workflow (Phase 2). Under Decision H the
+    // discount carrier is a cart credit line, so this Promotion is NEVER attached
+    // to a cart — it exists for admin/analytics visibility + the "voucher is a
+    // real promotion" representation. Cross-module ref via read-only Link
+    // (src/links/voucher-config-promotion.ts), never a DB FK. Client input never
+    // trusted. Null until provisioned.
     promotion_id: model.text().nullable(),
+    // SPEC Decision H / Phase 2 — the backing Promotion's Campaign, provisioned
+    // alongside it (validity window V2 + per-user `use_by_attribute` budget V4).
+    // Advisory/reference only (the Promotion is never cart-attached, so the
+    // budget never increments). Null until provisioned.
+    campaign_id: model.text().nullable(),
     discount_type: model.enum(["percentage", "fixed_amount"]),
     // basis-points when percentage (2000 = 20%); raw VND when fixed_amount.
     discount_value: model.number(),
