@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kế hoạch VoucherEngine (Option B)</title>
+<style>
+  :root{
+    --bg:#0f1420; --panel:#171d2b; --panel2:#1e2536; --ink:#e8ecf4; --muted:#9aa6bd;
+    --line:#2a3346; --green:#34d399; --amber:#fbbf24; --red:#f87171; --blue:#60a5fa;
+    --violet:#a78bfa; --chip:#232c40;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 20px 80px}
+  header h1{font-size:26px;margin:0 0 6px}
+  header p{color:var(--muted);margin:0 0 4px}
+  .tag{display:inline-block;font-size:12px;color:var(--muted);background:var(--chip);
+    border:1px solid var(--line);border-radius:999px;padding:2px 10px;margin-right:6px}
+  h2{font-size:18px;margin:34px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .grid{display:grid;gap:14px}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  .cols-2{grid-template-columns:repeat(2,1fr)}
+  @media(max-width:820px){.cols-3,.cols-2{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .card h3{margin:0 0 10px;font-size:15px;display:flex;align-items:center;gap:8px}
+  ul.items{list-style:none;margin:0;padding:0}
+  ul.items li{padding:6px 0;border-bottom:1px dashed var(--line);font-size:13.5px;display:flex;gap:8px;align-items:flex-start}
+  ul.items li:last-child{border-bottom:0}
+  .dot{flex:0 0 auto;width:9px;height:9px;border-radius:50%;margin-top:6px}
+  .ok .dot{background:var(--green)} .warn .dot{background:var(--amber)} .no .dot{background:var(--red)}
+  .badge{font-size:11px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .b-ok{color:var(--green);border-color:#1f5140;background:#0f261e}
+  .b-no{color:var(--red);border-color:#5a2626;background:#2a1414}
+  .b-warn{color:var(--amber);border-color:#5c481a;background:#2a2110}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12.5px;color:#cdd6ea}
+  /* flow */
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .node{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-width:140px}
+  .node .t{font-weight:600;font-size:13.5px} .node .s{color:var(--muted);font-size:12px;margin-top:3px}
+  .node.master{border-color:#3a4d7a}
+  .node.credit{border-color:#1f5140}
+  .node.shadow{border-color:#5c481a;opacity:.9}
+  .arrow{color:var(--muted);font-size:20px}
+  .note{color:var(--muted);font-size:12.5px;margin-top:8px}
+  /* rule 11 */
+  table.calc{border-collapse:collapse;width:100%;font-size:13.5px}
+  table.calc td{padding:7px 10px;border-bottom:1px solid var(--line)}
+  table.calc td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .keep{color:var(--green)} .cut{color:var(--amber)} .final{font-weight:700}
+  .bad{background:#2a1414;border:1px solid #5a2626;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13px}
+  /* roadmap */
+  .rm{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid var(--line)}
+  .rm:last-child{border-bottom:0}
+  .pri{flex:0 0 auto;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-weight:700}
+  .pA{background:#0f261e;color:var(--green);border:1px solid #1f5140}
+  .pB{background:#131b2e;color:var(--blue);border:1px solid #2c3f66}
+  .pC{background:#1c1730;color:var(--violet);border:1px solid #3a2c66}
+  .pD{background:#2a2110;color:var(--amber);border:1px solid #5c481a}
+  .rm .body{flex:1}
+  .rm .body .h{font-weight:600;font-size:14px}
+  .rm .body .d{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .files{margin-top:5px}
+  footer{margin-top:40px;color:var(--muted);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>VoucherEngine — Kế hoạch Option B</h1>
+    <p>Promotion vs Voucher · Kiến trúc credit-line carrier · Lộ trình UI/UX</p>
+    <div style="margin-top:10px">
+      <span class="tag">nhánh: feat/voucher-credit-line-carrier</span>
+      <span class="tag">2026-07-17</span>
+      <span class="tag">Medusa 2.16</span>
+    </div>
+  </header>
+
+  <!-- STATUS BOARD -->
+  <h2>1 · Bảng trạng thái (Đã làm / Chưa làm)</h2>
+  <div class="grid cols-3">
+    <div class="card">
+      <h3>⚙️ Backend <span class="badge b-ok">Option B done</span></h3>
+      <ul class="items">
+        <li class="ok"><span class="dot"></span><div>Phase 1 — credit-line carrier <span class="badge b-ok">verified</span></div></li>
+        <li class="ok"><span class="dot"></span><div>Phase 2 — backing Promotion + Campaign <span class="badge b-ok">verified</span></div></li>
+        <li class="ok"><span class="dot"></span><div>Phase 4 — backfill + seed <span class="badge b-ok">verified</span></div></li>
+        <li class="ok"><span class="dot"></span><div>Phase 3 — rút gọn có lý do</div></li>
+        <li class="warn"><span class="dot"></span><div>Chưa commit + chưa MR develop <span class="badge b-warn">G1</span></div></li>
+        <li class="warn"><span class="dot"></span><div>Giả định 0% thuế <span class="badge b-warn">G2 · NV#17</span></div></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🛠️ Admin <span class="badge b-warn">có gap</span></h3>
+      <ul class="items">
+        <li class="ok"><span class="dot"></span><div>Trang <code>/vouchers</code>: list + create + analytics</div></li>
+        <li class="no"><span class="dot"></span><div>Thiếu Edit / Deactivate / Delete <span class="badge b-no">G3</span></div></li>
+        <li class="no"><span class="dot"></span><div>Backing promotion không có metadata → lộ ở list Promotions <span class="badge b-no">G4</span></div></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🛒 Storefront <span class="badge b-warn">có gap</span></h3>
+      <ul class="items">
+        <li class="ok"><span class="dot"></span><div>DiscountCode + modal + <code>lib/data/voucher.ts</code></div></li>
+        <li class="ok"><span class="dot"></span><div>OrderSummary hiển thị đúng <code>credit_line_total</code></div></li>
+        <li class="no"><span class="dot"></span><div>CartTotals (cart+checkout) chưa hiện voucher <span class="badge b-no">G5</span></div></li>
+        <li class="warn"><span class="dot"></span><div>cap_explanation mất khi reload <span class="badge b-warn">G6</span></div></li>
+        <li class="warn"><span class="dot"></span><div>Auto-remove notice không hiện lại <span class="badge b-warn">G7</span></div></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ARCHITECTURE -->
+  <h2>2 · Kiến trúc Option B (Voucher là chủ)</h2>
+  <div class="card">
+    <div class="flow">
+      <div class="node master"><div class="t">Voucher (voucher_config)</div><div class="s">NGUỒN SỰ THẬT · mọi luật</div></div>
+      <span class="arrow">→</span>
+      <div class="node shadow"><div class="t">Backing Promotion + Campaign</div><div class="s">bản sao 1 chiều · KHÔNG attach cart</div></div>
+    </div>
+    <div class="note">Tạo voucher → tự đẻ backing promotion (config: %, min order, targeting, validity, usage & per-customer limit).</div>
+    <div class="flow" style="margin-top:18px">
+      <div class="node master"><div class="t">Apply voucher</div><div class="s">V1–V8 + trần 50%</div></div>
+      <span class="arrow">→</span>
+      <div class="node credit"><div class="t">cart.credit_lines</div><div class="s">chở số tiền đã cap</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">cart.total</div><div class="s">tự net credit line</div></div>
+      <span class="arrow">→</span>
+      <div class="node"><div class="t">order</div><div class="s">usage_count atomic</div></div>
+    </div>
+    <div class="note">Credit line KHÔNG phải promotion → không vào <code>computeActions</code> → item-promo không bị đụng ⇒ giữ Rule 11.</div>
+  </div>
+
+  <!-- RULE 11 -->
+  <h2>3 · Ví dụ Rule 11 — item 40% + voucher 20% (subtotal 1.000.000₫)</h2>
+  <div class="grid cols-2">
+    <div class="card">
+      <h3>✅ VoucherEngine (đúng)</h3>
+      <table class="calc">
+        <tr><td>Subtotal gốc</td><td>1.000.000</td></tr>
+        <tr><td>① item-promo 40% <span class="keep">(giữ nguyên)</span></td><td class="keep">−400.000</td></tr>
+        <tr><td>② voucher 20% (tính ra 200.000)</td><td>−200.000</td></tr>
+        <tr><td>③ trần 50% → voucher bị cắt còn <span class="cut">100.000</span></td><td class="cut">−100.000</td></tr>
+        <tr><td class="final">Tổng giảm = 500.000 (đúng 50%)</td><td class="final">Total 500.000</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h3>❌ Promotion native (sai)</h3>
+      <p style="font-size:13.5px;margin:2px 0 0"><b>Không có trần 50%:</b> item −400.000 → voucher 20% của 600.000 = −120.000 → tổng giảm <b>520.000 = 52%</b>.</p>
+      <div class="bad"><b>Nhét voucher fixed để ép cap:</b> Medusa áp fixed 100.000 trước → còn 900.000 → item 40% của 900.000 = <b>360.000</b> (không còn 400.000) → <b>phá item-promo</b> (CONFLICT-8).</div>
+      <p class="note">→ Đây là lý do BẮT BUỘC dùng credit line thay vì attach promotion.</p>
+    </div>
+  </div>
+
+  <!-- ROADMAP -->
+  <h2>4 · Lộ trình 4 thay đổi UI/UX (nhóm "nên làm")</h2>
+  <div class="card">
+    <div class="rm">
+      <div class="pri pA">A</div>
+      <div class="body">
+        <div class="h">Storefront — CartTotals hiển thị voucher <span class="badge b-no">G5 · ưu tiên cao</span></div>
+        <div class="d">Thêm dòng "Voucher (MÃ)" trừ vào tổng ở cart + checkout, đọc <code>credit_line_total</code> theo pattern OrderSummary.</div>
+        <div class="d files"><code>modules/common/components/cart-totals/index.tsx</code> · <code>modules/cart/templates/summary.tsx</code> · <code>modules/checkout/templates/checkout-summary/index.tsx</code></div>
+      </div>
+    </div>
+    <div class="rm">
+      <div class="pri pB">B</div>
+      <div class="body">
+        <div class="h">Admin — Edit / Deactivate / Delete voucher <span class="badge b-no">G3</span></div>
+        <div class="d">Row-action + modal Edit (tái dùng field create); backend <code>PUT/DELETE /admin/vouchers/:id</code> đồng bộ backing promotion.</div>
+        <div class="d files"><code>src/admin/routes/vouchers/page.tsx</code> · <code>components/create-voucher-modal.tsx</code></div>
+      </div>
+    </div>
+    <div class="rm">
+      <div class="pri pC">C</div>
+      <div class="body">
+        <div class="h">Admin/Backend — giảm nhầm lẫn backing promotion <span class="badge b-no">G4</span></div>
+        <div class="d">Gắn <code>metadata.voucher_engine=true</code> + chú thích "Backed by promotion" trên trang Vouchers. KHÔNG hack bảng native.</div>
+        <div class="d files"><code>admin/lib/build-backing-promotion.ts</code> · <code>routes/vouchers/page.tsx</code></div>
+      </div>
+    </div>
+    <div class="rm">
+      <div class="pri pD">D</div>
+      <div class="body">
+        <div class="h">Storefront+Backend — giữ notice/cap khi reload <span class="badge b-warn">G6 · G7</span></div>
+        <div class="d">Ghi <code>cap_explanation</code> vào <code>cart.metadata.voucher</code>; giữ <code>voucher_notice</code> đến khi ack; storefront hiện banner tắt được.</div>
+        <div class="d files"><code>discount-code/index.tsx</code> · <code>lib/voucher-cart-metadata.ts</code></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DECISIONS -->
+  <h2>5 · Quyết định UI/UX đã chốt</h2>
+  <div class="card">
+    <ul class="items">
+      <li class="ok"><span class="dot"></span><div>Voucher là <b>dòng riêng màu xanh</b>, tách khỏi "Discount" (promotion) — đồng nhất cart / checkout / order.</div></li>
+      <li class="ok"><span class="dot"></span><div>Giữ <b>trang Vouchers riêng</b> (Medusa không export form built-in) — chấp nhận lặp ~9 ô input để đổi 1 nguồn sự thật.</div></li>
+      <li class="ok"><span class="dot"></span><div><b>Không hack bảng Promotions native</b> — chỉ gắn metadata nhận diện + chú thích quan hệ.</div></li>
+      <li class="ok"><span class="dot"></span><div>Voucher luôn là <b>chủ</b>, backing promotion là bản sao 1 chiều — mọi thao tác xuất phát từ Voucher.</div></li>
+      <li class="ok"><span class="dot"></span><div>Thông báo cho khách (cap / auto-remove) phải <b>bền qua reload</b>.</div></li>
+    </ul>
+  </div>
+
+  <footer>Chi tiết đầy đủ: KE-HOACH-VOUCHER-OPTION-B.md · Nguồn hiện trạng: .claude/progress/voucher-engine-progress.md</footer>
+</div>
+</body>
+</html>
