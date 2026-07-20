@@ -129,9 +129,10 @@ export type VoucherConfig = {
   is_active: boolean;
   created_at?: string;
   updated_at?: string;
-  /** Linked native Promotion id — used by the admin Vouchers list to
-   * navigate a row to its Promotion detail page (Task 8). Internal FK,
-   * already surfaced elsewhere (e.g. the `?promotion_id=` list filter). */
+  /** Linked native Promotion id — used to filter `GET /admin/vouchers`
+   * by promotion (see `useVoucherByPromotion`) and as the attach-mode
+   * payload key. Internal FK; the Promotion is the source of truth for
+   * shared fields (SPEC Decision I). */
   promotion_id?: string | null;
 };
 

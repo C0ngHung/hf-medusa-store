@@ -225,22 +225,13 @@ export const useSuggestionEvents = (filters: EventFilters = {}) =>
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — admin list + create + analytics (SRS §6.4)          */
-/* Reads/writes ONLY the VoucherConfig table via /admin/vouchers* —    */
-/* never the native Promotion list (SPEC Decision C/G).                */
+/* VoucherEngine — analytics (SRS §6.4)                                 */
+/* Reads ONLY the VoucherConfig table via /admin/vouchers* — never the  */
+/* native Promotion list (SPEC Decision C/G). The list UI was removed   */
+/* 2026-07-20 in favor of inline widgets on the Promotion detail page.  */
 /* ------------------------------------------------------------------ */
 
 const VOUCHERS_KEY = ["vouchers"];
-
-export const useVouchers = () =>
-  useQuery({
-    queryKey: VOUCHERS_KEY,
-    queryFn: () =>
-      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
-        "/admin/vouchers",
-        { query: { limit: 200 } },
-      ),
-  });
 
 export const useVoucherAnalytics = (id: string) =>
   useQuery({
