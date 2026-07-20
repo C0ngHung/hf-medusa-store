@@ -511,12 +511,13 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
               className="flex items-center justify-between w-full max-w-full"
               data-testid="discount-row"
             >
-              <Text className="flex gap-x-1 items-baseline txt-small-plus w-4/5 pr-1">
+              <Text
+                className={`flex gap-x-1 items-baseline txt-small-plus pr-1 ${
+                  promotion.is_automatic ? "w-full" : "w-4/5"
+                }`}
+              >
                 <span className="truncate" data-testid="discount-code-value">
-                  <Badge color={promotion.is_automatic ? "green" : "grey"}>
-                    {promotion.code}
-                  </Badge>{" "}
-                  (
+                  <Badge color="grey">{promotion.code}</Badge> (
                   {promotion.application_method?.value !== undefined &&
                     promotion.application_method.currency_code !==
                       undefined && (
@@ -532,6 +533,14 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                     )}
                   )
                 </span>
+                {promotion.is_automatic && (
+                  <span
+                    className="text-ui-fg-subtle shrink-0 whitespace-nowrap"
+                    data-testid="auto-applied-label"
+                  >
+                    Auto-applied
+                  </span>
+                )}
               </Text>
               {!promotion.is_automatic && (
                 <button
