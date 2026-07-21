@@ -107,13 +107,13 @@ moduleIntegrationTestRunner<VoucherEngineService>({
           applied_at: new Date(),
         };
 
-        await service.redeemVoucherAtomic(voucher.id, {
+        await service.redeemVoucherAtomic(voucher.id, null, {
           ...baseEntry,
           voucher_id: voucher.id,
           customer_id: "cus_1",
           order_id: "order_1",
         });
-        await service.redeemVoucherAtomic(voucher.id, {
+        await service.redeemVoucherAtomic(voucher.id, null, {
           ...baseEntry,
           voucher_id: voucher.id,
           customer_id: "cus_2",
@@ -219,6 +219,7 @@ moduleIntegrationTestRunner<VoucherEngineService>({
 
           const result = await service.redeemVoucherAtomic(
             voucher.id,
+            5,
             usageLogEntry({
               voucher_id: voucher.id,
               customer_id: "cus_redeem_1",
@@ -252,6 +253,7 @@ moduleIntegrationTestRunner<VoucherEngineService>({
 
           const result = await service.redeemVoucherAtomic(
             voucher.id,
+            1,
             usageLogEntry({
               voucher_id: voucher.id,
               customer_id: "cus_redeem_2",
@@ -290,6 +292,7 @@ moduleIntegrationTestRunner<VoucherEngineService>({
 
           const first = await service.redeemVoucherAtomic(
             voucher.id,
+            10,
             entry as any,
           );
           expect(first.incremented).toBe(true);
@@ -299,7 +302,7 @@ moduleIntegrationTestRunner<VoucherEngineService>({
           // workflow step, not exercised here) would normally short-circuit
           // it first.
           await expect(
-            service.redeemVoucherAtomic(voucher.id, entry as any),
+            service.redeemVoucherAtomic(voucher.id, 10, entry as any),
           ).rejects.toThrow();
 
           // usage_count incremented only ONCE despite two redeemVoucherAtomic
@@ -331,6 +334,7 @@ moduleIntegrationTestRunner<VoucherEngineService>({
             Array.from({ length: CONCURRENT }, (_, i) =>
               service.redeemVoucherAtomic(
                 voucher.id,
+                LIMIT,
                 usageLogEntry({
                   voucher_id: voucher.id,
                   customer_id: `cus_concurrent_${i}`,

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { HttpTypes } from "@medusajs/types"
+import { toast } from "@medusajs/ui"
 import { Badge, Heading, Input, Text } from "@modules/common/components/ui"
 import React from "react"
 
@@ -13,8 +14,6 @@ import type {
   VoucherAutoRemoveNotice,
   VoucherCartMetadata,
 } from "@modules/voucher/types"
-import ErrorMessage from "../error-message"
-import SuccessMessage from "../success-message"
 import { SubmitButton } from "../submit-button"
 import ReplaceConfirmModal from "./replace-confirm-modal"
 import AvailableVouchersModal from "./available-vouchers-modal"
@@ -59,15 +58,25 @@ const alreadyActiveVi = (code: string) => `Bạn đang dùng mã ${code} rồi.`
  *
  * Handles BOTH Medusa's generic promotion codes (unchanged behavior, via
  * `applyPromotions`'s full-array-replace) AND VoucherEngine vouchers (via the
- * dedicated `/store/carts/:id/voucher` endpoints) through one input, one
- * Apply button, and one applied-codes list. There is no second,
- * voucher-specific input anywhere in this component.
+ * dedicated `/store/carts/:id/voucher` endpoints) through one input and one
+ * Apply button. The applied-codes area renders 3 visually distinct groups so
+ * a customer can always tell what's what (2026-07-22 fix):
+ *  1. Auto-applied promotions (`is_automatic: true`, grey badge, no remove
+ *     button — the customer never chose these, they're merchant-configured).
+ *  2. Other applied codes (`is_automatic: false`, a generic code the customer
+ *     entered that ISN'T the VoucherEngine voucher — a plain Medusa
+ *     Promotion code, still supported unchanged).
+ *  3. The VoucherEngine voucher itself (green badge, its own section) —
+ *     sourced from `cart.metadata.voucher`, never from `cart.promotions`.
  *
- * VoucherEngine's discount is carried by a `cart.credit_lines` entry (SPEC
- * Decision H), NOT a promotion — so it never appears in `cart.promotions` and
- * needs no filtering out of the generic list here. It is rendered as a
- * dedicated voucher row sourced from `cart.metadata.voucher`, using the HUMAN
- * voucher code.
+ * VoucherEngine's discount is carried by raw `LineItemAdjustment` rows
+ * (Decision-4 carrier rewrite, 2026-07-20), NOT by a Promotion — it NEVER
+ * appears in `cart.promotions` at all anymore, so there is nothing to filter
+ * out of that array for that reason (the old `ephemeral_promotion_id`-based
+ * filter here was dead code after that rewrite; removed). `cart.promotions`
+ * is still defensively filtered, as a belt-and-suspenders guard against any
+ * future architecture change, to drop any entry whose `code` happens to
+ * match the active voucher's code.
  */
 
 type DiscountCodeProps = {
@@ -109,6 +118,74 @@ function toDisplayedVoucher(meta: VoucherCartMetadata): DisplayedVoucher {
   }
 }
 
+function formatVnd(amount: number): string {
+  return `${new Intl.NumberFormat("vi-VN").format(amount)}₫`
+}
+
+function formatCapPercent(globalCapBps: number): string {
+  const pct = globalCapBps / 100
+  return Number.isInteger(pct) ? String(pct) : pct.toFixed(2)
+}
+
+/**
+ * Actual VND discount a Promotion (automatic or manual generic code) gave
+ * this cart — summed straight from `items[].adjustments`/
+ * `shipping_methods[].adjustments` (`amount`, `retrieveCart`'s default
+ * `fields` now requests these). Bug-bash fix (2026-07-21): the row used to
+ * only show the Promotion's CONFIGURED percentage/value
+ * (`application_method.value`), which is not what the customer actually
+ * saved (e.g. a percentage promotion only applies to eligible items, or a
+ * fixed-amount one is floor-capped at the eligible subtotal) — SRS VOUCH-003
+ * requires the customer be able to see the automatic-promotion amount
+ * plainly enough to reconcile it against the voucher's own cap explanation.
+ */
+function sumPromotionAdjustments(
+  cart: HttpTypes.StoreCart,
+  promotionId?: string,
+): number {
+  if (!promotionId) {
+    return 0
+  }
+  const fromItems = (cart.items ?? []).reduce(
+    (sum, item) =>
+      sum +
+      (item.adjustments ?? [])
+        .filter((adjustment) => adjustment.promotion_id === promotionId)
+        .reduce((s, adjustment) => s + (adjustment.amount ?? 0), 0),
+    0,
+  )
+  const fromShipping = (cart.shipping_methods ?? []).reduce(
+    (sum, method) =>
+      sum +
+      (method.adjustments ?? [])
+        .filter((adjustment) => adjustment.promotion_id === promotionId)
+        .reduce((s, adjustment) => s + (adjustment.amount ?? 0), 0),
+    0,
+  )
+  return fromItems + fromShipping
+}
+
+/**
+ * Reconstructs the EXACT Vietnamese cap-explanation sentence the backend
+ * builds server-side (`modules/voucher-engine/lib/calculate-discount.ts`'s
+ * `buildCapExplanation`), from the numeric fields `cart.metadata.voucher`
+ * ALWAYS carries (`voucher_discount_after_voucher_cap`, `discount_amount`,
+ * `cap_percentage_bps`) — unlike the apply-response's own pre-built
+ * `cap_explanation` string, which only exists in that one response and is
+ * NOT persisted to metadata (see `VoucherCartMetadata`'s doc comment). This
+ * is what lets the resync effect below rebuild the explanation on EVERY cart
+ * change (including one this component didn't cause, e.g. adding a
+ * suggested item elsewhere) instead of blanking it — 2026-07-22 fix. Only
+ * call when `meta.discount_capped` is true.
+ */
+function buildCapExplanationVi(meta: VoucherCartMetadata): string {
+  return `Giảm giá đã được điều chỉnh từ ${formatVnd(
+    meta.voucher_discount_after_voucher_cap,
+  )} xuống ${formatVnd(meta.discount_amount)} theo chính sách giảm tối đa ${formatCapPercent(
+    meta.cap_percentage_bps,
+  )}%.`
+}
+
 /** Outcome of trying VoucherEngine's apply endpoint (UX-FLOW.md §1a). */
 type VoucherApplyAttempt =
   | { kind: "success" }
@@ -119,27 +196,51 @@ type VoucherApplyAttempt =
 
 const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   const currencyCode = cart.currency_code
-  const { promotions: allPromotions = [] } = cart
+  // Medusa can return `cart.promotions` containing `null` entries (a
+  // promotion whose linked entity failed to resolve, e.g. removed/expired
+  // between the cart snapshot and this render) — filtered out here, once, so
+  // every downstream consumer (`autoPromotions`, `manualPromotions`,
+  // `applyGenericCode`, `removeGenericCode`) can assume non-null elements.
+  const allPromotions = (cart.promotions ?? []).filter(
+    (promotion): promotion is NonNullable<typeof promotion> =>
+      promotion != null,
+  )
 
   const voucherMeta = readVoucherMetadata(cart)
-
-  // VoucherEngine's discount rides a `cart.credit_lines` entry (SPEC Decision
-  // H), NOT a promotion, so it never appears in `cart.promotions` — no
-  // filtering needed and it cannot be accidentally detached by an unrelated
-  // generic promo-code change (those build `promo_codes` from `allPromotions`,
-  // which never contains the voucher). The voucher gets its own row below,
-  // sourced from `cart.metadata.voucher`.
-  const displayedPromotions = allPromotions
 
   const [activeVoucher, setActiveVoucher] = useState<DisplayedVoucher | null>(
     () => (voucherMeta ? toDisplayedVoucher(voucherMeta) : null),
   )
+
+  // 2026-07-22 fix: the voucher no longer rides on a Promotion at all
+  // (Decision-4 carrier rewrite — raw LineItemAdjustments, `promotion_id:
+  // null`), so it never appears in `cart.promotions`; there is nothing to
+  // filter out of that array for that reason anymore (the old
+  // `ephemeral_promotion_id`-based filter here was dead code, since that
+  // field no longer exists in the real metadata payload — see
+  // `modules/voucher/types.ts`). Kept only as a defensive belt-and-suspenders
+  // guard (matching by code, not a since-removed id) — `StoreCartPromotion`
+  // (the store-facing DTO `cart.promotions` actually uses) has no `status`
+  // field to additionally filter an "inactive" entry by; Medusa's own
+  // promotion engine only ever attaches currently-appliable promotions to a
+  // cart in the first place, so there's nothing to defend against there.
+  //
+  // Split into 3 visually distinct groups so a customer can always tell
+  // auto-applied promotions apart from a code they entered themselves apart
+  // from the real voucher (2026-07-22 — previously all shared one "Applied
+  // codes" list with the SAME green badge as the voucher, indistinguishable).
+  const autoPromotions = allPromotions.filter(
+    (promotion) => promotion.is_automatic,
+  )
+  const manualPromotions = allPromotions.filter(
+    (promotion) =>
+      !promotion.is_automatic && promotion.code !== activeVoucher?.code,
+  )
+
   const [capExplanation, setCapExplanation] = useState<string | null>(null)
   const [phase, setPhase] = useState<
     "idle" | "applying" | "removingVoucher" | "removingGeneric"
   >("idle")
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [voucherNotice, setVoucherNotice] = useState<string | null>(null)
   const [replaceConfirm, setReplaceConfirm] = useState<{
     pendingCode: string
@@ -156,18 +257,18 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   // Suppresses the very next resync pass right after OUR OWN voucher
   // apply/remove succeeds: the upcoming `cart.metadata.voucher` prop update
   // (arriving via the mutation's own `revalidateTag("carts")`) only confirms
-  // what we already applied locally. Without this, that prop update would
-  // immediately wipe a just-shown `cap_explanation` — the persisted metadata
-  // snapshot never carries that string (see `modules/voucher/types.ts`), so a
-  // naive resync-on-every-prop-change would blank the cap banner right after
-  // showing it.
+  // what we already applied locally, so re-running the hydration below would
+  // be redundant (not harmful anymore — see the resync fix just below, which
+  // now derives the SAME cap explanation from metadata either way — but
+  // still skipped to avoid a pointless extra state update).
   const skipNextResync = useRef(false)
 
   // Hydrates the voucher row from `cart.metadata.voucher` (D1/D2) on every
   // prop change that ISN'T an echo of our own action — covers first paint,
   // page reload, and any out-of-band change (cart-change auto-revalidation,
-  // another tab). Generic-promotion rows don't need this: they're derived
-  // fresh from `cart.promotions` on every render already.
+  // another tab, e.g. adding a suggested item). Generic-promotion rows don't
+  // need this: they're derived fresh from `cart.promotions` on every render
+  // already.
   useEffect(() => {
     if (phase !== "idle") {
       return
@@ -179,7 +280,16 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     const meta = readVoucherMetadata(cart)
     const hadActiveVoucher = activeVoucher !== null
     setActiveVoucher(meta ? toDisplayedVoucher(meta) : null)
-    setCapExplanation(null)
+    // 2026-07-22 fix: this used to unconditionally null the cap banner on
+    // EVERY resync, including one triggered by an unrelated cart change (e.g.
+    // a suggested item added elsewhere) that still leaves the voucher
+    // capped — wiping a still-accurate explanation. `cart.metadata.voucher`
+    // always carries the raw numbers needed to rebuild the exact same
+    // sentence (see `buildCapExplanationVi`), so derive it fresh here instead
+    // of discarding it.
+    setCapExplanation(
+      meta && meta.discount_capped ? buildCapExplanationVi(meta) : null,
+    )
 
     // Auto-remove notice (SPEC §11.3 step 3b): only surface it on the LIVE
     // transition (a voucher we were showing disappeared on this same prop
@@ -193,6 +303,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         if (shownNoticeRef.current !== signature) {
           shownNoticeRef.current = signature
           setVoucherNotice(notice.customer_message)
+          toast.warning(notice.customer_message)
         }
       }
     }
@@ -222,8 +333,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       activeVoucher &&
       code.trim().toUpperCase() === activeVoucher.code
     ) {
-      setErrorMessage(null)
-      setSuccessMessage(alreadyActiveVi(activeVoucher.code))
+      toast.info(alreadyActiveVi(activeVoucher.code))
       return { kind: "alreadyActive" }
     }
     try {
@@ -239,8 +349,10 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         })
         setCapExplanation(result.data.cap_explanation)
         setReplaceConfirm(null)
-        setSuccessMessage(APPLY_SUCCESS_VI)
         setVoucherNotice(null)
+        toast.success(APPLY_SUCCESS_VI, {
+          description: result.data.cap_explanation ?? undefined,
+        })
         return { kind: "success" }
       }
       const err = result.error
@@ -269,6 +381,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       // applicable — never fall back to the generic-promotion path for these
       // (UX-FLOW.md §1a step 4). Always the backend's own `customer_message`
       // (VI) verbatim — never invented client-side (SRS i18n).
+      toast.error(err.customer_message)
       return { kind: "rejected", message: err.customer_message }
     } catch {
       // Thrown = a genuine transport/network failure (voucherFetch only
@@ -276,6 +389,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       // backend rejection. No backend customer_message exists here, so per
       // SRS i18n this is the one case that gets an invented fallback — VI,
       // never the raw exception text.
+      toast.error(GENERIC_ERROR_VI)
       return { kind: "rejected", message: GENERIC_ERROR_VI }
     }
   }
@@ -288,9 +402,26 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       .map((p) => p.code!)
     codes.push(code)
     try {
-      await applyPromotions(codes)
-      setSuccessMessage(APPLY_SUCCESS_VI)
+      const updatedCart = await applyPromotions(codes)
+      // Medusa's `updateCartPromotionsWorkflow` only THROWS for a code that
+      // matches no Promotion record at all — a code that exists but is
+      // currently unappliable (inactive/disabled, expired, not yet started,
+      // not eligible for this cart) is silently dropped ("skipped") and the
+      // call still resolves successfully (verified:
+      // `get-promotion-codes-to-apply.js` only throws when
+      // `!validPromoCodes.has(code)`; an existing-but-skipped code never
+      // reaches that branch). Without this membership check, entering such a
+      // code showed a false "success" toast even though nothing was actually
+      // applied to the cart.
+      const applied = (updatedCart.promotions ?? []).some(
+        (promotion) => promotion?.code === code,
+      )
+      if (!applied) {
+        toast.error(INVALID_CODE_VI)
+        return { ok: false, message: INVALID_CODE_VI }
+      }
       setVoucherNotice(null)
+      toast.success(APPLY_SUCCESS_VI)
       return { ok: true }
     } catch {
       // `applyPromotions` throws via `medusaError` (`lib/util/medusa-error.ts`),
@@ -299,6 +430,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       // nor a valid generic code" final failure (UX-FLOW.md §1a step 4 /
       // task requirement 3), show one clear VI message instead of raw
       // English/technical text.
+      toast.error(INVALID_CODE_VI)
       return { ok: false, message: INVALID_CODE_VI }
     }
   }
@@ -311,8 +443,10 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       .map((p) => p.code!)
     try {
       await applyPromotions(remainingCodes)
+      toast.success(REMOVE_SUCCESS_VI)
       return { ok: true }
     } catch {
+      toast.error(GENERIC_ERROR_VI)
       return { ok: false, message: GENERIC_ERROR_VI }
     }
   }
@@ -351,17 +485,12 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     if (!code) {
       return
     }
-    setErrorMessage(null)
-    setSuccessMessage(null)
     setPhase("applying")
-    const result = await submitCode(code.toString())
+    await submitCode(code.toString())
     setPhase("idle")
-    if (!result.ok) {
-      // Defensive: every known failure path already sets a real VI message
-      // (backend `customer_message` or one of the constants above), but a
-      // failure must never render as silence — always show something.
-      setErrorMessage(result.message ?? GENERIC_ERROR_VI)
-    }
+    // Every outcome already surfaced via toast inside submitCode/attemptVoucherApply/
+    // applyGenericCode — nothing further to show here (2026-07-22: the inline
+    // notification under this input was removed in favor of toast).
     const input = document.getElementById(
       "discount-input",
     ) as HTMLInputElement | null
@@ -373,8 +502,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   const handleListApply = async (
     code: string,
   ): Promise<{ ok: boolean; message?: string }> => {
-    setErrorMessage(null)
-    setSuccessMessage(null)
     setPhase("applying")
     const result = await submitCode(code)
     setPhase("idle")
@@ -386,8 +513,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
 
   const handleRemoveVoucher = async () => {
     setPhase("removingVoucher")
-    setErrorMessage(null)
-    setSuccessMessage(null)
     try {
       const result = await removeVoucher()
       if (result.ok) {
@@ -397,15 +522,15 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         setVoucherNotice(null)
         // Backend-provided (`remove-voucher.ts`'s `RemoveVoucherResult.message`)
         // — render verbatim, `REMOVE_SUCCESS_VI` is only a defensive fallback.
-        setSuccessMessage(result.data.message || REMOVE_SUCCESS_VI)
+        toast.success(result.data.message || REMOVE_SUCCESS_VI)
       } else {
         // Backend `customer_message` (VI) verbatim — never invented client-side.
-        setErrorMessage(result.error.customer_message)
+        toast.error(result.error.customer_message)
       }
     } catch {
       // Thrown = transport/network failure, not a well-formed backend
       // rejection (see the matching comment in `attemptVoucherApply`).
-      setErrorMessage(GENERIC_ERROR_VI)
+      toast.error(GENERIC_ERROR_VI)
     } finally {
       setPhase("idle")
     }
@@ -413,46 +538,36 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
 
   const handleRemoveGeneric = async (code: string) => {
     setPhase("removingGeneric")
-    setErrorMessage(null)
-    setSuccessMessage(null)
-    try {
-      const result = await removeGenericCode(code)
-      if (!result.ok) {
-        setErrorMessage(result.message ?? GENERIC_ERROR_VI)
-      }
-    } catch {
-      setErrorMessage(GENERIC_ERROR_VI)
-    } finally {
-      setPhase("idle")
-    }
+    await removeGenericCode(code)
+    // Every outcome already toasted inside removeGenericCode.
+    setPhase("idle")
   }
 
   const handleReplaceConfirm = async () => {
     if (!replaceConfirm) {
       return
     }
-    setErrorMessage(null)
-    setSuccessMessage(null)
     setPhase("applying")
     const attempt = await attemptVoucherApply(replaceConfirm.pendingCode, true)
     setPhase("idle")
-    // "success" already set successMessage/cleared replaceConfirm inside
+    // "success" already toasted/cleared replaceConfirm inside
     // attemptVoucherApply. Every OTHER outcome is a failure to complete the
-    // confirmed replace and must close the modal + show a message — this is
-    // NOT `submitCode`'s normal routing (no silent fall-back to a generic
-    // promotion apply here: the customer already confirmed replacing with
-    // THIS specific voucher code, so "notFound" means that code is invalid,
-    // not "try it as a promo code"). Checking `!== "success"` (not just
-    // `=== "rejected"`) is deliberate: `attemptVoucherApply` can also return
-    // "notFound" (any response with no `customer_message`, e.g. a code that
-    // failed schema validation) or, defensively, "replaceRequired" again —
-    // leaving either of those unhandled is exactly the bug where the modal
-    // never closes and nothing is shown.
+    // confirmed replace and must close the modal — this is NOT `submitCode`'s
+    // normal routing (no silent fall-back to a generic promotion apply here:
+    // the customer already confirmed replacing with THIS specific voucher
+    // code, so "notFound" means that code is invalid, not "try it as a promo
+    // code"). Checking `!== "success"` (not just `=== "rejected"`) is
+    // deliberate: `attemptVoucherApply` can also return "notFound" (any
+    // response with no `customer_message`, e.g. a code that failed schema
+    // validation) or, defensively, "replaceRequired" again — leaving either
+    // of those unhandled is exactly the bug where the modal never closes.
     if (attempt.kind !== "success") {
       setReplaceConfirm(null)
-      setErrorMessage(
-        attempt.kind === "rejected" ? attempt.message : INVALID_CODE_VI,
-      )
+      // "rejected" already toasted inside attemptVoucherApply — avoid a
+      // duplicate toast for that one outcome.
+      if (attempt.kind !== "rejected") {
+        toast.error(INVALID_CODE_VI)
+      }
     }
   }
 
@@ -464,7 +579,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       data-testid="discount-code"
     >
       <Heading level="h3" className="txt-medium">
-        Promotion code
+        Mã giảm giá / voucher
       </Heading>
 
       <form action={handleApplySubmit} className="w-full">
@@ -474,22 +589,14 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
             id="discount-input"
             name="code"
             type="text"
-            placeholder="Enter promotion or voucher code"
+            placeholder="Nhập mã giảm giá hoặc mã voucher"
             disabled={isBusy}
             data-testid="discount-input"
           />
           <SubmitButton variant="secondary" data-testid="discount-apply-button">
-            Apply
+            Áp dụng
           </SubmitButton>
         </div>
-        <ErrorMessage
-          error={errorMessage}
-          data-testid="discount-error-message"
-        />
-        <SuccessMessage
-          message={successMessage}
-          data-testid="discount-success-message"
-        />
       </form>
 
       {voucherNotice && (
@@ -501,68 +608,106 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         </div>
       )}
 
-      {(displayedPromotions.length > 0 || activeVoucher) && (
-        <div className="w-full flex flex-col gap-y-2">
-          <Heading className="txt-medium">Applied codes:</Heading>
-
-          {displayedPromotions.map((promotion) => (
-            <div
-              key={promotion.id}
-              className="flex items-center justify-between w-full max-w-full"
-              data-testid="discount-row"
-            >
-              <Text
-                className={`flex gap-x-1 items-baseline txt-small-plus pr-1 ${
-                  promotion.is_automatic ? "w-full" : "w-4/5"
-                }`}
-              >
-                <span className="truncate" data-testid="discount-code-value">
-                  <Badge color="grey">{promotion.code}</Badge> (
-                  {promotion.application_method?.value !== undefined &&
-                    promotion.application_method.currency_code !==
-                      undefined && (
-                      <>
-                        {promotion.application_method.type === "percentage"
-                          ? `${promotion.application_method.value}%`
-                          : convertToLocale({
-                              amount: +promotion.application_method.value,
-                              currency_code:
-                                promotion.application_method.currency_code,
-                            })}
-                      </>
-                    )}
-                  )
-                </span>
-                {promotion.is_automatic && (
-                  <span
-                    className="text-ui-fg-subtle shrink-0 whitespace-nowrap"
-                    data-testid="auto-applied-label"
+      {(autoPromotions.length > 0 ||
+        manualPromotions.length > 0 ||
+        activeVoucher) && (
+        <div className="w-full flex flex-col gap-y-3">
+          {autoPromotions.length > 0 && (
+            <div className="flex flex-col gap-y-2">
+              <Heading className="txt-medium">
+                Khuyến mãi tự động áp dụng:
+              </Heading>
+              {autoPromotions.map((promotion) => {
+                // Bug-bash fallback (2026-07-21): a native automatic
+                // Promotion has no requirement to carry a `code` — an empty
+                // badge would otherwise render for one that doesn't.
+                const label = promotion.code || "Khuyến mãi tự động"
+                const savedAmount = sumPromotionAdjustments(cart, promotion.id)
+                return (
+                  <div
+                    key={promotion.id}
+                    className="flex items-center justify-between w-full max-w-full"
+                    data-testid="auto-promotion-row"
                   >
-                    Auto-applied
-                  </span>
-                )}
-              </Text>
-              {!promotion.is_automatic && (
-                <button
-                  className="flex items-center disabled:opacity-50"
-                  onClick={() => {
-                    if (!promotion.code) {
-                      return
-                    }
-                    handleRemoveGeneric(promotion.code)
-                  }}
-                  disabled={isBusy}
-                  data-testid="remove-discount-button"
-                >
-                  <Trash size={14} />
-                  <span className="sr-only">Remove</span>
-                </button>
-              )}
+                    <Text className="flex gap-x-1 items-baseline txt-small-plus w-4/5 pr-1">
+                      <span
+                        className="truncate"
+                        data-testid="auto-promotion-code-value"
+                      >
+                        <Badge color="grey">{label}</Badge>{" "}
+                        <span className="text-ui-fg-subtle text-small-regular">
+                          Tự động áp dụng
+                        </span>{" "}
+                        {savedAmount > 0 && (
+                          <span data-testid="auto-promotion-savings">
+                            — Đã giảm{" "}
+                            {convertToLocale({
+                              amount: savedAmount,
+                              currency_code: currencyCode,
+                            })}
+                          </span>
+                        )}
+                      </span>
+                    </Text>
+                  </div>
+                )
+              })}
             </div>
-          ))}
+          )}
+
+          {manualPromotions.length > 0 && (
+            <div className="flex flex-col gap-y-2">
+              <Heading className="txt-medium">Mã đã áp dụng:</Heading>
+              {manualPromotions.map((promotion) => (
+                <div
+                  key={promotion.id}
+                  className="flex items-center justify-between w-full max-w-full"
+                  data-testid="discount-row"
+                >
+                  <Text className="flex gap-x-1 items-baseline txt-small-plus w-4/5 pr-1">
+                    <span
+                      className="truncate"
+                      data-testid="discount-code-value"
+                    >
+                      <Badge color="blue">{promotion.code}</Badge> (
+                      {promotion.application_method?.value !== undefined &&
+                        promotion.application_method.currency_code !==
+                          undefined && (
+                          <>
+                            {promotion.application_method.type === "percentage"
+                              ? `${promotion.application_method.value}%`
+                              : convertToLocale({
+                                  amount: +promotion.application_method.value,
+                                  currency_code:
+                                    promotion.application_method.currency_code,
+                                })}
+                          </>
+                        )}
+                      )
+                    </span>
+                  </Text>
+                  <button
+                    className="flex items-center disabled:opacity-50"
+                    onClick={() => {
+                      if (!promotion.code) {
+                        return
+                      }
+                      handleRemoveGeneric(promotion.code)
+                    }}
+                    disabled={isBusy}
+                    data-testid="remove-discount-button"
+                  >
+                    <Trash size={14} />
+                    <span className="sr-only">Xoá</span>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           {activeVoucher && (
             <div className="flex flex-col gap-y-2">
+              <Heading className="txt-medium">Voucher:</Heading>
               <div
                 className="flex items-center justify-between w-full max-w-full"
                 data-testid="voucher-applied-row"
@@ -572,7 +717,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                     {activeVoucher.code}
                   </Badge>{" "}
                   <span data-testid="voucher-savings">
-                    You saved{" "}
+                    Bạn tiết kiệm được{" "}
                     {convertToLocale({
                       amount: activeVoucher.discount_amount,
                       currency_code: currencyCode,
@@ -587,7 +732,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                   data-testid="voucher-remove-button"
                 >
                   <Trash size={14} />
-                  <span className="sr-only">Remove</span>
+                  <span className="sr-only">Xoá</span>
                 </button>
               </div>
 
@@ -611,7 +756,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         disabled={isBusy}
         data-testid="available-vouchers-trigger"
       >
-        Available vouchers
+        Xem voucher khả dụng
       </button>
 
       <ReplaceConfirmModal

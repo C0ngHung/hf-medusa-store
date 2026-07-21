@@ -6,6 +6,7 @@
 import { VOUCHER_ERRORS } from "../lib/errors";
 import type {
   CartSnapshot,
+  CustomerSegmentSnapshot,
   VoucherSnapshot,
   VoucherValidationContext,
 } from "../lib/types";
@@ -19,7 +20,6 @@ import {
   v5MinOrder,
   v6Scope,
   v7Segment,
-  v8Stacking,
   validateCodeFormat,
 } from "../lib/validators";
 
@@ -39,7 +39,6 @@ function voucher(overrides: Partial<VoucherSnapshot> = {}): VoucherSnapshot {
     applicable_product_ids: null,
     applicable_category_ids: null,
     user_segment_conditions: null,
-    stackable_with_promotions: true,
     ...overrides,
   };
 }
@@ -60,6 +59,16 @@ function cart(overrides: Partial<CartSnapshot> = {}): CartSnapshot {
   };
 }
 
+function customerSegment(
+  overrides: Partial<CustomerSegmentSnapshot> = {},
+): CustomerSegmentSnapshot {
+  return {
+    customer_id: null,
+    group_ids: [],
+    ...overrides,
+  };
+}
+
 function context(
   overrides: Partial<VoucherValidationContext> = {},
 ): VoucherValidationContext {
@@ -68,6 +77,7 @@ function context(
     now: NOW,
     cart: cart(),
     user_usage_count: 0,
+    customer_segment: customerSegment(),
     ...overrides,
   };
 }
@@ -248,48 +258,70 @@ describe("VoucherEngine · V6 item scope (3.2.9)", () => {
   });
 });
 
-// ── V7 segment (3.2.10) — stub ───────────────────────────────────────────────
-describe("VoucherEngine · V7 segment (3.2.10, stub)", () => {
-  it("always passes in Day 3 (segment source undefined)", () => {
+// ── V7 segment (3.2.10) — SPEC Decision J ────────────────────────────────────
+describe("VoucherEngine · V7 segment (3.2.10, Decision J)", () => {
+  it("null conditions ⇒ pass, even for a guest (no customer_id)", () => {
     expect(
-      v7Segment(voucher({ user_segment_conditions: { loyalty_tier: "gold" } })),
-    ).toEqual({
-      ok: true,
-    });
-    expect(v7Segment(voucher({ user_segment_conditions: null }))).toEqual({
-      ok: true,
-    });
+      v7Segment(voucher({ user_segment_conditions: null }), customerSegment()),
+    ).toEqual({ ok: true });
   });
-});
 
-// ── V8 stacking (3.2.11) ─────────────────────────────────────────────────────
-describe("VoucherEngine · V8 stacking conflict (3.2.11)", () => {
-  it("non-stackable + cart has promo ⇒ STACKING_CONFLICT", () => {
-    const v = voucher({ stackable_with_promotions: false });
-    expect(v8Stacking(v, cart({ has_item_promotion: true }))).toMatchObject({
+  it("configured conditions ⇒ pass when the customer belongs to a listed group", () => {
+    const v = voucher({
+      user_segment_conditions: { customer_group_ids: ["cg_vip"] },
+    });
+    const segment = customerSegment({
+      customer_id: "cus_1",
+      group_ids: ["cg_vip", "cg_other"],
+    });
+    expect(v7Segment(v, segment)).toEqual({ ok: true });
+  });
+
+  it("configured conditions ⇒ fail closed when the customer is not a member of any listed group", () => {
+    const v = voucher({
+      user_segment_conditions: { customer_group_ids: ["cg_vip"] },
+    });
+    const segment = customerSegment({
+      customer_id: "cus_1",
+      group_ids: ["cg_other"],
+    });
+    expect(v7Segment(v, segment)).toMatchObject({
       ok: false,
-      code: "VOUCHER_STACKING_CONFLICT",
+      code: "VOUCHER_SEGMENT_NOT_ELIGIBLE",
     });
   });
 
-  it("non-stackable but no promo ⇒ pass", () => {
-    const v = voucher({ stackable_with_promotions: false });
-    expect(v8Stacking(v, cart({ has_item_promotion: false }))).toEqual({
-      ok: true,
+  it("configured conditions ⇒ fail closed for a guest (no customer identity at all)", () => {
+    const v = voucher({
+      user_segment_conditions: { customer_group_ids: ["cg_vip"] },
+    });
+    expect(v7Segment(v, customerSegment())).toMatchObject({
+      ok: false,
+      code: "VOUCHER_SEGMENT_NOT_ELIGIBLE",
     });
   });
 
-  it("stackable ⇒ pass even with promo", () => {
+  it("empty/malformed conditions can never be satisfied ⇒ fail closed even for an identified customer", () => {
+    const segment = customerSegment({
+      customer_id: "cus_1",
+      group_ids: ["cg_vip"],
+    });
     expect(
-      v8Stacking(
-        voucher({ stackable_with_promotions: true }),
-        cart({ has_item_promotion: true }),
+      v7Segment(
+        voucher({ user_segment_conditions: { customer_group_ids: [] } }),
+        segment,
       ),
-    ).toEqual({
-      ok: true,
-    });
+    ).toMatchObject({ ok: false, code: "VOUCHER_SEGMENT_NOT_ELIGIBLE" });
+    expect(
+      v7Segment(voucher({ user_segment_conditions: {} }), segment),
+    ).toMatchObject({ ok: false, code: "VOUCHER_SEGMENT_NOT_ELIGIBLE" });
   });
 });
+
+// V8 (stacking-conflict) was removed along with `stackable_with_promotions`
+// (rebuild-decisions.md decision 2, 2026-07-20) — automatic item-level
+// Promotions and the Voucher always stack now, so there is no rejection case
+// left to test. See lib/validators.ts's header comment.
 
 // ── Fail-fast chain (3.2.12) ─────────────────────────────────────────────────
 describe("VoucherEngine · validateVoucher fail-fast (3.2.12)", () => {
@@ -317,5 +349,34 @@ describe("VoucherEngine · validateVoucher fail-fast (3.2.12)", () => {
     const v = voucher({ is_active: false, usage_limit: 1, usage_count: 5 });
     const r = validateVoucher(context({ voucher: v }));
     expect(r).toMatchObject({ ok: false, code: "VOUCHER_INACTIVE" });
+  });
+
+  it("V7 (segment) runs in chain position, after V6 and before V8", () => {
+    const v = voucher({
+      user_segment_conditions: { customer_group_ids: ["cg_vip"] },
+    });
+    const r = validateVoucher(
+      context({ voucher: v, customer_segment: customerSegment() }),
+    );
+    expect(r).toMatchObject({
+      ok: false,
+      code: "VOUCHER_SEGMENT_NOT_ELIGIBLE",
+    });
+  });
+
+  it("V7 passes end-to-end through validateVoucher when the customer is a member", () => {
+    const v = voucher({
+      user_segment_conditions: { customer_group_ids: ["cg_vip"] },
+    });
+    const r = validateVoucher(
+      context({
+        voucher: v,
+        customer_segment: customerSegment({
+          customer_id: "cus_1",
+          group_ids: ["cg_vip"],
+        }),
+      }),
+    );
+    expect(r).toEqual({ ok: true });
   });
 });

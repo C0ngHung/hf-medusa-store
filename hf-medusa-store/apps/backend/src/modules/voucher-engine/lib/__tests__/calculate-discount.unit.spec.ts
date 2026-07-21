@@ -12,6 +12,14 @@ import {
 
 // Reproduces SRS §4.1 VOUCH-003 worked examples and SPEC §10.4/10.5/10.6 exactly.
 // (T-VOUCH-07, T-VOUCH-08, T-VOUCH-09, EC-03)
+//
+// `item_promotion_discount` fixtures represent a native automatic Promotion
+// Module adjustment applied to cart items (SPEC Decision H-2, 2026-07-20) —
+// NOT a Price List sale-price delta (that interpretation, Decision H, was
+// reversed the same date). This was already how `load-cart-context.ts`
+// computed the real value (from `items.adjustments`, a Promotion Module
+// concept) before the correction — these fixtures needed no numeric change,
+// only this clarifying note.
 
 const GLOBAL_CAP_BPS = 5000; // 50% (SRS §5.2 DiscountCapConfig default)
 

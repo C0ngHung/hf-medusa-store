@@ -10,6 +10,7 @@ import {
   createInventoryLevelsWorkflow,
   createProductCategoriesWorkflow,
   createProductsWorkflow,
+  createPromotionsWorkflow,
   createRegionsWorkflow,
   createSalesChannelsWorkflow,
   createShippingOptionsWorkflow,
@@ -22,11 +23,13 @@ import {
 import { S3_IMAGES } from "../data/product-images.generated";
 import { FREE_SHIPPING_THRESHOLD } from "../modules/suggestive-selling/constants";
 import seedSuggestiveSelling from "../scripts/seed-suggestive-selling";
-import seedVoucherEngine from "../scripts/seed-voucher-engine";
-import seedVoucherCapDemo from "../scripts/seed-voucher-cap-demo";
+import seedTierPromo from "../scripts/seed-tier-promo";
 import seedCustomers from "../scripts/seed-customers";
 import seedOrders from "../scripts/seed-orders";
 import computeCategoryTopSellers from "../jobs/compute-category-top-sellers";
+import { DEFAULT_CAP_PCT } from "../modules/voucher-engine/constants";
+import { VOUCHER_ENGINE_MODULE } from "../modules/voucher-engine";
+import { attachVoucherConfigWorkflow } from "../workflows/voucher-engine/admin/attach-voucher-config";
 
 /**
  * Badminton catalog seed (VND).
@@ -38,7 +41,8 @@ import computeCategoryTopSellers from "../jobs/compute-category-top-sellers";
  *
  * Run:  npx medusa exec ./src/migration-scripts/initial-data-seed.ts
  *   (or pnpm --filter @dtc/backend seed)
- * Then: npx medusa exec ./src/scripts/seed-suggestive-selling.ts
+ * The script also chains SuggestiveSelling, VoucherEngine, demo Promotion,
+ * customer, order, and top-seller seeds.
  *
  * Idempotent guard: skips entirely if a Default Sales Channel already exists.
  * All money is VND (integer, no minor units — SRS INT-01).
@@ -511,6 +515,283 @@ const PRODUCTS: ProductSeed[] = [
   ),
 ];
 
+type VoucherSeed = {
+  code: string;
+  discountType: "percentage" | "fixed";
+  discountValue: number;
+  minOrderValue?: number | null;
+  maxDiscountAmount?: number | null;
+  categoryScope?: (typeof CATEGORY_NAMES)[number] | null;
+  perUserLimit: number;
+  usageLimit?: number | null;
+  validOffset?: "past" | "future" | "active";
+};
+
+type AutoPromotionSeed = {
+  code: string;
+  discountPercent: number;
+  productHandle: string;
+  status: "active" | "inactive";
+  note: string;
+};
+
+const VOUCHER_SEEDS: VoucherSeed[] = [
+  {
+    code: "SAVE10",
+    discountType: "percentage",
+    discountValue: 10,
+    perUserLimit: 10,
+  },
+  {
+    code: "OLD10",
+    discountType: "percentage",
+    discountValue: 10,
+    perUserLimit: 10,
+    validOffset: "past",
+  },
+  {
+    code: "ONCE10",
+    discountType: "percentage",
+    discountValue: 10,
+    perUserLimit: 1,
+  },
+  {
+    code: "MEGA20",
+    discountType: "percentage",
+    discountValue: 20,
+    perUserLimit: 10,
+  },
+  {
+    code: "MEGA40",
+    discountType: "percentage",
+    discountValue: 40,
+    maxDiscountAmount: 500_000,
+    perUserLimit: 10,
+  },
+  {
+    code: "MEGA50",
+    discountType: "percentage",
+    discountValue: 50,
+    perUserLimit: 10,
+  },
+  {
+    code: "FIX100K",
+    discountType: "fixed",
+    discountValue: 100_000,
+    perUserLimit: 10,
+  },
+  {
+    code: "RACKET20",
+    discountType: "percentage",
+    discountValue: 20,
+    categoryScope: "Rackets",
+    perUserLimit: 10,
+  },
+  {
+    code: "SHUTTLE20",
+    discountType: "percentage",
+    discountValue: 20,
+    minOrderValue: 200_000,
+    categoryScope: "Shuttlecocks",
+    perUserLimit: 10,
+  },
+];
+
+const AUTO_PROMOTION_SEEDS: AutoPromotionSeed[] = [
+  {
+    code: "AUTO20_RACKET",
+    discountPercent: 20,
+    productHandle: "yonex-astrox-99-pro",
+    status: "active",
+    note: "Default active fixture for T-VOUCH-07.",
+  },
+  {
+    code: "AUTO40_RACKET",
+    discountPercent: 40,
+    productHandle: "yonex-astrox-99-pro",
+    status: "inactive",
+    note: "Inactive by default. Activate only after disabling AUTO20_RACKET for T-VOUCH-08.",
+  },
+  {
+    code: "AUTO30_STRING",
+    discountPercent: 30,
+    productHandle: "yonex-bg80-power",
+    status: "inactive",
+    note: "Inactive by default. Activate together with AUTO40_RACKET for T-VOUCH-08.",
+  },
+  {
+    code: "AUTO50_SUGGESTED",
+    discountPercent: 50,
+    productHandle: "yonex-bg65",
+    status: "inactive",
+    note: "Inactive by default. Activate only for T-VOUCH-09.",
+  },
+];
+
+function voucherWindow(offset: VoucherSeed["validOffset"] = "active") {
+  const now = new Date();
+  const validFrom = new Date(now);
+  const validTo = new Date(now);
+
+  if (offset === "past") {
+    validFrom.setMonth(validFrom.getMonth() - 2);
+    validTo.setMonth(validTo.getMonth() - 1);
+    return { validFrom, validTo };
+  }
+
+  if (offset === "future") {
+    validFrom.setMonth(validFrom.getMonth() + 1);
+    validTo.setMonth(validTo.getMonth() + 13);
+    return { validFrom, validTo };
+  }
+
+  validFrom.setDate(validFrom.getDate() - 1);
+  validTo.setFullYear(validTo.getFullYear() + 1);
+  return { validFrom, validTo };
+}
+
+async function seedVoucherAndPromotionFixtures(
+  container: MedusaContainer,
+  categoryIdByName: Map<string, string>,
+  productIdByHandle: Map<string, string>,
+) {
+  const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
+  const promotionModule: any = container.resolve(Modules.PROMOTION);
+  const voucherEngine: any = container.resolve(VOUCHER_ENGINE_MODULE);
+
+  const seededCodes = [
+    ...VOUCHER_SEEDS.map((v) => v.code),
+    ...AUTO_PROMOTION_SEEDS.map((p) => p.code),
+  ];
+
+  const existingPromotions = await promotionModule.listPromotions(
+    { code: seededCodes },
+    { select: ["id"] },
+  );
+  if (existingPromotions.length) {
+    await promotionModule.deletePromotions(
+      existingPromotions.map((promotion: any) => promotion.id),
+    );
+  }
+
+  const existingVouchers = await voucherEngine.listVoucherConfigs(
+    { code: VOUCHER_SEEDS.map((v) => v.code) },
+    { select: ["id"] },
+  );
+  if (existingVouchers.length) {
+    await voucherEngine.deleteVoucherConfigs(
+      existingVouchers.map((voucher: any) => voucher.id),
+    );
+  }
+
+  const existingCap = await voucherEngine.listDiscountCapConfigs(
+    {},
+    { select: ["id"] },
+  );
+  if (existingCap.length) {
+    await voucherEngine.deleteDiscountCapConfigs(
+      existingCap.map((cap: any) => cap.id),
+    );
+  }
+  await voucherEngine.createDiscountCapConfigs({
+    max_discount_percentage: DEFAULT_CAP_PCT,
+    is_active: true,
+    updated_by: "initial-data-seed",
+  });
+
+  for (const voucher of VOUCHER_SEEDS) {
+    const { validFrom, validTo } = voucherWindow(voucher.validOffset);
+    const categoryId = voucher.categoryScope
+      ? categoryIdByName.get(voucher.categoryScope)
+      : undefined;
+
+    if (voucher.categoryScope && !categoryId) {
+      logger.warn(
+        `[seed:voucher] category "${voucher.categoryScope}" not found — ${voucher.code} seeded unscoped.`,
+      );
+    }
+
+    const { result } = await createPromotionsWorkflow(container).run({
+      input: {
+        promotionsData: [
+          {
+            code: voucher.code,
+            type: "standard" as const,
+            status: "active" as const,
+            is_automatic: false,
+            limit: voucher.usageLimit ?? null,
+            application_method: {
+              type: voucher.discountType,
+              target_type: voucher.categoryScope ? "items" : "order",
+              allocation: "across",
+              value: voucher.discountValue,
+              currency_code: "vnd",
+            },
+          },
+        ],
+      },
+    });
+
+    await attachVoucherConfigWorkflow(container).run({
+      input: {
+        promotion_id: result[0].id,
+        min_order_value: voucher.minOrderValue ?? null,
+        max_discount_amount: voucher.maxDiscountAmount ?? null,
+        applicable_product_ids: null,
+        applicable_category_ids: categoryId ? [categoryId] : null,
+        per_user_limit: voucher.perUserLimit,
+        user_segment_conditions: null,
+        valid_from: validFrom,
+        valid_to: validTo,
+      },
+    });
+  }
+
+  for (const promotion of AUTO_PROMOTION_SEEDS) {
+    const productId = productIdByHandle.get(promotion.productHandle);
+    if (!productId) {
+      logger.warn(
+        `[seed:promotion] product "${promotion.productHandle}" not found — skip ${promotion.code}.`,
+      );
+      continue;
+    }
+
+    await createPromotionsWorkflow(container).run({
+      input: {
+        promotionsData: [
+          {
+            code: promotion.code,
+            type: "standard" as const,
+            status: promotion.status,
+            is_automatic: true,
+            application_method: {
+              type: "percentage" as const,
+              target_type: "items" as const,
+              allocation: "across" as const,
+              value: promotion.discountPercent,
+              currency_code: "vnd",
+              target_rules: [
+                {
+                  attribute: "items.product_id",
+                  operator: "eq",
+                  values: [productId],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    });
+    logger.info(
+      `[seed:promotion] ${promotion.code} (${promotion.status}) — ${promotion.note}`,
+    );
+  }
+
+  logger.info(
+    `[seed:voucher] created ${VOUCHER_SEEDS.length} VoucherEngine vouchers, ${AUTO_PROMOTION_SEEDS.length} automatic Promotion fixtures, and global cap ${DEFAULT_CAP_PCT} bp.`,
+  );
+}
+
 export default async function initial_data_seed({
   container,
 }: {
@@ -807,27 +1088,42 @@ export default async function initial_data_seed({
     `[seed] Catalog done. ${CATEGORY_NAMES.length} categories, ${PRODUCTS.length} products (VND).`,
   );
 
+  const { data: seededProducts } = await query.graph({
+    entity: "product",
+    fields: ["id", "handle"],
+  });
+  const categoryIdByName = new Map(
+    categoryResult.map((category) => [category.name, category.id]),
+  );
+  const productIdByHandle = new Map(
+    seededProducts
+      .filter((product: any) => product.handle)
+      .map((product: any) => [product.handle, product.id]),
+  );
+
   // Chain every downstream seed so ONE `db:migrate` leaves a fully demo-ready DB.
   // Ordered by dependency — each step is idempotent, so re-running migrate is safe:
   //   1. suggestive     — rules / complement maps / bulk mappings (needs catalog)
-  //   2. voucher        — voucher configs + global cap (needs categories)
-  //   3. voucher-cap-demo — automatic item-level Promotion on "yonex-bg65" so
-  //      VOUCH-003's stacking + 50% cap rule (Rule 1/2/6) can be demoed live
-  //      against a real item promo, not just unit tests (needs catalog).
-  //   4. customers      — login-capable demo accounts (see DEMO_SCENARIOS.md)
-  //   5. orders         — demo orders for those customers (needs customers + products)
-  //   6. top-seller job — aggregate those orders → category_top_seller snapshot
+  //   2. voucher        — canonical Promotions + VoucherConfig + automatic promo fixtures
+  //   2b. tier promo    — automatic "5M → 5% off order" Medusa Promotion (EC-08)
+  //   3. customers      — login-capable demo accounts (see DEMO_SCENARIOS.md)
+  //   4. orders         — demo orders for those customers (needs customers + products)
+  //   5. top-seller job — aggregate those orders → category_top_seller snapshot
   //      (SUGG-001 Tier 2 / SPEC A.6). Runs the REAL job so the Tier-2 ranking is
   //      order-derived; `seed-category-top-sellers.ts` stays a synthetic cold-start
   //      fallback for a DB with no orders.
   logger.info(
-    "[seed] chaining module seeds (suggestive → voucher → voucher-cap-demo → customers → orders → top-sellers)...",
+    "[seed] chaining module seeds (suggestive → voucher/promotion → tier promo → customers → orders → top-sellers)...",
   );
   // The seeds are authored as `medusa exec` scripts (ExecArgs = { container, args }).
   const execArgs = { container, args: [] as string[] };
   await seedSuggestiveSelling(execArgs);
-  await seedVoucherEngine(execArgs);
-  await seedVoucherCapDemo(execArgs);
+  await seedVoucherAndPromotionFixtures(
+    container,
+    categoryIdByName,
+    productIdByHandle,
+  );
+  await seedTierPromo(execArgs);
   await seedCustomers(execArgs);
   await seedOrders(execArgs);
   await computeCategoryTopSellers(container);

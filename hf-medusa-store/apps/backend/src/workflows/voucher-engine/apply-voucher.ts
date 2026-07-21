@@ -4,12 +4,10 @@
  * Applies (or replaces) a voucher on a cart. Reuses every Day 2/3 step
  * (`loadCartContextStep`, `lookupVoucherStep`, `validateVoucherStep`,
  * `resolveEligibleItemsStep`, `calculateVoucherDiscountStep`,
- * `verifyCartTotalsStep`) and adds: the one-active-voucher / replace-confirmation
- * gate, the concurrency lock (§14.2-C), and the Option-B carrier — a
- * `cart.credit_lines` entry that carries the capped amount into the
- * authoritative Cart/Order totals WITHOUT participating in the Promotion
- * engine's `computeActions` (so a coexisting percentage item-promotion cannot
- * be re-compounded/reduced — the CONFLICT-8/PD-15 Rule-11 fix).
+ * `verifyCartTotalsStep`) and adds the Day 4 pieces: the one-active-voucher /
+ * replace-confirmation gate, the raw `LineItemAdjustment`s that actually
+ * carry the capped amount (Decision-4 carrier rewrite,
+ * `lib/create-voucher-adjustments.ts`), and the concurrency lock (§14.2-C).
  *
  * Brute-force rate-limiting (§11.1 step 2, SEC-02/EC-10) is enforced at the
  * HTTP boundary — `voucherRateLimitMiddleware` on the store route plus
@@ -25,15 +23,16 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deleteCartCreditLinesWorkflow,
   releaseLockStep,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
-import { createVoucherCreditLine } from "./lib/create-voucher-credit-line";
+import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
 import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
+import { loadCustomerSegmentStep } from "./steps/load-customer-segment";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { validateVoucherStep } from "./steps/validate-voucher";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
@@ -72,9 +71,9 @@ export const applyVoucherWorkflow = createWorkflow(
     assertVoucherFoundStep({ voucher: lookup.voucher });
 
     // One-active-voucher / replace-confirmation gate (tasks 3.4.6/3.4.7/3.4.8) —
-    // must run BEFORE the old carrier is touched (never remove a valid existing
-    // voucher before the replacement is validated). Only reached once the
-    // submitted code is confirmed to exist.
+    // must run BEFORE any new Promotion is created (never remove a valid
+    // existing voucher before the replacement is validated). Only reached
+    // once the submitted code is confirmed to exist.
     const activeCheck = checkActiveVoucherStep({
       cart_id: input.cart_id,
       replace: input.replace,
@@ -85,19 +84,61 @@ export const applyVoucherWorkflow = createWorkflow(
       ({ activeCheck }) => !!activeCheck.previous,
     );
 
-    // Load the authoritative cart. Credit lines never appear in
-    // `items.adjustments`, so `item_promotion_discount` is already voucher-free
-    // — no old-carrier exclusion needed (unlike the former ephemeral-promotion
-    // carrier). Rule-11 baseline is clean for both first-apply and replace.
+    // Replace: remove the OLD voucher's adjustments BEFORE verification —
+    // `verifyCartTotalsStep` reads the Cart's own recomputed total, which
+    // would otherwise still reflect BOTH the old and new discount stacked
+    // together. Safe/reversible: `removeLineItemAdjustmentsStep` soft-deletes
+    // and its compensation RESTORES on a later failure (Decision-4 carrier
+    // rewrite — a single removal step now covers what previously needed a
+    // detach-then-later-irreversible-delete pair, because there is no
+    // separate Promotion entity to delete once the adjustment rows
+    // themselves are gone; never remove a valid existing voucher before the
+    // replacement is validated).
+    when({ hasPrevious }, ({ hasPrevious }) => hasPrevious).then(() => {
+      const oldAdjustmentIds = transform(
+        { activeCheck },
+        ({ activeCheck }) => activeCheck.previous!.adjustment_ids,
+      );
+
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+      });
+    });
+
+    // Code-review Task 7.3: checkActiveVoucherStep (above) and this step both
+    // call query.graph on the same cart_id — evaluated merging them into one
+    // read and deliberately did NOT, because they read the cart at two
+    // sequentially-DEPENDENT points, not the same point twice:
+    // checkActiveVoucherStep's metadata-only read runs BEFORE the conditional
+    // "remove old voucher adjustments" branch above and its result
+    // (`hasPrevious`) decides whether that removal even runs, while this
+    // step's full read must run AFTER it — its `item_promotion_discount`
+    // baseline (Rule 11) is only correct once the old adjustments (if any)
+    // have actually been removed from the cart. Merging into a single
+    // earlier read would corrupt that baseline for the replace case;
+    // merging into a single later read would move the replace-confirmation
+    // gate to run AFTER the removal it's supposed to gate, violating tasks
+    // 3.4.6/3.4.7/3.4.8 (never remove a valid existing voucher before the
+    // replacement is validated). Left as two separate reads.
     const cart = loadCartContextStep({ cart_id: input.cart_id });
+
+    // V7 (SPEC Decision J) — resolve the customer's native Medusa Customer
+    // Group membership. Guests (customer_id null) resolve to no groups.
+    const customerSegment = loadCustomerSegmentStep({
+      customer_id: input.customer_id,
+    });
 
     validateVoucherStep({
       voucher: lookup.voucher,
       cart,
       user_usage_count: lookup.user_usage_count,
+      customer_segment: customerSegment,
     });
 
-    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
+    const { resolved, discount } = resolveAndCalculateVoucherDiscount({
+      lookup,
+      cart,
+    });
 
     // EC-04: verify no concurrent mutation (e.g. an item removal) changed the
     // cart between loadCartContextStep's read and this point, right before we
@@ -107,39 +148,21 @@ export const applyVoucherWorkflow = createWorkflow(
       expected_concurrency_marker: cart.concurrency_marker,
     });
 
-    // Replace: delete the OLD voucher credit line. Reversible before
-    // verification — `deleteCartCreditLinesWorkflow` soft-deletes and its
-    // compensation restores it, so if the NEW voucher fails verification the
-    // customer's previous discount is put back exactly. The new voucher already
-    // passed V1–V8 above (validateVoucherStep), so we never drop a valid voucher
-    // for an unvalidated one (tasks 3.4.7/3.4.8).
-    when({ hasPrevious }, ({ hasPrevious }) => hasPrevious).then(() => {
-      const oldCreditLineId = transform(
-        { activeCheck },
-        ({ activeCheck }) => activeCheck.previous!.credit_line_id,
-      );
-      deleteCartCreditLinesWorkflow.runAsStep({
-        input: transform({ oldCreditLineId }, ({ oldCreditLineId }) => ({
-          id: [oldCreditLineId],
-        })),
-      });
-    });
-
-    // Option-B carrier — carry the capped amount via a cart credit line
-    // (never a Promotion, so it never re-compounds with item promotions).
-    const creditLine = createVoucherCreditLine({
-      cart_id: input.cart_id,
-      voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
-      code: transform({ lookup }, ({ lookup }) => lookup.voucher!.code),
+    // Decision-4 carrier rewrite — carry the capped amount via raw
+    // LineItemAdjustment rows, split across eligible lines (never the
+    // shared/canonical VoucherConfig.promotion_id, and never a Promotion at
+    // all — see lib/create-voucher-adjustments.ts).
+    const newAdjustments = createVoucherLineItemAdjustments({
+      lines: resolved.lines,
       discount,
     });
 
     const voucherSnapshot = transform(
-      { lookup, discount, creditLine, activeCheck },
-      ({ lookup, discount, creditLine, activeCheck }) => ({
+      { lookup, discount, newAdjustments, activeCheck },
+      ({ lookup, discount, newAdjustments, activeCheck }) => ({
         voucher_id: lookup.voucher!.id,
         code: lookup.voucher!.code,
-        credit_line_id: creditLine.credit_line_id,
+        adjustment_ids: newAdjustments.adjustment_ids,
         discount_type: lookup.voucher!.discount_type,
         discount_value: lookup.voucher!.discount_value,
         uncapped_voucher_discount: discount.raw_voucher_discount,
@@ -163,13 +186,9 @@ export const applyVoucherWorkflow = createWorkflow(
 
     const verification = verifyCartTotalsStep({
       cart_id: input.cart_id,
-      credit_line_id: creditLine.credit_line_id,
+      adjustment_ids: newAdjustments.adjustment_ids,
       final_voucher_discount: discount.final_voucher_discount,
       expected_final_cart_total: discount.expected_final_cart_total,
-      // Rule-11 baseline: `discount.item_promotion_discount` is voucher-free by
-      // construction (credit lines are not adjustments), for both first-apply
-      // and replace. The verify step asserts item promotions did not shrink.
-      pre_apply_item_promotion_discount: discount.item_promotion_discount,
     });
 
     releaseLockStep({ key: lockKey });

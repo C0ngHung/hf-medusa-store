@@ -3,6 +3,7 @@ import { sdk } from "./sdk";
 import type {
   CategoryComplementMapping,
   CategoryTopSeller,
+  DiscountCapConfig,
   ProductBulkMapping,
   RuleType,
   SuggestionEvent,
@@ -225,90 +226,133 @@ export const useSuggestionEvents = (filters: EventFilters = {}) =>
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — analytics (SRS §6.4)                                 */
-/* Reads ONLY the VoucherConfig table via /admin/vouchers* — never the  */
-/* native Promotion list (SPEC Decision C/G). The list UI was removed   */
-/* 2026-07-20 in favor of inline widgets on the Promotion detail page.  */
+/* VoucherEngine — Admin unified model (native Promotions is the ONLY  */
+/* Admin management domain; no separate Voucher list/create exists).   */
+/* Enable/Disable act on the VoucherConfig linked to a Promotion via   */
+/* /admin/promotions/:promotion_id/voucher-config.                    */
 /* ------------------------------------------------------------------ */
 
 const VOUCHERS_KEY = ["vouchers"];
 
+/**
+ * Promotion Detail widget — read-only lookup of the VoucherConfig linked to
+ * this canonical Promotion, via `GET
+ * /admin/promotions/:promotion_id/voucher-config` (Admin unified model).
+ * Returns `null` when the Promotion has no linked VoucherConfig (an
+ * ordinary, non-voucher Promotion) rather than treating that as an error.
+ * The returned object's `is_active` is VoucherEngine's own persisted
+ * Enable/Disable flag — the widget's toggle state and the analytics
+ * widget's visibility both key off it directly.
+ */
+export const useVoucherByPromotion = (promotionId?: string) =>
+  useQuery({
+    queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+    enabled: !!promotionId,
+    queryFn: async () => {
+      const { voucher } = await sdk.client.fetch<{
+        voucher: VoucherConfig | null;
+      }>(`/admin/promotions/${promotionId}/voucher-config`);
+      return voucher;
+    },
+  });
+
+/**
+ * "Enable VoucherEngine" — Admin unified model. Idempotent
+ * create-or-reactivate-or-update of the linked `VoucherConfig` for an
+ * eligible Promotion. Payload is ONLY VoucherEngine-owned fields — never
+ * `code`/`discount_type`/`discount_value`/`status`/campaign/application
+ * method (native Promotion/Campaign UI's exclusive territory), and never
+ * `usage_limit` (strict native-field reuse — the native equivalent is the
+ * linked Promotion's Campaign budget, attached natively, not through this
+ * form). `valid_from`/`valid_to` ARE part of this payload (reverted
+ * 2026-07-21, see below) — no native Promotion date field exists to derive
+ * them from, so VoucherConfig owns them directly; the backend only writes
+ * them on the very first Enable (create-only, ignored on a later
+ * update/re-enable — `upsert-linked-voucher-config.ts`).
+ */
+export type EnableVoucherEnginePayload = {
+  min_order_value?: number | null;
+  max_discount_amount?: number | null;
+  applicable_product_ids?: string[] | null;
+  applicable_category_ids?: string[] | null;
+  per_user_limit?: number;
+  user_segment_conditions?: Record<string, unknown> | null;
+  valid_from: string;
+  valid_to: string;
+};
+
+export const useEnableVoucherEngine = (promotionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: EnableVoucherEnginePayload) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>(
+        `/admin/promotions/${promotionId}/voucher-config`,
+        { method: "POST", body },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+      }),
+  });
+};
+
+/**
+ * "Disable VoucherEngine" — Admin unified model. Reversible and idempotent:
+ * sets the linked VoucherConfig's `is_active` to false without deleting the
+ * Promotion, the row, its usage history, or analytics. Re-enabling later
+ * (`useEnableVoucherEngine`) reuses the same row.
+ */
+export const useDisableVoucherEngine = (promotionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      sdk.client.fetch<{ voucher: VoucherConfig | null }>(
+        `/admin/promotions/${promotionId}/voucher-config`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+      }),
+  });
+};
+
+// Response is flat (no `{ analytics: {...} }` wrapper, matches SRS §6.4
+// literally — 2026-07-21).
 export const useVoucherAnalytics = (id: string) =>
   useQuery({
     queryKey: ["voucher-analytics", id],
     enabled: !!id,
     retry: false,
     queryFn: () =>
-      sdk.client.fetch<{ analytics: VoucherAnalytics }>(
-        `/admin/vouchers/${id}/analytics`,
-      ),
+      sdk.client.fetch<VoucherAnalytics>(`/admin/vouchers/${id}/analytics`),
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — promotion-detail "Voucher settings" widget (Task 7). */
-/* Attach/edit/detach a voucher_config directly from the native         */
-/* Promotion detail page (@medusajs/admin-sdk zone                      */
-/* "promotion.details.side.after") — same /admin/vouchers* endpoints,   */
-/* attach mode (Task 4) / PUT (Task 5) / DELETE (Task 5), never the     */
-/* full create-mode body (discount/window/code live on the Promotion).  */
+/* DiscountCapConfig — global cap, single active record (SRS §5.2;    */
+/* Rebuild Phase 3A). GET/POST only — no :id, it's a singleton.        */
 /* ------------------------------------------------------------------ */
 
-/** The voucher-only fields both attach (POST) and edit (PUT) accept. */
-export type VoucherOnlyFields = {
-  min_order_value?: number | null;
-  max_discount_amount?: number | null;
-  applicable_product_ids?: string[] | null;
-  applicable_category_ids?: string[] | null;
-  stackable_with_promotions?: boolean;
-  per_user_limit?: number;
-  user_segment_conditions?: Record<string, unknown> | null;
-};
+const DISCOUNT_CAP_CONFIG_KEY = ["discount-cap-config"];
 
-export type AttachVoucherPayload = VoucherOnlyFields & {
-  promotion_id: string;
-};
-
-/** Look up the (at most one) voucher_config attached to a Promotion. */
-export const useVoucherByPromotion = (promotionId?: string) =>
+export const useDiscountCapConfig = () =>
   useQuery({
-    queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
-    enabled: !!promotionId,
+    queryKey: DISCOUNT_CAP_CONFIG_KEY,
     queryFn: () =>
-      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
-        "/admin/vouchers",
-        { query: { promotion_id: promotionId, limit: 1 } },
+      sdk.client.fetch<{ discount_cap_config: DiscountCapConfig }>(
+        "/admin/discount-cap-config",
       ),
   });
 
-export const useAttachVoucher = () => {
+export const useUpsertDiscountCapConfig = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: AttachVoucherPayload) =>
-      sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
-        method: "POST",
-        body,
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
-  });
-};
-
-export const useUpdateVoucherFields = (id: string) => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: VoucherOnlyFields) =>
-      sdk.client.fetch<{ voucher: VoucherConfig }>(`/admin/vouchers/${id}`, {
-        method: "PUT",
-        body,
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
-  });
-};
-
-export const useDeleteVoucher = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) =>
-      sdk.client.fetch(`/admin/vouchers/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+    mutationFn: (body: { max_discount_percentage: number }) =>
+      sdk.client.fetch<{ discount_cap_config: DiscountCapConfig }>(
+        "/admin/discount-cap-config",
+        { method: "POST", body },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: DISCOUNT_CAP_CONFIG_KEY }),
   });
 };

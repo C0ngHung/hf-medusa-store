@@ -37,9 +37,16 @@ export function resolveAndCalculateVoucherDiscount({
     max_discount_amount: lookup.voucher!.max_discount_amount,
   }));
 
-  return calculateVoucherDiscountStep({
+  const discount = calculateVoucherDiscountStep({
     lines: resolved.lines,
     voucher: voucherTerms,
     global_cap_bps: lookup.global_cap_bps,
   });
+
+  // `resolved.lines` (per-line `is_eligible`/`item_promotion_discount`) is
+  // returned alongside the aggregate `discount` so callers can split
+  // `discount.final_voucher_discount` across eligible lines
+  // (`lib/create-voucher-adjustments.ts`, Decision-4 carrier rewrite) without
+  // re-running eligibility resolution.
+  return { resolved, discount };
 }

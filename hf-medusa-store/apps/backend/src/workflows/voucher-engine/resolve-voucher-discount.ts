@@ -11,11 +11,12 @@
  * workflow's output (`discount`) as their input once built.
  *
  * `verifyCartTotalsStep` (task 3.3.14/3.8.4) is included but conditional: it
- * only runs when the caller already knows the voucher's carrier credit-line id
- * (`credit_line_id`), i.e. after some other flow has created it on the cart via
- * `createVoucherCreditLine`. This lets the same workflow serve as both a
- * pre-carrier "preview" (Day 2/3 scope, no credit line yet) and, later, the
- * post-carrier verification leg — without duplicating any calculation.
+ * only runs when the caller already knows the voucher's adjustment ids
+ * (`adjustment_ids`), i.e. after some other flow has written them to the cart
+ * (Decision-4 carrier rewrite — `lib/create-voucher-adjustments.ts`). This
+ * lets the same workflow serve as both a pre-write "preview" (Day 2/3 scope,
+ * no adjustments yet) and, later, the post-write leg of the real
+ * `applyVoucherWorkflow` — without duplicating any calculation.
  */
 
 import {
@@ -26,6 +27,7 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import { loadCartContextStep } from "./steps/load-cart-context";
+import { loadCustomerSegmentStep } from "./steps/load-customer-segment";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { validateVoucherStep } from "./steps/validate-voucher";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
@@ -36,8 +38,8 @@ export interface ResolveVoucherDiscountInput {
   cart_id: string;
   code: string;
   customer_id: string;
-  /** When set, the voucher's carrier credit line already exists — run `verifyCartTotalsStep` against it. */
-  credit_line_id?: string;
+  /** When set, the voucher's adjustments are already written — run `verifyCartTotalsStep` against them. */
+  adjustment_ids?: string[];
 }
 
 export const resolveVoucherDiscountWorkflow = createWorkflow(
@@ -50,26 +52,28 @@ export const resolveVoucherDiscountWorkflow = createWorkflow(
       customer_id: input.customer_id,
     });
 
+    const customerSegment = loadCustomerSegmentStep({
+      customer_id: input.customer_id,
+    });
+
     validateVoucherStep({
       voucher: lookup.voucher,
       cart,
       user_usage_count: lookup.user_usage_count,
+      customer_segment: customerSegment,
     });
 
-    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
+    const { discount } = resolveAndCalculateVoucherDiscount({ lookup, cart });
 
     const verification = when(
       { input, discount },
-      ({ input }) => !!input.credit_line_id,
+      ({ input }) => !!input.adjustment_ids?.length,
     ).then(() =>
       verifyCartTotalsStep({
         cart_id: input.cart_id,
-        credit_line_id: input.credit_line_id!,
+        adjustment_ids: input.adjustment_ids!,
         final_voucher_discount: discount.final_voucher_discount,
         expected_final_cart_total: discount.expected_final_cart_total,
-        // Credit lines are not adjustments, so `discount.item_promotion_discount`
-        // is the voucher-free Rule-11 baseline by construction.
-        pre_apply_item_promotion_discount: discount.item_promotion_discount,
       }),
     );
 

@@ -6,16 +6,13 @@ import {
   CreateSuggestionRuleSchema,
   UpdateSuggestionRuleSchema,
 } from "./admin/suggestion-rules/validators";
-import {
-  CreateOrAttachVoucherSchema,
-  UpdateVoucherSchema,
-} from "./admin/vouchers/validators";
+import { CreateVoucherSchema } from "./admin/vouchers/validators";
+import { AttachVoucherConfigSchema } from "./admin/promotions/[promotion_id]/voucher-config/validators";
 import {
   ApplyVoucherSchema,
   RemoveVoucherSchema,
 } from "./store/carts/[id]/voucher/validators";
 import { voucherRateLimitMiddleware } from "./middlewares/voucher-rate-limit";
-import { blockVoucherPromotionMiddleware } from "./middlewares/block-voucher-promotion";
 import {
   CreateBulkMappingSchema,
   UpdateBulkMappingSchema,
@@ -24,6 +21,7 @@ import {
   CreateComplementMappingSchema,
   UpdateComplementMappingSchema,
 } from "./admin/category-complement-mappings/validators";
+import { UpsertDiscountCapConfigSchema } from "./admin/discount-cap-config/validators";
 
 /**
  * API middlewares. Body validation for admin config writes (SRS §6.1, §6.4) and
@@ -40,12 +38,6 @@ import {
  * whether its payload is well-formed. DELETE is not rate-limited: removing a
  * voucher carries no code-guessing risk. Admin writes need only body validation
  * below.
- *
- * `blockVoucherPromotionMiddleware` (api/middlewares/block-voucher-promotion.ts,
- * Task 3, spec §5) guards Medusa's NATIVE `POST /store/carts/:id/promotions`
- * route: a voucher is backed by a real Promotion (metadata.voucher_engine),
- * so without this guard a client could attach the code directly there,
- * bypassing V1–V8/cap/rate-limit and reviving the Rule-11 stacking bug.
  */
 export default defineMiddlewares({
   routes: [
@@ -62,12 +54,12 @@ export default defineMiddlewares({
     {
       matcher: "/admin/vouchers",
       method: "POST",
-      middlewares: [validateAndTransformBody(CreateOrAttachVoucherSchema)],
+      middlewares: [validateAndTransformBody(CreateVoucherSchema)],
     },
     {
-      matcher: "/admin/vouchers/:id",
-      method: "PUT",
-      middlewares: [validateAndTransformBody(UpdateVoucherSchema)],
+      matcher: "/admin/promotions/:promotion_id/voucher-config",
+      method: "POST",
+      middlewares: [validateAndTransformBody(AttachVoucherConfigSchema)],
     },
     {
       matcher: "/store/carts/:id/voucher",
@@ -81,11 +73,6 @@ export default defineMiddlewares({
       matcher: "/store/carts/:id/voucher",
       method: "DELETE",
       middlewares: [validateAndTransformBody(RemoveVoucherSchema)],
-    },
-    {
-      matcher: "/store/carts/:id/promotions",
-      method: "POST",
-      middlewares: [blockVoucherPromotionMiddleware],
     },
     {
       matcher: "/admin/product-bulk-mappings",
@@ -106,6 +93,11 @@ export default defineMiddlewares({
       matcher: "/admin/category-complement-mappings/:id",
       method: "PUT",
       middlewares: [validateAndTransformBody(UpdateComplementMappingSchema)],
+    },
+    {
+      matcher: "/admin/discount-cap-config",
+      method: "POST",
+      middlewares: [validateAndTransformBody(UpsertDiscountCapConfigSchema)],
     },
   ],
 });

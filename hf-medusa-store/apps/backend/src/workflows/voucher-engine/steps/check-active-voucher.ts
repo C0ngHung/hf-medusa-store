@@ -12,7 +12,7 @@
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
-import { VoucherCartMetadata } from "../lib/voucher-cart-metadata";
+import { VoucherCartMetadata } from "../lib/ephemeral-promotion";
 import { throwVoucherError } from "../lib/errors";
 import { readVoucherCartMetadata } from "../lib/read-voucher-cart-metadata";
 

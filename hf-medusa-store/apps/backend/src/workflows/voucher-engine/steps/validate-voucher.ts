@@ -18,6 +18,7 @@ import { toCartSnapshot, toVoucherSnapshot } from "../lib/mappers";
 import type { PersistedVoucherConfig } from "../lib/mappers";
 import { validateVoucher } from "../lib/validate-voucher";
 import type { CartContext } from "./load-cart-context";
+import type { CustomerSegmentSnapshot } from "../lib/types";
 
 export const validateVoucherStepId = "validate-voucher";
 
@@ -25,6 +26,8 @@ export interface ValidateVoucherInput {
   voucher: PersistedVoucherConfig | null;
   cart: CartContext;
   user_usage_count: number;
+  /** V7 — pre-resolved by `loadCustomerSegmentStep` (SPEC Decision J). */
+  customer_segment: CustomerSegmentSnapshot;
   /** Reference time for V2 (SPEC: pure chain never reads the clock itself). Defaults to now. */
   now?: Date;
 }
@@ -41,6 +44,7 @@ export const validateVoucherStep = createStep(
       now: input.now ? new Date(input.now) : new Date(),
       cart: toCartSnapshot(input.cart),
       user_usage_count: input.user_usage_count,
+      customer_segment: input.customer_segment,
     });
 
     if (!result.ok) {

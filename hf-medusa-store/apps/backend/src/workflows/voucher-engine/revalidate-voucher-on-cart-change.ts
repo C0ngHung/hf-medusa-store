@@ -4,9 +4,9 @@
  * Invoked by the `cart.updated` subscriber (`../../subscribers/voucher-cart-updated.ts`)
  * for cart mutations VoucherEngine does not own (item add/remove, qty change,
  * suggestive-selling adds). Re-runs the cart-change validation SUBSET (V1, V2,
- * V5, V6, V8 — §9.2): if still valid, recomputes and re-attaches the discount
- * at the new amount; if invalid, auto-removes the voucher with a reason
- * (VOUCHER_AUTO_REMOVED).
+ * V5, V6 — §9.2, no V8 per rebuild-decisions.md decision 2): if still valid,
+ * recomputes and rewrites the discount at the new amount; if invalid,
+ * auto-removes the voucher with a reason (VOUCHER_AUTO_REMOVED).
  *
  * No-op (nothing mutates) when the cart has no active voucher — the common
  * case for the vast majority of cart mutations. Never throws — errors are
@@ -35,8 +35,8 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deleteCartCreditLinesWorkflow,
   releaseLockStep,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
 import { Modules } from "@medusajs/framework/utils";
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
@@ -45,10 +45,11 @@ import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { revalidateStep } from "./steps/revalidate-voucher";
+import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
-import { createVoucherCreditLine } from "./lib/create-voucher-credit-line";
-import { VOUCHER_METADATA_KEY } from "./lib/voucher-cart-metadata";
+import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
+import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import {
   VOUCHER_NOTICE_METADATA_KEY,
   VoucherAutoRemoveNotice,
@@ -115,8 +116,6 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
     const existing = checkVoucherExistsStep({ cart_id: input.cart_id });
 
-    // Credit lines never appear in `items.adjustments`, so the item-promotion
-    // baseline is voucher-free without excluding any old carrier.
     const cart = loadCartContextStep({ cart_id: input.cart_id });
 
     const lookup = lookupVoucherStep({
@@ -140,27 +139,45 @@ export const revalidateVoucherWorkflow = createWorkflow(
         existing.has_voucher && !revalidation.still_valid,
     );
 
-    // Still valid → recompute the amount and replace the voucher credit line
-    // (a credit line's amount is not mutated in place — delete + recreate).
+    // Still valid → recompute the amount and rewrite the voucher's
+    // LineItemAdjustments (Decision-4 carrier rewrite; amounts aren't mutated
+    // in place — a fresh split is written and the old one removed). Mirrors
+    // applyVoucherWorkflow's replace ordering: remove the OLD adjustments
+    // FIRST (reversible — compensation restores them if a later step in this
+    // branch fails), THEN create the new ones, THEN verify authoritative
+    // totals. A single removal step now covers what previously needed a
+    // detach-then-later-irreversible-delete pair, since there is no separate
+    // Promotion entity to delete once the adjustment rows themselves are
+    // gone.
     when({ shouldRecompute }, ({ shouldRecompute }) => shouldRecompute).then(
       () => {
-        const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
+        const oldAdjustmentIds = transform(
+          { existing },
+          ({ existing }) => existing.active!.adjustment_ids,
+        );
 
-        const newCreditLine = createVoucherCreditLine({
-          cart_id: input.cart_id,
-          voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
-          code: transform({ lookup }, ({ lookup }) => lookup.voucher!.code),
+        removeLineItemAdjustmentsStep({
+          lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+        });
+
+        const { resolved, discount } = resolveAndCalculateVoucherDiscount({
+          lookup,
+          cart,
+        });
+
+        const newAdjustments = createVoucherLineItemAdjustments({
+          lines: resolved.lines,
           discount,
         });
 
         writeVoucherCartMetadataStep({
           cart_id: input.cart_id,
           voucher: transform(
-            { lookup, discount, newCreditLine, existing },
-            ({ lookup, discount, newCreditLine, existing }) => ({
+            { lookup, discount, newAdjustments, existing },
+            ({ lookup, discount, newAdjustments, existing }) => ({
               voucher_id: lookup.voucher!.id,
               code: lookup.voucher!.code,
-              credit_line_id: newCreditLine.credit_line_id,
+              adjustment_ids: newAdjustments.adjustment_ids,
               discount_type: lookup.voucher!.discount_type,
               discount_value: lookup.voucher!.discount_value,
               uncapped_voucher_discount: discount.raw_voucher_discount,
@@ -178,36 +195,27 @@ export const revalidateVoucherWorkflow = createWorkflow(
           previous_metadata: existing.previous_metadata,
         });
 
-        // Delete the OLD credit line only after the new one is created (final
-        // state carries exactly one voucher credit line). A unique step name is
-        // REQUIRED: Medusa's workflow builder statically discovers every step in
-        // the composer body regardless of which `when()` branch it sits in, so
-        // the two `deleteCartCreditLinesWorkflow` calls (this branch + the
-        // auto-remove branch) collide on the auto-generated step id unless each
-        // is named. `.config` is cast past its `undefined` workflow-output type.
-        (
-          deleteCartCreditLinesWorkflow.runAsStep({
-            input: transform({ existing }, ({ existing }) => ({
-              id: [existing.active!.credit_line_id],
-            })),
-          }) as any
-        ).config({ name: "delete-stale-voucher-credit-line" });
+        // Authoritative-total verification (task 3.3.14/3.8.4).
+        verifyCartTotalsStep({
+          cart_id: input.cart_id,
+          adjustment_ids: newAdjustments.adjustment_ids,
+          final_voucher_discount: discount.final_voucher_discount,
+          expected_final_cart_total: discount.expected_final_cart_total,
+        });
       },
     );
 
-    // Invalid → auto-remove: detach + delete the ephemeral promotion and
-    // clear the metadata snapshot (tasks 3.5.7/3.5.8, VOUCHER_AUTO_REMOVED).
+    // Invalid → auto-remove: remove the adjustments and clear the metadata
+    // snapshot (tasks 3.5.7/3.5.8, VOUCHER_AUTO_REMOVED).
     when({ shouldRemove }, ({ shouldRemove }) => shouldRemove).then(() => {
-      // Delete the voucher credit line (carrier). Distinct step name from the
-      // recompute branch's delete (see that branch's note on static step-id
-      // discovery across `when()` branches).
-      (
-        deleteCartCreditLinesWorkflow.runAsStep({
-          input: transform({ existing }, ({ existing }) => ({
-            id: [existing.active!.credit_line_id],
-          })),
-        }) as any
-      ).config({ name: "delete-invalid-voucher-credit-line" });
+      const staleAdjustmentIds = transform(
+        { existing },
+        ({ existing }) => existing.active!.adjustment_ids,
+      );
+
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: staleAdjustmentIds,
+      });
 
       // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
       // (min-order → 3.5.9, no-eligible-items → 3.5.10, …). `revalidation` always

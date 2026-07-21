@@ -8,6 +8,10 @@ module.exports = {
     "./src/pages/**/*.{js,ts,jsx,tsx}",
     "./src/components/**/*.{js,ts,jsx,tsx}",
     "./src/modules/**/*.{js,ts,jsx,tsx}",
+    // @medusajs/ui's Toast/Toaster (2026-07-21) ship class names in their
+    // compiled JS, not in this app's own source — without this, Tailwind's
+    // JIT scanner never sees them and the toasts render unstyled.
+    "./node_modules/@medusajs/ui/dist/**/*.js",
   ],
   theme: {
     extend: {

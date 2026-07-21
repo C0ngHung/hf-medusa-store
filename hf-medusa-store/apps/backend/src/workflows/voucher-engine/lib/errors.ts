@@ -88,7 +88,11 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     message: "segment mismatch",
     customer_message: "Mã này không áp dụng cho tài khoản của bạn.",
   },
-  // V8 — stacking conflict.
+  // DEAD (rebuild-decisions.md decision 2, 2026-07-20): no code path throws
+  // this anymore — `v8Stacking`/`stackable_with_promotions` were removed
+  // (not configurable; item promotions and vouchers always stack per the
+  // fixed SRS order). Entry kept only so `VoucherErrorCode`/this catalog
+  // stay exhaustive for any legacy caller/test still referencing the code.
   VOUCHER_STACKING_CONFLICT: {
     code: "VOUCHER_STACKING_CONFLICT",
     http_status: 422,
@@ -109,16 +113,14 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     message: "verify-cart-totals mismatch — safe-fail, cart reverted",
     customer_message: "Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.",
   },
-  // CONFLICT-8/PD-15 (2026-07-15): distinct INTERNAL-only code for the Rule-11
-  // shrink guard (verify-cart-totals step 4) — a coexisting percentage item/
-  // order Promotion's own adjustment was reduced by attaching the ephemeral
-  // voucher Promotion (Medusa `computeActions` processes promotions in
-  // `application_method.value DESC` order, so the voucher's money value
-  // ~always sorts before a percentage promo's rate). Diagnostic only: same
-  // customer-facing envelope as VOUCHER_CALCULATION_FAILED (SPEC §23.4) —
-  // do not invent a new customer-facing code without an approved contract
-  // change; this exists so logs/metrics can tell a Rule-11 stacking break
-  // apart from a generic total mismatch.
+  // DEAD (Decision-4 carrier rewrite, 2026-07-20): this was the Rule-11
+  // shrink guard's INTERNAL-only code (verify-cart-totals step 4, old
+  // ephemeral-Promotion carrier) — a coexisting percentage item/order
+  // Promotion's own adjustment could be reduced by attaching the ephemeral
+  // voucher Promotion (Medusa `computeActions` shared, value-DESC-ordered
+  // recompute). The current carrier (raw `LineItemAdjustment`s, `code: null`)
+  // is invisible to that recompute entirely, so this can no longer happen —
+  // no code path throws this anymore. Entry kept only for schema/back-compat.
   VOUCHER_STACKING_UNSUPPORTED: {
     code: "VOUCHER_STACKING_UNSUPPORTED",
     http_status: 400,

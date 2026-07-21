@@ -196,22 +196,6 @@
           "enumItems": [],
           "mappedType": "text"
         },
-        "campaign_id": {
-          "name": "campaign_id",
-          "type": "text",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": true,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "text"
-        },
         "discount_type": {
           "name": "discount_type",
           "type": "text",

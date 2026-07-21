@@ -2,42 +2,39 @@ import { ExecArgs } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 
 /**
- * Seeds ONE generic Medusa item-level Promotion so the VOUCH-003 stacking +
- * global-cap rule (`calculate-discount.ts`, SPEC §18/§19/§23.4) can be
- * demoed live — run with:
+ * Seeds ONE generic Medusa automatic item-level Promotion so the SRS
+ * stacking/cap calculation (item promotion + Voucher, `calculate-discount.ts`,
+ * SPEC §10) can be demoed live against a real cart — run with:
  *   npx medusa exec ./src/scripts/seed-voucher-cap-demo.ts
- * (chained automatically by `migration-scripts/initial-data-seed.ts`, so a
- * fresh `npx medusa db:migrate` creates it too — see ONBOARDING.md §4.)
  *
- * WHY: no other seed script creates a generic item-level Promotion (see
+ * WHY: no seed script anywhere creates a generic Promotion (see
  * .claude/lessons/voucher-engine/2026-07-15-no-item-promotion-seed-data-blocks-stacking-cap-live-verification.md).
- * Without one, `item_promotion_discount` is always 0 and neither Rule 1
- * (item-promo-first) nor the 50% global cap (Rule 6) can be exercised
- * outside unit tests. This seed exists ONLY to unblock that live demo — it
- * is not a merchant-configured promotion.
+ * Without one, `item_promotion_discount` is always 0 and the 50% global cap
+ * can't be exercised outside unit tests. This seed exists ONLY to unblock
+ * that live demo — it is not a merchant-configured promotion and isn't meant
+ * to be relied on beyond a manual/demo pass.
+ *
+ * **2026-07-20 update (Decision-4 carrier rewrite):** applying a voucher on
+ * top of this automatic promotion is no longer rejected. It used to be —
+ * the old ephemeral-Promotion carrier could shrink this Promotion's own
+ * adjustment (CONFLICT-8/PD-15, `VOUCHER_STACKING_UNSUPPORTED`) because it
+ * was itself a Promotion competing in Medusa's `computeActions` recompute.
+ * The current carrier (raw `LineItemAdjustment`s, `code: null`) is invisible
+ * to that recompute, so this Promotion's own 40% discount is preserved
+ * exactly and the Voucher applies afterward on the post-promotion subtotal,
+ * matching the SRS's worked example almost exactly (40% item promotion vs.
+ * the SRS's 39.57%-equivalent cap-exceeded example, §10 / this project's
+ * decision-4 SRS worked examples).
  *
  * Percentage + item-level + automatic ⇒ any cart containing the scoped
  * product gets this promotion for free (no code entry needed in the
- * storefront). Applying a VoucherEngine voucher on top now (Decision H, the
- * credit-line carrier) succeeds and coexists correctly per Rule 1+2 — the
- * item promo is untouched and the voucher computes on the post-promotion
- * subtotal, capped at 50% of the ORIGINAL subtotal if the combined discount
- * would exceed it (`discount_capped: true`). This docstring previously
- * (incorrectly, pre-Decision-H) described a 400 `VOUCHER_STACKING_UNSUPPORTED`
- * rejection — that fail-closed guard is now a defensive, should-be-unreachable
- * invariant (see the Day-5 Slice 2 progress notes), not the expected outcome.
+ * storefront).
  *
  * Idempotent: deletes its own prior promotion (by code) before recreating.
  */
 
 const DEMO_PROMOTION_CODE = "DEMO-CAP-CONFLICT-40";
-// "yonex-bg65" — a real product from the tracked catalog seed
-// (`migration-scripts/initial-data-seed.ts`), so this script works on any
-// fresh DB, not just one that's been hand-edited. It's also the
-// SuggestiveSelling Tier-1 "Best Match" suggestion for both Astrox rackets
-// (`seed-suggestive-selling.ts`), so the demo naturally covers VOUCH-003's
-// own stated integration point: "item gợi ý (cũng có thể có promo riêng)".
-const DEMO_PRODUCT_HANDLE = "yonex-bg65";
+const DEMO_PRODUCT_HANDLE = "yonex-bg65-3pack"; // exists in the badminton catalog seed (plain "yonex-bg65" is soft-deleted)
 
 export default async function seedVoucherCapDemo({ container }: ExecArgs) {
   const logger = container.resolve("logger");
@@ -76,19 +73,11 @@ export default async function seedVoucherCapDemo({ container }: ExecArgs) {
       type: "percentage",
       target_type: "items",
       allocation: "across",
-      value: 40, // 40% off — high enough to trip the stacking-rejection with ANY voucher
+      value: 40, // 40% off — high enough to exercise the global 50% cap alongside a voucher
       currency_code: "vnd",
       target_rules: [
         {
-          // Dot-path form ("items.product.id") — the same attribute key the
-          // Admin Dashboard itself writes when a merchant adds a "Product"
-          // condition via "What items will the promotion be applied to?"
-          // (verified against the installed @medusajs/dashboard bundle).
-          // Using it here means this rule renders in that section instead
-          // of showing "No records" while the rule is functionally silent
-          // to the UI (both forms are resolved identically by computeActions,
-          // confirmed live: BG65 gets its 40% adjustment either way).
-          attribute: "items.product.id",
+          attribute: "items.product_id",
           operator: "eq",
           values: [product.id],
         },
@@ -97,6 +86,6 @@ export default async function seedVoucherCapDemo({ container }: ExecArgs) {
   });
 
   logger.info(
-    `[seed:voucher-cap-demo] created automatic 40% item promotion "${DEMO_PROMOTION_CODE}" scoped to product "${DEMO_PRODUCT_HANDLE}". Add this product to a cart, then apply any voucher (SAVE10/MEGA20/SHUTTLE20) — expect it to succeed, capped at 50% of the original subtotal (discount_capped: true) per Rule 6.`,
+    `[seed:voucher-cap-demo] created automatic 40% item promotion "${DEMO_PROMOTION_CODE}" scoped to product "${DEMO_PRODUCT_HANDLE}". Add this product to a cart, then apply any voucher (SAVE10/MEGA20/SHUTTLE20) — expect success: the 40% item discount is preserved, the voucher applies on the post-promotion subtotal, and the combined discount is capped at 50% of the original subtotal if it would otherwise exceed that.`,
   );
 }

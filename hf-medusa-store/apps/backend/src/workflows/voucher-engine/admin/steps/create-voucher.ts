@@ -4,9 +4,18 @@ import { normalizeCode } from "../../lib/normalize";
 import { generateVoucherCode } from "../../lib/gen-code";
 
 /**
- * Create a voucher_config row (3.4.11, SRS §6.4). Code is auto-generated when the
- * admin omits it, then normalized to canonical UPPERCASE (SEC-03). Compensation
- * deletes the created voucher so a later step failure rolls back.
+ * SUPERSEDED — Rebuild Phase 1 (2026-07-17). `../create-voucher.ts` no longer
+ * imports this step: voucher creation is now Promotion-first (see
+ * `../lib/build-promotion-input.ts` + `workflows/hooks/voucher-config-promotion-created.ts`),
+ * not a direct `voucher_config` insert. This file is unreferenced dead code —
+ * kept in place (not renamed/underscore-prefixed) because file deletion is
+ * denied by this environment's permission system. Physical removal is Phase 6
+ * cleanup work (or sooner, once a session with delete permission is available).
+ *
+ * Original docstring: Create a voucher_config row (3.4.11, SRS §6.4). Code is
+ * auto-generated when the admin omits it, then normalized to canonical
+ * UPPERCASE (SEC-03). Compensation deletes the created voucher so a later
+ * step failure rolls back.
  */
 export type CreateVoucherStepInput = {
   code?: string | null;
@@ -23,10 +32,6 @@ export type CreateVoucherStepInput = {
   valid_from: Date;
   valid_to: Date;
   is_active?: boolean;
-  /** Canonical backing Promotion id (Decision C/H) — provisioned earlier in the workflow. */
-  promotion_id?: string | null;
-  /** Backing Promotion's Campaign id (Phase 2) — provisioned earlier in the workflow. */
-  campaign_id?: string | null;
 };
 
 export const createVoucherStep = createStep(
@@ -34,10 +39,7 @@ export const createVoucherStep = createStep(
   async (input: CreateVoucherStepInput, { container }) => {
     const service: any = container.resolve(VOUCHER_ENGINE_MODULE);
 
-    // Code is normally resolved up front by `resolveVoucherCodeStep` (so the
-    // backing Promotion and this row share it); the `|| generateVoucherCode()`
-    // fallback keeps this step correct if ever called standalone. Always store
-    // canonical UPPERCASE (SEC-03, V1).
+    // Auto-generate when absent; always store canonical UPPERCASE (SEC-03, V1).
     const code = normalizeCode(input.code || generateVoucherCode());
 
     const voucher = await service.createVoucherConfigs({

@@ -21,6 +21,8 @@ import type { CartSnapshot, VoucherSnapshot } from "./types";
  */
 export interface PersistedVoucherConfig {
   id: string;
+  /** Links to the canonical Promotion (Decision C / Rebuild Phase 1 `defineLink`) — null for a voucher never linked to one. Used by `lookupVoucherStep`'s Promotion-authoritative field overlay. */
+  promotion_id?: string | null;
   code: string;
   discount_type: "percentage" | "fixed_amount";
   discount_value: number;
@@ -28,7 +30,6 @@ export interface PersistedVoucherConfig {
   max_discount_amount: number | null;
   applicable_product_ids: string[] | null;
   applicable_category_ids: string[] | null;
-  stackable_with_promotions: boolean;
   per_user_limit: number;
   usage_limit: number | null;
   usage_count: number;
@@ -76,7 +77,6 @@ export function toVoucherSnapshot(
     applicable_product_ids: voucher.applicable_product_ids,
     applicable_category_ids: voucher.applicable_category_ids,
     user_segment_conditions: voucher.user_segment_conditions,
-    stackable_with_promotions: voucher.stackable_with_promotions,
   };
 }
 

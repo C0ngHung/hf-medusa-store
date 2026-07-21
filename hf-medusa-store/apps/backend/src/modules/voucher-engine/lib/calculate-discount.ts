@@ -193,6 +193,71 @@ function buildCapExplanation(
   };
 }
 
+/** One eligible line's share of a split voucher discount amount (task 3.3.x, Decision-4 carrier rewrite). */
+export interface LineDiscountShare {
+  line_id: string;
+  amount: number;
+}
+
+/**
+ * Splits an integer VND `totalAmount` across the CURRENTLY eligible lines'
+ * post-promotion values, proportionally, using the largest-remainder method
+ * so the shares always sum to EXACTLY `totalAmount` (never off by a VND) —
+ * the same guarantee Medusa's native `fixed`/`across` Promotion allocation
+ * provided, now computed by VoucherEngine itself because the discount is
+ * carried via raw `LineItemAdjustment` rows (Decision-4 carrier rewrite:
+ * `lib/create-voucher-adjustments.ts`) rather than a Promotion, so there is no
+ * Medusa allocation engine to lean on for this split.
+ *
+ * Lines with zero post-promotion value (fully covered by an item promotion
+ * already) get a zero share. When every eligible line is zero-value (or there
+ * are no eligible lines), every share is 0 — callers must not divide by a
+ * zero `totalWeight` themselves.
+ */
+export function splitAmountAcrossEligibleLines(
+  lines: LineValue[],
+  totalAmount: number,
+): LineDiscountShare[] {
+  assertSafeInt(totalAmount, "splitAmountAcrossEligibleLines.totalAmount");
+  const eligible = lines.filter((line) => line.is_eligible);
+  const weights = eligible.map((line) => postPromotionLineValue(line));
+  const totalWeight = sumInts(
+    weights,
+    "splitAmountAcrossEligibleLines.totalWeight",
+  );
+
+  if (totalAmount <= 0 || totalWeight <= 0) {
+    return eligible.map((line) => ({ line_id: line.line_id, amount: 0 }));
+  }
+
+  // Floor each line's proportional share, then hand the remainder
+  // (totalAmount - sum(floors)) out one VND at a time to the lines with the
+  // largest fractional remainder first — guarantees the shares sum to
+  // EXACTLY totalAmount regardless of rounding.
+  const rawShares = weights.map((w) => (w * totalAmount) / totalWeight);
+  const floors = rawShares.map((share) => Math.floor(share));
+  const flooredTotal = sumInts(
+    floors,
+    "splitAmountAcrossEligibleLines.flooredTotal",
+  );
+  let remainder = totalAmount - flooredTotal;
+  assertSafeInt(remainder, "splitAmountAcrossEligibleLines.remainder");
+
+  const byRemainderDesc = rawShares
+    .map((share, index) => ({ index, fraction: share - floors[index] }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  const shares = [...floors];
+  for (let k = 0; k < remainder; k++) {
+    shares[byRemainderDesc[k % byRemainderDesc.length].index] += 1;
+  }
+
+  return eligible.map((line, index) => ({
+    line_id: line.line_id,
+    amount: shares[index],
+  }));
+}
+
 /** §10 `original_subtotal` — sum of original (pre-any-discount) line totals (task 3.3.2). */
 export function calculateOriginalSubtotal(lines: LineValue[]): number {
   return sumInts(
