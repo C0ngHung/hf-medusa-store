@@ -1,10 +1,14 @@
 /**
  * VoucherEngine fail-fast validation chain (task 3.2.12, SPEC §B.3 line 268).
  *
- * Runs V1→V8 sequentially, cheapest→most expensive, and returns the FIRST failure
+ * Runs V1→V7 sequentially, cheapest→most expensive, and returns the FIRST failure
  * (short-circuit) or { ok: true }. Ordering (cheap field checks before cart scans) is
  * what lets applyVoucher hit its p95 < 400ms target. Pure: no I/O, no clock — the
  * caller passes `now` and pre-fetched voucher/cart/usage in the context.
+ *
+ * No V8 (rebuild-decisions.md decision 2, 2026-07-20): `stackable_with_promotions`
+ * was removed — item-level promotions and the Voucher always stack, per the
+ * fixed SRS calculation order (`modules/voucher-engine/lib/calculate-discount.ts`).
  */
 import {
   v1Exists,
@@ -14,7 +18,6 @@ import {
   v5MinOrder,
   v6Scope,
   v7Segment,
-  v8Stacking,
   validateCodeFormat,
 } from "./validators";
 import type { ValidationResult, VoucherValidationContext } from "./types";
@@ -48,11 +51,8 @@ export function validateVoucher(
   const r6 = v6Scope(voucher, ctx.cart);
   if (!r6.ok) return r6;
 
-  const r7 = v7Segment(voucher);
+  const r7 = v7Segment(voucher, ctx.customer_segment);
   if (!r7.ok) return r7;
-
-  const r8 = v8Stacking(voucher, ctx.cart);
-  if (!r8.ok) return r8;
 
   return { ok: true };
 }

@@ -113,6 +113,7 @@ export const VOUCHER_DISCOUNT_TYPES: VoucherDiscountType[] = [
 
 export type VoucherConfig = {
   id: string;
+  promotion_id?: string | null;
   code: string;
   discount_type: VoucherDiscountType;
   discount_value: number;
@@ -120,10 +121,10 @@ export type VoucherConfig = {
   max_discount_amount?: number | null;
   applicable_product_ids?: string[] | null;
   applicable_category_ids?: string[] | null;
-  stackable_with_promotions: boolean;
   per_user_limit: number;
   usage_limit?: number | null;
   usage_count?: number;
+  user_segment_conditions?: Record<string, unknown> | null;
   valid_from: string;
   valid_to: string;
   is_active: boolean;

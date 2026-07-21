@@ -1,5 +1,6 @@
 ## Token-control defaults
 
+- Do not create subagents automatically.
 - Do not spawn subagents by default.
 - Do not use Explore, general-purpose, medusa-module-reviewer, test-writer, or security-auditor unless
   the user explicitly asks, or the current task clearly reaches a documented review/security/test gate.

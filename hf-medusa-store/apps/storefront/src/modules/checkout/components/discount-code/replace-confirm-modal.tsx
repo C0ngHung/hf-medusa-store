@@ -28,7 +28,7 @@ const ReplaceConfirmModal: React.FC<ReplaceConfirmModalProps> = ({
       data-testid="replace-voucher-modal"
     >
       <Modal.Title>
-        <Heading className="mb-2">Replace promotion code?</Heading>
+        <Heading className="mb-2">Thay mã giảm giá?</Heading>
       </Modal.Title>
       <Modal.Body>
         <Text data-testid="replace-voucher-message">{message}</Text>
@@ -40,14 +40,14 @@ const ReplaceConfirmModal: React.FC<ReplaceConfirmModalProps> = ({
           disabled={isConfirming}
           data-testid="replace-voucher-cancel"
         >
-          Cancel
+          Huỷ
         </Button>
         <Button
           onClick={onConfirm}
           isLoading={isConfirming}
           data-testid="replace-voucher-confirm"
         >
-          Replace
+          Thay mã
         </Button>
       </Modal.Footer>
     </Modal>

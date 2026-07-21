@@ -52,6 +52,7 @@ export function buildPromotionData(
     | "is_active"
     | "valid_from"
     | "valid_to"
+    | "usage_limit"
   >,
 ) {
   const code = normalizeCode(input.code || generateVoucherCode());
@@ -66,6 +67,14 @@ export function buildPromotionData(
     type: "standard" as const,
     status: (input.is_active ? "active" : "inactive") as "active" | "inactive",
     is_automatic: false,
+    // Native per-promotion usage cap (`PromotionDTO.limit`) — 2026-07-21
+    // code-review fix: previously unset here, so `usage_limit` (stored on
+    // VoucherConfig at create time) was silently nulled at every later read
+    // once `resolveVoucherNativeFields`'s overlay started reading
+    // `Promotion.limit`/`Campaign.budget` (this Promotion's auto-created
+    // Campaign, below, never had a budget attached). Setting it here closes
+    // that gap.
+    limit: input.usage_limit ?? null,
     application_method: {
       type: (isPercentage ? "percentage" : "fixed") as "percentage" | "fixed",
       target_type: (hasScope ? "items" : "order") as "items" | "order",
@@ -75,6 +84,9 @@ export function buildPromotionData(
       value: isPercentage ? input.discount_value / 100 : input.discount_value,
       currency_code: "vnd",
     },
+    // Reference-only display window on the native Promotion — VoucherConfig's
+    // OWN `valid_from`/`valid_to` (input, stored directly) is what actually
+    // gates V2 (2026-07-21: no longer derived back from this Campaign).
     campaign: {
       campaign_identifier: code,
       name: code,

@@ -1,8 +1,9 @@
 /**
- * removeVoucherWorkflow — SPEC §11.2 (task 3.4.2, 3.4.10). Detaches the cart's
- * active voucher (ephemeral Promotion, Decision G) and clears the metadata
- * snapshot. No usage-count change (Rule 12/13) — applying/removing a voucher
- * on a cart never touches redemption accounting.
+ * removeVoucherWorkflow — SPEC §11.2 (task 3.4.2, 3.4.10). Removes the cart's
+ * active voucher discount (raw `LineItemAdjustment` rows, Decision-4 carrier
+ * rewrite) and clears the metadata snapshot. No usage-count change (Rule
+ * 12/13) — applying/removing a voucher on a cart never touches redemption
+ * accounting.
  *
  * No active voucher on the cart is a no-op (idempotent 200), not an error —
  * API_CONTRACT §1.3.
@@ -16,11 +17,9 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deletePromotionsWorkflow,
   releaseLockStep,
-  updateCartPromotionsWorkflow,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
-import { PromotionActions } from "@medusajs/framework/utils";
 import type { ICartModuleService } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
@@ -82,27 +81,13 @@ export const removeVoucherWorkflow = createWorkflow(
     const assertion = assertActiveVoucherStep({ cart_id: input.cart_id });
 
     when({ assertion }, ({ assertion }) => !!assertion.active).then(() => {
-      const code = transform(
+      const adjustmentIds = transform(
         { assertion },
-        ({ assertion }) => assertion.active!.ephemeral_code,
-      );
-      const promotionId = transform(
-        { assertion },
-        ({ assertion }) => assertion.active!.ephemeral_promotion_id,
+        ({ assertion }) => assertion.active!.adjustment_ids,
       );
 
-      updateCartPromotionsWorkflow.runAsStep({
-        input: transform({ input, code }, ({ input, code }) => ({
-          cart_id: input.cart_id,
-          promo_codes: [code],
-          action: PromotionActions.REMOVE,
-        })),
-      });
-
-      deletePromotionsWorkflow.runAsStep({
-        input: transform({ promotionId }, ({ promotionId }) => ({
-          ids: [promotionId],
-        })),
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: adjustmentIds,
       });
 
       clearVoucherCartMetadataStep({ cart_id: input.cart_id });

@@ -21,7 +21,6 @@ const baseVoucher: VoucherSnapshot = {
   applicable_product_ids: null,
   applicable_category_ids: null,
   user_segment_conditions: null,
-  stackable_with_promotions: true,
 };
 
 const baseCart: CartSnapshot = {
@@ -117,20 +116,10 @@ describe("revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2)", (
     if (!result.ok) expect(result.code).toBe("VOUCHER_NO_ELIGIBLE_ITEMS");
   });
 
-  it("still fails V8 on a stacking conflict", () => {
-    const result = revalidateVoucherOnCartChange({
-      voucher: {
-        ...baseVoucher,
-        min_order_value: null,
-        stackable_with_promotions: false,
-      },
-      now: new Date("2026-01-01T00:00:00Z"),
-      cart: { ...baseCart, has_item_promotion: true },
-      user_usage_count: 0,
-    });
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.code).toBe("VOUCHER_STACKING_CONFLICT");
-  });
+  // V8 (stacking-conflict) was removed along with `stackable_with_promotions`
+  // (rebuild-decisions.md decision 2, 2026-07-20) — an automatic item-level
+  // Promotion coexisting with the Voucher is always allowed now, so a
+  // cart-change revalidation can never be auto-removed for "stacking".
 
   it("fails V1 NOT_FOUND when the voucher is null (defensive — should not normally reach this subset)", () => {
     const result = revalidateVoucherOnCartChange({

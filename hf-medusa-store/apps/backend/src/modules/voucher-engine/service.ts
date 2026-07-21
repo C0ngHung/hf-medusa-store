@@ -106,10 +106,25 @@ class VoucherEngineService extends MedusaService({
    * Returns `{ incremented: false }` when capacity is exhausted (0 rows
    * affected) — the caller must NOT have already committed a log for this
    * case (checked by `incremented` before proceeding, not after).
+   *
+   * `usageLimit` (bug-bash fix, 2026-07-21 — supersedes rebuild-decisions.md
+   * Decision 3, 2026-07-20, which had this read live from the Promotion's
+   * Campaign budget instead): `usage_limit` is VoucherConfig-owned
+   * configuration (SPEC.md §5.4/§10/§11.4), so the caller passes the current
+   * `voucher_config.usage_limit` column value, freshly re-fetched immediately
+   * before this call (`steps/resolve-voucher-usage-limit.ts`) rather than
+   * reused from an earlier step's output — not derived from the Promotion at
+   * all. `usage_count` itself stays the one value read fresh, inside this
+   * same atomic UPDATE, from the DB row — it has no native equivalent (the
+   * canonical Promotion is never attached to any cart/order, so native
+   * `registerUsage`/`campaign.budget.used` never see a VoucherEngine
+   * redemption at all; this counter is the only authoritative usage tracking
+   * VoucherEngine has).
    */
   @InjectTransactionManager()
   async redeemVoucherAtomic(
     voucherId: string,
+    usageLimit: number | null,
     logEntry: UsageLogEntry,
     @MedusaContext() sharedContext: Context = {},
   ): Promise<{ incremented: boolean; usage_log_id?: string }> {
@@ -124,9 +139,10 @@ class VoucherEngineService extends MedusaService({
 
     const affected: number = await knex("voucher_config")
       .where({ id: voucherId, deleted_at: null })
-      .andWhere((qb: any) =>
-        qb.whereNull("usage_limit").orWhereRaw("usage_count < usage_limit"),
-      )
+      .andWhere((qb: any) => {
+        if (usageLimit == null) return qb.whereRaw("1=1");
+        return qb.whereRaw("usage_count < ?", [usageLimit]);
+      })
       .update({ usage_count: knex.raw("usage_count + 1") });
 
     if (affected === 0) {

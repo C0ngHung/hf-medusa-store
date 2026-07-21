@@ -23,6 +23,7 @@ describe("buildPromotionData (Rebuild Phase 1)", () => {
     | "is_active"
     | "valid_from"
     | "valid_to"
+    | "usage_limit"
   > => ({
     code: "spring24",
     discount_type: "percentage",
@@ -32,6 +33,7 @@ describe("buildPromotionData (Rebuild Phase 1)", () => {
     is_active: true,
     valid_from: new Date("2026-01-01T00:00:00.000Z"),
     valid_to: new Date("2026-12-31T23:59:59.000Z"),
+    usage_limit: null,
   });
 
   it("normalizes a supplied code to UPPERCASE (V1) instead of generating one", () => {
@@ -141,6 +143,15 @@ describe("buildPromotionData (Rebuild Phase 1)", () => {
     const data = buildPromotionData(baseInput());
     expect(data.application_method.currency_code).toBe("vnd");
   });
+
+  it("maps usage_limit to the native Promotion.limit field (2026-07-21 fix — was previously unset, silently nulling any admin-specified usage_limit at read time)", () => {
+    expect(buildPromotionData({ ...baseInput(), usage_limit: 500 }).limit).toBe(
+      500,
+    );
+    expect(
+      buildPromotionData({ ...baseInput(), usage_limit: null }).limit,
+    ).toBeNull();
+  });
 });
 
 describe("buildPromotionInput (Rebuild Phase 1)", () => {
@@ -152,7 +163,6 @@ describe("buildPromotionInput (Rebuild Phase 1)", () => {
     max_discount_amount: 200_000,
     applicable_product_ids: null,
     applicable_category_ids: null,
-    stackable_with_promotions: true,
     per_user_limit: 1,
     usage_limit: 500,
     user_segment_conditions: null,

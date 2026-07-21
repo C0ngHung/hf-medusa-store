@@ -4,10 +4,23 @@
  *
  * Reads the LATEST Cart from Medusa via `query.graph` and maps it to the pure
  * calculator's `LineValue[]` (lib/calculate-discount.ts), excluding
- * VoucherEngine's own Promotion adjustment from item-level promotion discount
- * (Rule 11). This is the ONLY adapter between Medusa's money/adjustment shapes
- * and the pure calculation layer — no monetary arithmetic happens here beyond
+ * VoucherEngine's own adjustment from item-level promotion discount (Rule 11).
+ * This is the ONLY adapter between Medusa's money/adjustment shapes and the
+ * pure calculation layer — no monetary arithmetic happens here beyond
  * summation via `lib/money.ts`.
+ *
+ * **Decision-4 carrier rewrite:** VoucherEngine's own adjustments are now raw
+ * `LineItemAdjustment` rows with `promotion_id: null` (never a Promotion —
+ * see `steps/create-voucher-adjustments.ts`), while every genuine automatic
+ * item-level Promotion's adjustment always carries a real, non-null
+ * `promotion_id` (`prepare-adjustments-from-promotion-actions.js` resolves it
+ * from the computed action's `code` before creating the row — verified
+ * against installed 2.16.0 source). So `item_promotion_discount` is simply
+ * "every adjustment with a non-null `promotion_id`" — no caller-supplied id
+ * to exclude a specific adjustment by is needed anymore (previously this
+ * step took a `voucher_promotion_id` input to exclude the ephemeral
+ * Promotion's OWN id; that carrier is superseded, see
+ * `lib/create-and-attach-ephemeral-promotion.ts`'s header).
  *
  * Framework bindings used (verified against installed @medusajs/framework +
  * @medusajs/utils 2.16.0 — see SPEC §19.2 / session verification log):
@@ -42,13 +55,6 @@ export const loadCartContextStepId = "load-cart-context";
 
 export interface LoadCartContextInput {
   cart_id: string;
-  /**
-   * The backing Promotion id for the voucher being applied/revalidated, when
-   * known. Adjustments carrying this `promotion_id` are VoucherEngine's OWN
-   * discount and are excluded from `item_promotion_discount` (Rule 11).
-   * Optional because a first-apply has no promotion yet to exclude.
-   */
-  voucher_promotion_id?: string;
 }
 
 /** Authoritative Cart context, mapped to the pure calculator's plain-integer shape. */
@@ -125,13 +131,15 @@ export const loadCartContextStep = createStep(
       const unit_price = toInt(item.unit_price, `item[${item.id}].unit_price`);
       const quantity = toInt(item.quantity, `item[${item.id}].quantity`);
 
-      // Rule 11 / SPEC §10.7: exclude VoucherEngine's own adjustment, identified
-      // by `promotion_id`, from the item-level promotion discount.
-      const nonVoucherAdjustments = (item.adjustments ?? []).filter(
-        (adjustment) => adjustment.promotion_id !== input.voucher_promotion_id,
+      // Rule 11 / SPEC §10.7: only a genuine Promotion-backed adjustment
+      // (non-null `promotion_id`) counts as item-level promotion discount —
+      // VoucherEngine's own adjustments always have `promotion_id: null`
+      // (see file header).
+      const nativePromotionAdjustments = (item.adjustments ?? []).filter(
+        (adjustment) => adjustment.promotion_id != null,
       );
       const item_promotion_discount = sumInts(
-        nonVoucherAdjustments.map((adjustment) =>
+        nativePromotionAdjustments.map((adjustment) =>
           toInt(adjustment.amount, `item[${item.id}].adjustment.amount`),
         ),
         `item[${item.id}].item_promotion_discount`,

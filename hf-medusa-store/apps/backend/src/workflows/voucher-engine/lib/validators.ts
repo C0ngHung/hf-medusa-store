@@ -10,6 +10,7 @@ import { fail, PASS } from "./errors";
 import { normalizeCode } from "./normalize";
 import type {
   CartSnapshot,
+  CustomerSegmentSnapshot,
   ValidationResult,
   VoucherSnapshot,
   VoucherValidationContext,
@@ -127,24 +128,49 @@ export function v6Scope(
 }
 
 /**
- * V7 (3.2.10) — customer segment condition. STUB: the "approved source" / segment schema
- * is an open SRS issue (CRM integration undefined), so Day 3 is a pass-through. The code
- * VOUCHER_SEGMENT_NOT_ELIGIBLE and its message stay in the catalog for the future gate.
+ * V7 (3.2.10) — customer segment condition (SPEC Decision J, rebuild-decisions.md
+ * Decision 8/9). `user_segment_conditions == null` ⇒ unrestricted, always passes.
+ * Otherwise the configured shape is `{ customer_group_ids: string[] }` and the
+ * customer must (a) be identified (not a guest) and (b) belong to at least one
+ * listed native Medusa Customer Group (`customerSegment.group_ids`, resolved by
+ * `lib/customer-segment.ts` — the approved source; this project has no separate
+ * CRM/assignment model). A condition object with no usable `customer_group_ids`
+ * (missing, not an array, or empty) can never be satisfied by any customer, so
+ * it fails closed rather than being treated as unrestricted — there is no
+ * existing project convention that reads an empty condition as "no gate".
  */
-export function v7Segment(_voucher: VoucherSnapshot): ValidationResult {
-  return PASS;
+export function v7Segment(
+  voucher: Pick<VoucherSnapshot, "user_segment_conditions">,
+  customerSegment: CustomerSegmentSnapshot,
+): ValidationResult {
+  const conditions = voucher.user_segment_conditions;
+  if (conditions == null) return PASS;
+
+  const rawGroupIds = (conditions as { customer_group_ids?: unknown })
+    .customer_group_ids;
+  const requiredGroupIds = Array.isArray(rawGroupIds) ? rawGroupIds : [];
+
+  if (!customerSegment.customer_id) {
+    return fail("VOUCHER_SEGMENT_NOT_ELIGIBLE");
+  }
+
+  const isMember = requiredGroupIds.some((groupId) =>
+    customerSegment.group_ids.includes(groupId),
+  );
+  return isMember ? PASS : fail("VOUCHER_SEGMENT_NOT_ELIGIBLE");
 }
 
-/** V8 (3.2.11) — non-stackable voucher conflicts with an existing item-level promotion. */
-export function v8Stacking(
-  voucher: VoucherSnapshot,
-  cart: CartSnapshot,
-): ValidationResult {
-  if (!voucher.stackable_with_promotions && cart.has_item_promotion) {
-    return fail("VOUCHER_STACKING_CONFLICT");
-  }
-  return PASS;
-}
+/**
+ * REMOVED (rebuild-decisions.md decision 2, 2026-07-20): there is no V8
+ * "non-stackable voucher" check anymore. `stackable_with_promotions` is not
+ * configurable — the fixed SRS policy is that automatic item-level
+ * Promotions always apply first and the Voucher always applies afterward
+ * (see `modules/voucher-engine/lib/calculate-discount.ts`'s calculation
+ * order); there is no scenario where a voucher is rejected for coexisting
+ * with an item-level promotion. `VOUCHER_STACKING_CONFLICT` is no longer
+ * thrown by this chain (kept in the error catalog/type only for schema
+ * back-compat — see `lib/errors.ts`).
+ */
 
 /** Convenience: the individual rule fns exposed for unit tests. */
 export const validators = {
@@ -156,7 +182,6 @@ export const validators = {
   v5MinOrder,
   v6Scope,
   v7Segment,
-  v8Stacking,
 } as const;
 
 export type { VoucherValidationContext };

@@ -152,9 +152,13 @@ export async function removeVoucher(): Promise<
 }
 
 /**
- * `GET /store/customers/me/vouchers` ("Voucher khả dụng", Decision F).
- * Degrades to an empty list on any transport failure — an unavailable list
- * must never break the cart page.
+ * `GET /store/vouchers` ("Voucher khả dụng", Decision F). Public/auth-optional
+ * (2026-07-21 fix — previously called `/store/customers/me/vouchers`, which
+ * Medusa's own core middleware 401s for guests before any project route
+ * handler runs, so guests always got the degrade-to-empty-list fallback
+ * below and never saw any voucher; see that route's own header comment for
+ * the full trace). Still degrades to an empty list on any transport
+ * failure — an unavailable list must never break the cart page.
  *
  * `cartId`, when passed, asks the backend to also compute `eligible`/
  * `ineligible_reason` per voucher against that cart's current contents (V5
@@ -167,8 +171,8 @@ export async function fetchAvailableVouchers(
 ): Promise<AvailableVoucher[]> {
   try {
     const path = cartId
-      ? `/store/customers/me/vouchers?cart_id=${encodeURIComponent(cartId)}`
-      : "/store/customers/me/vouchers"
+      ? `/store/vouchers?cart_id=${encodeURIComponent(cartId)}`
+      : "/store/vouchers"
     const result = await voucherFetch<{ vouchers: AvailableVoucher[] }>(path, {
       method: "GET",
     })

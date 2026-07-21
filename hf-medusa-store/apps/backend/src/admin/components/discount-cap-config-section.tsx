@@ -34,10 +34,11 @@ function validate(raw: string): string | null {
 }
 
 /**
- * Global discount cap config (SRS §5.2/§5.3; Rebuild Phase 3B). Folded into
- * the existing standalone Vouchers page rather than a new location — it's a
- * Promotion-agnostic global singleton, so it doesn't fit as a per-Promotion
- * widget (deferred to a later phase, see rebuild-decisions.md).
+ * Global discount cap config (SRS §5.2/§5.3; Rebuild Phase 3B). A
+ * Promotion-agnostic global singleton — it doesn't fit as a per-Promotion
+ * widget. Rendered on both the legacy standalone Vouchers page (transitional,
+ * kept for parity) and the dedicated global `/voucher-settings` route
+ * (UI-4, the long-term home).
  */
 export const DiscountCapConfigSection = () => {
   const { data, isLoading, isError, refetch } = useDiscountCapConfig();

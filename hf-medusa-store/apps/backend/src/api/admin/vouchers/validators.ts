@@ -6,6 +6,8 @@ import { MIN_CODE_LENGTH } from "../../../modules/voucher-engine/constants";
  * validateAndTransformBody (see src/api/middlewares.ts) parses the request body
  * with this schema and populates req.validatedBody. Money is integer VND (INT-01);
  * `discount_value` is basis-points for percentage, raw VND for fixed_amount.
+ * No `stackable_with_promotions` (rebuild-decisions.md decision 2,
+ * 2026-07-20): not configurable, removed from this DTO too.
  */
 export const CreateVoucherSchema = z
   .object({
@@ -24,7 +26,6 @@ export const CreateVoucherSchema = z
     max_discount_amount: z.number().int().nonnegative().nullish(),
     applicable_product_ids: z.array(z.string().min(1)).nullish(),
     applicable_category_ids: z.array(z.string().min(1)).nullish(),
-    stackable_with_promotions: z.boolean().default(true),
     per_user_limit: z.number().int().positive().default(1),
     usage_limit: z.number().int().positive().nullish(),
     user_segment_conditions: z.record(z.string(), z.any()).nullish(),

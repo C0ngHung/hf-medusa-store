@@ -4,9 +4,9 @@
  * Invoked by the `cart.updated` subscriber (`../../subscribers/voucher-cart-updated.ts`)
  * for cart mutations VoucherEngine does not own (item add/remove, qty change,
  * suggestive-selling adds). Re-runs the cart-change validation SUBSET (V1, V2,
- * V5, V6, V8 — §9.2): if still valid, recomputes and re-attaches the discount
- * at the new amount; if invalid, auto-removes the voucher with a reason
- * (VOUCHER_AUTO_REMOVED).
+ * V5, V6 — §9.2, no V8 per rebuild-decisions.md decision 2): if still valid,
+ * recomputes and rewrites the discount at the new amount; if invalid,
+ * auto-removes the voucher with a reason (VOUCHER_AUTO_REMOVED).
  *
  * No-op (nothing mutates) when the cart has no active voucher — the common
  * case for the vast majority of cart mutations. Never throws — errors are
@@ -35,20 +35,20 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deletePromotionsWorkflow,
   releaseLockStep,
-  updateCartPromotionsWorkflow,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
-import { PromotionActions, Modules } from "@medusajs/framework/utils";
+import { Modules } from "@medusajs/framework/utils";
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import type { ICartModuleService } from "@medusajs/framework/types";
 import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { revalidateStep } from "./steps/revalidate-voucher";
+import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
-import { createAndAttachEphemeralPromotion } from "./lib/create-and-attach-ephemeral-promotion";
+import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
 import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import {
   VOUCHER_NOTICE_METADATA_KEY,
@@ -116,13 +116,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
     const existing = checkVoucherExistsStep({ cart_id: input.cart_id });
 
-    const cart = loadCartContextStep({
-      cart_id: input.cart_id,
-      voucher_promotion_id: transform(
-        { existing },
-        ({ existing }) => existing.active?.ephemeral_promotion_id,
-      ),
-    });
+    const cart = loadCartContextStep({ cart_id: input.cart_id });
 
     const lookup = lookupVoucherStep({
       code: transform(
@@ -145,29 +139,45 @@ export const revalidateVoucherWorkflow = createWorkflow(
         existing.has_voucher && !revalidation.still_valid,
     );
 
-    // Still valid → recompute the amount and replace the ephemeral promotion
-    // (a Promotion's `value` is not mutated in place — Decision G).
+    // Still valid → recompute the amount and rewrite the voucher's
+    // LineItemAdjustments (Decision-4 carrier rewrite; amounts aren't mutated
+    // in place — a fresh split is written and the old one removed). Mirrors
+    // applyVoucherWorkflow's replace ordering: remove the OLD adjustments
+    // FIRST (reversible — compensation restores them if a later step in this
+    // branch fails), THEN create the new ones, THEN verify authoritative
+    // totals. A single removal step now covers what previously needed a
+    // detach-then-later-irreversible-delete pair, since there is no separate
+    // Promotion entity to delete once the adjustment rows themselves are
+    // gone.
     when({ shouldRecompute }, ({ shouldRecompute }) => shouldRecompute).then(
       () => {
-        const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
+        const oldAdjustmentIds = transform(
+          { existing },
+          ({ existing }) => existing.active!.adjustment_ids,
+        );
 
-        const newPromotion = createAndAttachEphemeralPromotion({
-          cart_id: input.cart_id,
-          voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
+        removeLineItemAdjustmentsStep({
+          lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+        }).config({ name: "remove-stale-voucher-adjustments" });
+
+        const { resolved, discount } = resolveAndCalculateVoucherDiscount({
+          lookup,
           cart,
+        });
+
+        const newAdjustments = createVoucherLineItemAdjustments({
+          lines: resolved.lines,
           discount,
-          attachStepName: "add-recomputed-ephemeral-promotion",
         });
 
         writeVoucherCartMetadataStep({
           cart_id: input.cart_id,
           voucher: transform(
-            { lookup, discount, newPromotion, existing },
-            ({ lookup, discount, newPromotion, existing }) => ({
+            { lookup, discount, newAdjustments, existing },
+            ({ lookup, discount, newAdjustments, existing }) => ({
               voucher_id: lookup.voucher!.id,
               code: lookup.voucher!.code,
-              ephemeral_promotion_id: newPromotion.id,
-              ephemeral_code: newPromotion.code,
+              adjustment_ids: newAdjustments.adjustment_ids,
               discount_type: lookup.voucher!.discount_type,
               discount_value: lookup.voucher!.discount_value,
               uncapped_voucher_discount: discount.raw_voucher_discount,
@@ -185,60 +195,27 @@ export const revalidateVoucherWorkflow = createWorkflow(
           previous_metadata: existing.previous_metadata,
         });
 
-        // Detach + delete the OLD ephemeral promotion only after the new one
-        // is attached (never a window with zero or double discount applied).
-        updateCartPromotionsWorkflow
-          .runAsStep({
-            input: transform({ input, existing }, ({ input, existing }) => ({
-              cart_id: input.cart_id,
-              promo_codes: [existing.active!.ephemeral_code],
-              action: PromotionActions.REMOVE,
-            })),
-          })
-          .config({ name: "remove-stale-ephemeral-promotion" });
-
-        // `deletePromotionsWorkflow`'s declared output type is `never`,
-        // which makes `.config` structurally unavailable via TS even though
-        // it exists at runtime — cast past it. A unique name is REQUIRED
-        // here even though `shouldRecompute`/`shouldRemove` are mutually
-        // exclusive at runtime: Medusa's workflow builder statically
-        // discovers every step in the composer function body regardless of
-        // which `when()` branch it sits in, so two `runAsStep()` calls on
-        // the SAME underlying workflow anywhere in one workflow definition
-        // collide on the auto-generated step id ("Step ... is already
-        // defined in workflow") unless each has an explicit unique name —
-        // verified empirically this session (this crashed the whole app's
-        // workflow loader, not just this workflow, until fixed).
-        (
-          deletePromotionsWorkflow.runAsStep({
-            input: transform({ existing }, ({ existing }) => ({
-              ids: [existing.active!.ephemeral_promotion_id],
-            })),
-          }) as any
-        ).config({ name: "delete-stale-ephemeral-promotion" });
+        // Authoritative-total verification (task 3.3.14/3.8.4).
+        verifyCartTotalsStep({
+          cart_id: input.cart_id,
+          adjustment_ids: newAdjustments.adjustment_ids,
+          final_voucher_discount: discount.final_voucher_discount,
+          expected_final_cart_total: discount.expected_final_cart_total,
+        });
       },
     );
 
-    // Invalid → auto-remove: detach + delete the ephemeral promotion and
-    // clear the metadata snapshot (tasks 3.5.7/3.5.8, VOUCHER_AUTO_REMOVED).
+    // Invalid → auto-remove: remove the adjustments and clear the metadata
+    // snapshot (tasks 3.5.7/3.5.8, VOUCHER_AUTO_REMOVED).
     when({ shouldRemove }, ({ shouldRemove }) => shouldRemove).then(() => {
-      updateCartPromotionsWorkflow
-        .runAsStep({
-          input: transform({ input, existing }, ({ input, existing }) => ({
-            cart_id: input.cart_id,
-            promo_codes: [existing.active!.ephemeral_code],
-            action: PromotionActions.REMOVE,
-          })),
-        })
-        .config({ name: "remove-invalid-ephemeral-promotion" });
+      const staleAdjustmentIds = transform(
+        { existing },
+        ({ existing }) => existing.active!.adjustment_ids,
+      );
 
-      (
-        deletePromotionsWorkflow.runAsStep({
-          input: transform({ existing }, ({ existing }) => ({
-            ids: [existing.active!.ephemeral_promotion_id],
-          })),
-        }) as any
-      ).config({ name: "delete-invalid-ephemeral-promotion" });
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: staleAdjustmentIds,
+      }).config({ name: "remove-invalid-voucher-adjustments" });
 
       // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
       // (min-order → 3.5.9, no-eligible-items → 3.5.10, …). `revalidation` always

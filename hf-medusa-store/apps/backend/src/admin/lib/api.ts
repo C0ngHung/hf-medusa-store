@@ -10,7 +10,6 @@ import type {
   SuggestionRule,
   VoucherAnalytics,
   VoucherConfig,
-  VoucherDiscountType,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -227,60 +226,106 @@ export const useSuggestionEvents = (filters: EventFilters = {}) =>
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — admin list + create + analytics (SRS §6.4)          */
-/* Reads/writes ONLY the VoucherConfig table via /admin/vouchers* —    */
-/* never the native Promotion list (SPEC Decision C/G).                */
+/* VoucherEngine — Admin unified model (native Promotions is the ONLY  */
+/* Admin management domain; no separate Voucher list/create exists).   */
+/* Enable/Disable act on the VoucherConfig linked to a Promotion via   */
+/* /admin/promotions/:promotion_id/voucher-config.                    */
 /* ------------------------------------------------------------------ */
 
 const VOUCHERS_KEY = ["vouchers"];
 
-export const useVouchers = () =>
+/**
+ * Promotion Detail widget — read-only lookup of the VoucherConfig linked to
+ * this canonical Promotion, via `GET
+ * /admin/promotions/:promotion_id/voucher-config` (Admin unified model).
+ * Returns `null` when the Promotion has no linked VoucherConfig (an
+ * ordinary, non-voucher Promotion) rather than treating that as an error.
+ * The returned object's `is_active` is VoucherEngine's own persisted
+ * Enable/Disable flag — the widget's toggle state and the analytics
+ * widget's visibility both key off it directly.
+ */
+export const useVoucherByPromotion = (promotionId?: string) =>
   useQuery({
-    queryKey: VOUCHERS_KEY,
-    queryFn: () =>
-      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
-        "/admin/vouchers",
-        { query: { limit: 200 } },
-      ),
+    queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+    enabled: !!promotionId,
+    queryFn: async () => {
+      const { voucher } = await sdk.client.fetch<{
+        voucher: VoucherConfig | null;
+      }>(`/admin/promotions/${promotionId}/voucher-config`);
+      return voucher;
+    },
   });
 
-export type CreateVoucherPayload = {
-  code?: string;
-  discount_type: VoucherDiscountType;
-  discount_value: number;
+/**
+ * "Enable VoucherEngine" — Admin unified model. Idempotent
+ * create-or-reactivate-or-update of the linked `VoucherConfig` for an
+ * eligible Promotion. Payload is ONLY VoucherEngine-owned fields — never
+ * `code`/`discount_type`/`discount_value`/`status`/campaign/application
+ * method (native Promotion/Campaign UI's exclusive territory), and never
+ * `usage_limit` (strict native-field reuse — the native equivalent is the
+ * linked Promotion's Campaign budget, attached natively, not through this
+ * form). `valid_from`/`valid_to` ARE part of this payload (reverted
+ * 2026-07-21, see below) — no native Promotion date field exists to derive
+ * them from, so VoucherConfig owns them directly; the backend only writes
+ * them on the very first Enable (create-only, ignored on a later
+ * update/re-enable — `upsert-linked-voucher-config.ts`).
+ */
+export type EnableVoucherEnginePayload = {
   min_order_value?: number | null;
   max_discount_amount?: number | null;
   applicable_product_ids?: string[] | null;
   applicable_category_ids?: string[] | null;
-  stackable_with_promotions?: boolean;
   per_user_limit?: number;
-  usage_limit?: number | null;
+  user_segment_conditions?: Record<string, unknown> | null;
   valid_from: string;
   valid_to: string;
-  is_active?: boolean;
 };
 
-export const useCreateVoucher = () => {
+export const useEnableVoucherEngine = (promotionId: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateVoucherPayload) =>
-      sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
-        method: "POST",
-        body,
+    mutationFn: (body: EnableVoucherEnginePayload) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>(
+        `/admin/promotions/${promotionId}/voucher-config`,
+        { method: "POST", body },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
   });
 };
 
+/**
+ * "Disable VoucherEngine" — Admin unified model. Reversible and idempotent:
+ * sets the linked VoucherConfig's `is_active` to false without deleting the
+ * Promotion, the row, its usage history, or analytics. Re-enabling later
+ * (`useEnableVoucherEngine`) reuses the same row.
+ */
+export const useDisableVoucherEngine = (promotionId: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      sdk.client.fetch<{ voucher: VoucherConfig | null }>(
+        `/admin/promotions/${promotionId}/voucher-config`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({
+        queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+      }),
+  });
+};
+
+// Response is flat (no `{ analytics: {...} }` wrapper, matches SRS §6.4
+// literally — 2026-07-21).
 export const useVoucherAnalytics = (id: string) =>
   useQuery({
     queryKey: ["voucher-analytics", id],
     enabled: !!id,
     retry: false,
     queryFn: () =>
-      sdk.client.fetch<{ analytics: VoucherAnalytics }>(
-        `/admin/vouchers/${id}/analytics`,
-      ),
+      sdk.client.fetch<VoucherAnalytics>(`/admin/vouchers/${id}/analytics`),
   });
 
 /* ------------------------------------------------------------------ */

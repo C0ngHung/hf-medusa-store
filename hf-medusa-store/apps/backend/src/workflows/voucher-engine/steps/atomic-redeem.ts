@@ -14,7 +14,8 @@
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import type { INotificationModuleService } from "@medusajs/framework/types";
 import { VOUCHER_ENGINE_MODULE } from "../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../modules/voucher-engine/service";
 import type { UsageLogEntry } from "../../../modules/voucher-engine/service";
@@ -23,6 +24,8 @@ export const atomicRedeemStepId = "atomic-redeem";
 
 export interface AtomicRedeemInput {
   voucher_id: string;
+  /** `voucher_config.usage_limit`'s own column value, freshly re-fetched by `resolve-voucher-usage-limit.ts` right before this step runs (VoucherConfig-owned config, SPEC.md §5.4/§10/§11.4). */
+  usage_limit: number | null;
   log_entry: UsageLogEntry;
 }
 
@@ -42,6 +45,7 @@ export const atomicRedeemStep = createStep(
     try {
       const result = await service.redeemVoucherAtomic(
         input.voucher_id,
+        input.usage_limit,
         input.log_entry,
       );
 
@@ -56,6 +60,28 @@ export const atomicRedeemStep = createStep(
             },
           )}`,
         );
+        // Admin feed alert (2026-07-21) — this is exactly the "needs manual
+        // review" case §14.3 calls for; a passive log alone is easy to miss.
+        try {
+          const notificationService: INotificationModuleService =
+            container.resolve(Modules.NOTIFICATION);
+          await notificationService.createNotifications({
+            to: "",
+            channel: "feed",
+            template: "admin-ui",
+            data: {
+              title: "Voucher usage limit exhausted",
+              description: `Order ${input.log_entry.order_id} redeemed voucher_id ${input.voucher_id} after its usage limit was already reached — no usage log was written for this order. Review manually.`,
+            },
+          });
+        } catch (notifyErr) {
+          // Never let a notification failure affect redemption itself.
+          logger.warn(
+            `[voucher-engine] failed to send usage-limit-exhausted admin notification: ${
+              notifyErr instanceof Error ? notifyErr.message : String(notifyErr)
+            }`,
+          );
+        }
       }
 
       const output: AtomicRedeemOutput = {

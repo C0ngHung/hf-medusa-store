@@ -93,7 +93,6 @@ export default async function seedVoucherEngine({ container }: ExecArgs) {
       max_discount_amount: v.max_discount_amount,
       applicable_product_ids: null,
       applicable_category_ids,
-      stackable_with_promotions: true,
       per_user_limit: 1,
       usage_limit: null,
       usage_count: 0,

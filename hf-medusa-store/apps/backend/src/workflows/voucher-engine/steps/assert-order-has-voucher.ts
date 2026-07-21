@@ -1,9 +1,9 @@
 /**
- * assertOrderHasVoucherStep — SPEC §11.4 step 1 (Decision G identity channel;
- * task 3.6.1). Resolves the voucher applied to an order via
- * `order.metadata.voucher` — NOT the order's adjustment `promotion_id`/`code`,
- * which under Decision G belong to the per-cart EPHEMERAL promotion and don't
- * map back to `VoucherConfig`.
+ * assertOrderHasVoucherStep — SPEC §11.4 step 1 (identity channel; task
+ * 3.6.1). Resolves the voucher applied to an order via `order.metadata.voucher`
+ * — NOT the order's adjustment ids, which (Decision-4 carrier rewrite) are
+ * VoucherEngine's own raw, unlinked `LineItemAdjustment`s and don't map back
+ * to `VoucherConfig` on their own.
  *
  * `order.metadata` is a copy of `cart.metadata` at completion (verified:
  * `@medusajs/core-flows/dist/cart/workflows/complete-cart.js:404`), so the

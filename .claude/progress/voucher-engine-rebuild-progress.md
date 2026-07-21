@@ -358,4 +358,57 @@ Run both (plus the existing carrier-path suite) in one pass once port 9009 is fr
 
 **Files likely affected when Phase 6 actually executes:** at most item 1 above (if deletion becomes possible) and a docs-wording pass (item 2) — a much smaller set than earlier plan revisions assumed, plus whichever individual scripts/tests item 4's review actually confirms dead (possibly none).
 
+## 2026-07-20 — Item-level promotion definition reversed + Admin unified model implemented
+
+**Status:** Two business decisions approved and implemented in the same session, per explicit
+instruction to implement (not just plan): (1) item-level promotion (VOUCH-003) now means a native
+automatic Promotion adjustment, reversing Decision H/decision 4 (`rebuild-decisions.md`); (2) the
+Admin unified model (Enable VoucherEngine on an existing Promotion) is implemented.
+
+**Item 1 — corrected definition.** No calculation-code change was needed: the pure calculator
+(`modules/voucher-engine/lib/calculate-discount.ts`) and `steps/load-cart-context.ts` already
+compute `item_promotion_discount` from real Cart `items.adjustments` (a Promotion Module concept),
+never from Price List `unit_price` deltas — they were already built for this interpretation, not
+the Price-List one Decision H described. Confirming evidence: the V8 stacking check
+(`lib/validators.ts`'s `v8Stacking`, driven by `cart.has_item_promotion = item_promotion_discount >
+0`, `lib/mappers.ts:98`) would be structurally inert under the Price-List reading (Price List never
+produces an adjustment) but is live, meaningful logic under this corrected reading — consistent with
+its own migration comment (`Migration20260714093000.ts`: "V8 — cho phép cộng dồn với khuyến mãi
+item-level"). Updated: `SPEC.md` (Decision H superseded by new Decision H-2, §18 CONFLICT-8 and
+§19.1 PD-15 REOPENED as an unresolved blocker, not historical), `rebuild-decisions.md` (decision 4
+superseded, new dated entry). **Not touched, deliberately:** the ephemeral carrier
+(`apply-voucher.ts`/`remove-voucher.ts`/`revalidate-voucher-on-cart-change.ts`/
+`verify-cart-totals.ts`) — CONFLICT-8/PD-15 remain an open, unresolved backend blocker; see SPEC.md
+for the verified mechanism (computeActions `value DESC` ordering, the automatic Promotion's
+adjustment is the one that shrinks by default). A real carrier fix is out of scope for this session.
+
+**Item 2 — Admin unified model.** New files: migration
+`modules/voucher-engine/migrations/Migration20260720120000.ts` (partial unique index on
+`voucher_config.promotion_id`); workflow `workflows/voucher-engine/admin/attach-voucher-config.ts` +
+its three steps (`load-promotion-for-attach.ts`, `assert-promotion-voucher-eligible.ts`,
+`create-linked-voucher-config.ts`) + pure helper
+`admin/lib/derive-voucher-config-cache-fields.ts`; API route
+`api/admin/promotions/[promotion_id]/voucher-config/{route.ts,validators.ts}` + middleware
+registration; widget rewrite (`admin/widgets/promotion-detail-voucher-config-widget.tsx`, now
+three states) + new `admin/components/enable-voucher-form-modal.tsx`; `admin/lib/api.ts` hooks
+(`useVoucherByPromotion` repointed to the new dedicated route, new `useEnableVoucherEngine`).
+Source-of-truth fix: `steps/lookup-voucher.ts` now overlays Promotion-authoritative
+`code`/`discount_type`/`discount_value`/`is_active`/`valid_from`/`valid_to` on every lookup
+(cache hits included) via `derivePromotionCacheFields`; `lib/mappers.ts`'s `PersistedVoucherConfig`
+gained a `promotion_id` field to support this. Transitional compatibility verified, not assumed:
+`git status` at session start showed only two admin files deleted
+(`create-voucher-modal.tsx`, `routes/vouchers/page.tsx`), both already superseded by equivalent,
+already-shipped functionality (`routes/promotions/create-voucher/page.tsx`,
+`routes/promotions/vouchers/page.tsx`) from an earlier session — no functionality gap, nothing
+restored. The atomic `POST /admin/vouchers` flow and its route are unchanged and kept as the
+fallback.
+
+**Full detail (eligibility rules, exact evidence, residual limitations):** SPEC.md's "Admin unified
+model — implemented 2026-07-20 (Decision K-2)" section and `rebuild-decisions.md`'s two new
+2026-07-20 entries.
+
+**Not done this session (explicitly out of scope):** the CONFLICT-8/PD-15 carrier fix; any
+VoucherConfig update/deactivate API; retiring the atomic create-voucher flow (parity not yet
+reached/verified); forking or patching `@medusajs/dashboard`.
+
 **Next:** Phase 6 stays gated on Phase 5's checklist actually running green — not started.

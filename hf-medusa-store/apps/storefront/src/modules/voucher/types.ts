@@ -1,26 +1,37 @@
 /**
- * Storefront-side wire shapes for VoucherEngine (VOUCH-001..005, SPEC Decision
- * G). `VoucherCartMetadata` mirrors the EXACT snapshot the backend persists to
- * `cart.metadata.voucher` — verified against
- * `apps/backend/src/workflows/voucher-engine/lib/ephemeral-promotion.ts`
- * (`VoucherCartMetadata`) and `apply-voucher.ts`'s `voucherSnapshot` transform,
- * NOT the idealized shape assumed in `docs/voucher-engine-ui/UX-FLOW.md` §2.
- * Notably: there is NO `cap_explanation` string and NO `expires_at` persisted
- * here — those exist only in the apply-response envelope below, so a page
- * reload can restore `discount_capped` (boolean) but never the explanation
- * text or expiry from the metadata alone.
+ * Storefront-side wire shapes for VoucherEngine (VOUCH-001..005). `VoucherCartMetadata`
+ * mirrors the EXACT snapshot the backend persists to `cart.metadata.voucher` —
+ * verified against `apps/backend/src/workflows/voucher-engine/apply-voucher.ts`'s
+ * `voucherSnapshot` transform, NOT the idealized shape assumed in
+ * `docs/voucher-engine-ui/UX-FLOW.md` §2.
+ *
+ * UPDATED 2026-07-22: `adjustment_ids` replaces the old `ephemeral_promotion_id`/
+ * `ephemeral_code` fields — the backend's Decision-4 carrier rewrite
+ * (2026-07-20) stopped carrying the voucher discount via a per-cart ephemeral
+ * Promotion; it now writes raw `LineItemAdjustment` rows directly (`code:
+ * null`, `promotion_id: null`), which never appear in `cart.promotions` at
+ * all. This type had drifted out of sync with that change (still declaring
+ * the old fields) until this fix — nothing in this app actually read
+ * `ephemeral_promotion_id` correctly since the rewrite, since the field
+ * simply doesn't exist in the real payload.
+ *
+ * `voucher_discount_after_voucher_cap`/`cap_percentage_bps`/`discount_amount`
+ * are enough to reconstruct the exact Vietnamese cap-explanation sentence
+ * client-side (see `discount-code/index.tsx`'s `buildCapExplanationVi`) —
+ * there is still NO `cap_explanation` string persisted here (only in the
+ * apply-response envelope below), so a page reload/out-of-band cart change
+ * must derive it from these numeric fields, not expect the string itself.
  */
 export type VoucherCartMetadata = {
   voucher_id: string
   code: string
-  /** The ephemeral Promotion's own id — used to identify/filter it out of the generic promotions list (D4). */
-  ephemeral_promotion_id: string
-  ephemeral_code: string
+  /** The raw `LineItemAdjustment` row ids carrying this voucher's discount (Decision-4 carrier rewrite). */
+  adjustment_ids: string[]
   discount_type: "percentage" | "fixed_amount"
   discount_value: number
   /** = raw_voucher_discount (§10) — named without the `raw_` prefix on this
    * JSONB snapshot to avoid colliding with Medusa's generic BigNumber-raw-field
-   * decoration convention (see the backend's `ephemeral-promotion.ts`). */
+   * decoration convention. */
   uncapped_voucher_discount: number
   voucher_discount_after_voucher_cap: number
   /** = final_voucher_discount — the amount actually charged. */

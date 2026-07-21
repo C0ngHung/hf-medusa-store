@@ -59,7 +59,6 @@ import {
 type VoucherConfigPayload = {
   discount_type: "percentage" | "fixed_amount";
   discount_value: number;
-  stackable_with_promotions: boolean;
   per_user_limit: number;
   is_active: boolean;
   valid_from: Date | string;
@@ -89,7 +88,6 @@ function isValidVoucherConfigPayload(
     v.discount_type === "percentage" || v.discount_type === "fixed_amount";
   const hasValidDiscountValue =
     typeof v.discount_value === "number" && Number.isFinite(v.discount_value);
-  const hasValidStackable = typeof v.stackable_with_promotions === "boolean";
   const hasValidPerUserLimit =
     typeof v.per_user_limit === "number" && Number.isFinite(v.per_user_limit);
   const hasValidIsActive = typeof v.is_active === "boolean";
@@ -100,7 +98,6 @@ function isValidVoucherConfigPayload(
   return (
     hasValidDiscountType &&
     hasValidDiscountValue &&
-    hasValidStackable &&
     hasValidPerUserLimit &&
     hasValidIsActive &&
     hasValidDates

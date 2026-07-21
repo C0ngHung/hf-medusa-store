@@ -1,24 +1,35 @@
 /**
- * Ephemeral, cart-specific Promotion helpers (SPEC Decision G, §14.2-A).
+ * Cart-metadata contract for the voucher carrier + LEGACY ephemeral-Promotion
+ * code helpers.
  *
- * The discount amount is carried into authoritative Cart/Order totals by a
- * fresh, per-cart, fixed-amount Promotion — NOT the voucher's shared/canonical
- * `VoucherConfig.promotion_id` — because `updateCartPromotionsWorkflow` has no
- * caller-supplied amount override and always derives the adjustment from the
- * Promotion's own `application_method.value` (verified against installed
- * @medusajs/core-flows/@medusajs/promotion 2.16.0 source). Reusing the shared
- * Promotion across concurrent carts would corrupt every other cart applying
- * the same voucher code.
+ * **Decision-4 carrier rewrite:** the discount amount is now carried by raw
+ * `LineItemAdjustment` rows (`code`/`promotion_id` both null,
+ * `steps/create-voucher-adjustments.ts`), not a Promotion — a fresh, per-cart
+ * Promotion (as this file originally described under SPEC Decision G) could
+ * not satisfy the SRS's required item-promotion-never-shrinks stacking order
+ * once "item-level promotion" was redefined to mean a native automatic
+ * Promotion Module adjustment (Decision H-2): see
+ * `lib/create-and-attach-ephemeral-promotion.ts`'s superseded-file header for
+ * the full verified mechanism (CONFLICT-8/PD-15).
+ *
+ * `EPHEMERAL_CODE_PREFIX`/`generateEphemeralPromotionCode` are LEGACY —
+ * nothing in the current apply/remove/revalidate flow creates an ephemeral
+ * Promotion anymore. Kept only so `admin/lib/check-promotion-voucher-eligibility.ts`
+ * still correctly rejects any pre-existing `VEPH-*` Promotion rows from
+ * before this rewrite (and so `lib/reap-ephemeral-promotions.ts` — a
+ * best-effort cleanup job for exactly those legacy rows — keeps working). Do
+ * not use these for new code.
  */
 
-/** Prefix distinguishes ephemeral cart promotions from canonical/admin ones at a glance. */
-const EPHEMERAL_CODE_PREFIX = "VEPH";
+/** @deprecated Legacy — see file header. */
+export const EPHEMERAL_CODE_PREFIX = "VEPH";
 
 /**
- * A unique, Promotion-safe code for one cart's application of one voucher.
- * Uniqueness only needs to hold across concurrent applies (not cryptographic) —
- * cart id + timestamp + a random suffix is enough. Never derived from the
- * voucher's own code (a customer must never see or reuse this internal code).
+ * @deprecated Legacy — see file header. A unique, Promotion-safe code for one
+ * cart's application of one voucher. Uniqueness only needs to hold across
+ * concurrent applies (not cryptographic) — cart id + timestamp + a random
+ * suffix is enough. Never derived from the voucher's own code (a customer
+ * must never see or reuse this internal code).
  */
 export function generateEphemeralPromotionCode(
   cartId: string,
@@ -42,10 +53,14 @@ export function generateEphemeralPromotionCode(
 export interface VoucherCartMetadata {
   voucher_id: string;
   code: string;
-  /** The ephemeral Promotion's own id — identifies/detaches the cart adjustment. */
-  ephemeral_promotion_id: string;
-  /** The ephemeral Promotion's own code — passed to `updateCartPromotionsWorkflow`. */
-  ephemeral_code: string;
+  /**
+   * The raw `LineItemAdjustment` ids that carry this voucher's discount
+   * (Decision-4 carrier rewrite) — identifies/removes the cart adjustments on
+   * remove/replace/revalidate and lets `verifyCartTotalsStep` sum exactly
+   * these rows without depending on a `promotion_id` (there is none; these
+   * adjustments are never Promotion-backed).
+   */
+  adjustment_ids: string[];
   discount_type: "percentage" | "fixed_amount";
   discount_value: number;
   /**

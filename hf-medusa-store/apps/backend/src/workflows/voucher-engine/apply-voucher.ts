@@ -5,9 +5,9 @@
  * (`loadCartContextStep`, `lookupVoucherStep`, `validateVoucherStep`,
  * `resolveEligibleItemsStep`, `calculateVoucherDiscountStep`,
  * `verifyCartTotalsStep`) and adds the Day 4 pieces: the one-active-voucher /
- * replace-confirmation gate, the ephemeral cart-specific Promotion that
- * actually carries the capped amount (Decision G, §14.2-A), and the
- * concurrency lock (§14.2-C).
+ * replace-confirmation gate, the raw `LineItemAdjustment`s that actually
+ * carry the capped amount (Decision-4 carrier rewrite,
+ * `lib/create-voucher-adjustments.ts`), and the concurrency lock (§14.2-C).
  *
  * Brute-force rate-limiting (§11.1 step 2, SEC-02/EC-10) is enforced at the
  * HTTP boundary — `voucherRateLimitMiddleware` on the store route plus
@@ -23,17 +23,16 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deletePromotionsWorkflow,
   releaseLockStep,
-  updateCartPromotionsWorkflow,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
-import { PromotionActions } from "@medusajs/framework/utils";
-import { createAndAttachEphemeralPromotion } from "./lib/create-and-attach-ephemeral-promotion";
+import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
 import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
 import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
 import { loadCartContextStep } from "./steps/load-cart-context";
+import { loadCustomerSegmentStep } from "./steps/load-customer-segment";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
 import { validateVoucherStep } from "./steps/validate-voucher";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
@@ -85,73 +84,61 @@ export const applyVoucherWorkflow = createWorkflow(
       ({ activeCheck }) => !!activeCheck.previous,
     );
 
-    // Replace: DETACH (not delete) the OLD ephemeral promotion from the cart
-    // BEFORE verification — `verifyCartTotalsStep` reads the Cart's own
-    // recomputed total, which would otherwise still reflect BOTH the old and
-    // new promotion stacked together. This is safe/reversible: the underlying
-    // `removeLineItemAdjustmentsStep` (inside `updateCartPromotionsWorkflow`)
-    // soft-deletes the adjustment and its compensation RESTORES it (verified:
-    // `@medusajs/core-flows/dist/cart/steps/remove-line-item-adjustments.js`)
-    // — so if verification fails below, Medusa's own rollback puts the old
-    // voucher's discount back exactly as it was. Only the irreversible DELETE
-    // of the old Promotion entity waits until after verification succeeds
-    // (never remove a valid existing voucher before the replacement is
-    // validated).
+    // Replace: remove the OLD voucher's adjustments BEFORE verification —
+    // `verifyCartTotalsStep` reads the Cart's own recomputed total, which
+    // would otherwise still reflect BOTH the old and new discount stacked
+    // together. Safe/reversible: `removeLineItemAdjustmentsStep` soft-deletes
+    // and its compensation RESTORES on a later failure (Decision-4 carrier
+    // rewrite — a single removal step now covers what previously needed a
+    // detach-then-later-irreversible-delete pair, because there is no
+    // separate Promotion entity to delete once the adjustment rows
+    // themselves are gone; never remove a valid existing voucher before the
+    // replacement is validated).
     when({ hasPrevious }, ({ hasPrevious }) => hasPrevious).then(() => {
-      const oldCode = transform(
+      const oldAdjustmentIds = transform(
         { activeCheck },
-        ({ activeCheck }) => activeCheck.previous!.ephemeral_code,
+        ({ activeCheck }) => activeCheck.previous!.adjustment_ids,
       );
 
-      updateCartPromotionsWorkflow
-        .runAsStep({
-          input: transform({ input, oldCode }, ({ input, oldCode }) => ({
-            cart_id: input.cart_id,
-            promo_codes: [oldCode],
-            action: PromotionActions.REMOVE,
-          })),
-        })
-        .config({ name: "detach-old-ephemeral-promotion" });
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+      }).config({ name: "remove-old-voucher-adjustments" });
     });
-
-    // Exclude the PREVIOUS voucher's own ephemeral adjustment (if replacing)
-    // from item_promotion_discount, mirroring Rule 11 under Decision G.
-    const previousPromotionId = transform(
-      { activeCheck },
-      ({ activeCheck }) => activeCheck.previous?.ephemeral_promotion_id,
-    );
 
     // Code-review Task 7.3: checkActiveVoucherStep (above) and this step both
     // call query.graph on the same cart_id — evaluated merging them into one
     // read and deliberately did NOT, because they read the cart at two
     // sequentially-DEPENDENT points, not the same point twice:
     // checkActiveVoucherStep's metadata-only read runs BEFORE the conditional
-    // "detach old ephemeral promotion" branch above and its result
-    // (`hasPrevious`) decides whether that detach even runs, while this
+    // "remove old voucher adjustments" branch above and its result
+    // (`hasPrevious`) decides whether that removal even runs, while this
     // step's full read must run AFTER it — its `item_promotion_discount`
-    // Rule-11/CONFLICT-8 baseline is only correct once the old ephemeral
-    // adjustment (if any) has actually been removed from the cart (see the
-    // comment on `pre_apply_item_promotion_discount` at the
-    // verifyCartTotalsStep call below). Merging into a single earlier read
-    // would corrupt that baseline for the replace case by counting the
-    // about-to-be-removed old adjustment as if it were an ordinary item
-    // promotion; merging into a single later read would move the
-    // replace-confirmation gate to run AFTER the detach it's supposed to
-    // gate, violating tasks 3.4.6/3.4.7/3.4.8 (never remove a valid existing
-    // voucher before the replacement is validated) and the Task 3.1 ordering
-    // this file already fixed. Left as two separate reads.
-    const cart = loadCartContextStep({
-      cart_id: input.cart_id,
-      voucher_promotion_id: previousPromotionId,
+    // baseline (Rule 11) is only correct once the old adjustments (if any)
+    // have actually been removed from the cart. Merging into a single
+    // earlier read would corrupt that baseline for the replace case;
+    // merging into a single later read would move the replace-confirmation
+    // gate to run AFTER the removal it's supposed to gate, violating tasks
+    // 3.4.6/3.4.7/3.4.8 (never remove a valid existing voucher before the
+    // replacement is validated). Left as two separate reads.
+    const cart = loadCartContextStep({ cart_id: input.cart_id });
+
+    // V7 (SPEC Decision J) — resolve the customer's native Medusa Customer
+    // Group membership. Guests (customer_id null) resolve to no groups.
+    const customerSegment = loadCustomerSegmentStep({
+      customer_id: input.customer_id,
     });
 
     validateVoucherStep({
       voucher: lookup.voucher,
       cart,
       user_usage_count: lookup.user_usage_count,
+      customer_segment: customerSegment,
     });
 
-    const discount = resolveAndCalculateVoucherDiscount({ lookup, cart });
+    const { resolved, discount } = resolveAndCalculateVoucherDiscount({
+      lookup,
+      cart,
+    });
 
     // EC-04: verify no concurrent mutation (e.g. an item removal) changed the
     // cart between loadCartContextStep's read and this point, right before we
@@ -161,23 +148,21 @@ export const applyVoucherWorkflow = createWorkflow(
       expected_concurrency_marker: cart.concurrency_marker,
     });
 
-    // Decision G — carry the capped amount via a fresh, cart-specific,
-    // fixed-amount Promotion (never the shared/canonical VoucherConfig.promotion_id).
-    const ephemeralPromotion = createAndAttachEphemeralPromotion({
-      cart_id: input.cart_id,
-      voucher_id: transform({ lookup }, ({ lookup }) => lookup.voucher!.id),
-      cart,
+    // Decision-4 carrier rewrite — carry the capped amount via raw
+    // LineItemAdjustment rows, split across eligible lines (never the
+    // shared/canonical VoucherConfig.promotion_id, and never a Promotion at
+    // all — see lib/create-voucher-adjustments.ts).
+    const newAdjustments = createVoucherLineItemAdjustments({
+      lines: resolved.lines,
       discount,
-      attachStepName: "attach-new-ephemeral-promotion",
     });
 
     const voucherSnapshot = transform(
-      { lookup, discount, ephemeralPromotion, activeCheck },
-      ({ lookup, discount, ephemeralPromotion, activeCheck }) => ({
+      { lookup, discount, newAdjustments, activeCheck },
+      ({ lookup, discount, newAdjustments, activeCheck }) => ({
         voucher_id: lookup.voucher!.id,
         code: lookup.voucher!.code,
-        ephemeral_promotion_id: ephemeralPromotion.id,
-        ephemeral_code: ephemeralPromotion.code,
+        adjustment_ids: newAdjustments.adjustment_ids,
         discount_type: lookup.voucher!.discount_type,
         discount_value: lookup.voucher!.discount_value,
         uncapped_voucher_discount: discount.raw_voucher_discount,
@@ -201,38 +186,9 @@ export const applyVoucherWorkflow = createWorkflow(
 
     const verification = verifyCartTotalsStep({
       cart_id: input.cart_id,
-      promotion_id: ephemeralPromotion.id,
+      adjustment_ids: newAdjustments.adjustment_ids,
       final_voucher_discount: discount.final_voucher_discount,
       expected_final_cart_total: discount.expected_final_cart_total,
-      // CONFLICT-8/PD-15: voucher-free baseline. `loadCartContextStep` (above)
-      // ran AFTER the old ephemeral promotion (if replacing) was already
-      // detached and BEFORE the new one was created/attached, so
-      // `discount.item_promotion_discount` is the correct voucher-free
-      // Rule-11 baseline for both first-apply and replace.
-      pre_apply_item_promotion_discount: discount.item_promotion_discount,
-    });
-
-    // Replace: only now (after the NEW voucher is verified) irreversibly
-    // DELETE the OLD ephemeral Promotion entity — it was already detached
-    // from the cart above, before verification (tasks 3.4.7/3.4.8 — never
-    // remove a valid existing voucher before the replacement is validated).
-    when({ hasPrevious }, ({ hasPrevious }) => hasPrevious).then(() => {
-      const oldPromotionId = transform(
-        { activeCheck },
-        ({ activeCheck }) => activeCheck.previous!.ephemeral_promotion_id,
-      );
-
-      // No `.config({name})` here: `deletePromotionsWorkflow`'s declared
-      // output type is `never` (it returns nothing), which makes `.config`
-      // structurally unavailable on the `runAsStep()` result even though it
-      // exists at runtime — and this is the only `deletePromotionsWorkflow`
-      // invocation in this workflow (replace-only branch), so there is no
-      // repeat to disambiguate.
-      deletePromotionsWorkflow.runAsStep({
-        input: transform({ oldPromotionId }, ({ oldPromotionId }) => ({
-          ids: [oldPromotionId],
-        })),
-      });
     });
 
     releaseLockStep({ key: lockKey });

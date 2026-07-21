@@ -34,7 +34,6 @@ export type CreateVoucherWorkflowInput = {
   max_discount_amount?: number | null;
   applicable_product_ids?: string[] | null;
   applicable_category_ids?: string[] | null;
-  stackable_with_promotions: boolean;
   per_user_limit: number;
   usage_limit?: number | null;
   user_segment_conditions?: Record<string, unknown> | null;

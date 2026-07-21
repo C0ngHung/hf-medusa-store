@@ -43,24 +43,24 @@ medusaIntegrationTestRunner({
           adminHeaders,
         );
         expect(res.status).toBe(201);
-        expect(res.data.voucher.id).toBeTruthy();
-        expect(res.data.voucher.code).toMatch(/^[A-Z0-9]{6,}$/);
+        expect(res.data.id).toBeTruthy();
+        expect(res.data.code).toMatch(/^[A-Z0-9]{6,}$/);
       });
 
-      // Rebuild Phase 1 (SRS §5.2 "VoucherConfig extends Promotion") —
-      // response-contract compatibility: the `{ voucher: {...} }` shape is
-      // unchanged, but `promotion_id` is now a REAL, non-null Promotion id
-      // (previously null/absent, since no Promotion was ever created).
-      it("response contract stays { voucher: {...} } and promotion_id is now a real, non-null Promotion id", async () => {
+      // 2026-07-21: response flattened to match SRS §6.4 literally (the
+      // created voucher IS the response body, no `{ voucher: {...} }`
+      // wrapper) — `promotion_id` is a REAL, non-null Promotion id (Rebuild
+      // Phase 1, SRS §5.2 "VoucherConfig extends Promotion").
+      it("response body IS the created voucher (flat, SRS §6.4) and promotion_id is a real, non-null Promotion id", async () => {
         const res = await api.post(
           "/admin/vouchers",
           { ...validBody(), code: "PROMOLINKED1" },
           adminHeaders,
         );
         expect(res.status).toBe(201);
-        expect(Object.keys(res.data)).toEqual(["voucher"]);
-        expect(res.data.voucher.promotion_id).toEqual(expect.any(String));
-        expect(res.data.voucher.promotion_id).not.toBeNull();
+        expect(res.data.code).toBe("PROMOLINKED1");
+        expect(res.data.promotion_id).toEqual(expect.any(String));
+        expect(res.data.promotion_id).not.toBeNull();
       });
 
       it("normalizes a supplied lowercase code to UPPERCASE (SEC-03)", async () => {
@@ -70,7 +70,7 @@ medusaIntegrationTestRunner({
           adminHeaders,
         );
         expect(res.status).toBe(201);
-        expect(res.data.voucher.code).toBe("SPRING24");
+        expect(res.data.code).toBe("SPRING24");
       });
 
       it("rejects invalid input with 400 (window inverted)", async () => {
@@ -118,14 +118,14 @@ medusaIntegrationTestRunner({
           validBody(),
           adminHeaders,
         );
-        const id = created.data.voucher.id;
+        const id = created.data.id;
 
         const res = await api.get(
           `/admin/vouchers/${id}/analytics`,
           adminHeaders,
         );
         expect(res.status).toBe(200);
-        expect(res.data.analytics).toEqual(
+        expect(res.data).toEqual(
           expect.objectContaining({
             voucher_id: id,
             total_uses: 0,
@@ -147,7 +147,7 @@ medusaIntegrationTestRunner({
           validBody(),
           adminHeaders,
         );
-        const id = created.data.voucher.id;
+        const id = created.data.id;
 
         const service = getContainer().resolve(
           VOUCHER_ENGINE_MODULE,
@@ -184,7 +184,7 @@ medusaIntegrationTestRunner({
           adminHeaders,
         );
         expect(res.status).toBe(200);
-        expect(res.data.analytics).toEqual(
+        expect(res.data).toEqual(
           expect.objectContaining({
             voucher_id: id,
             total_uses: 3,
@@ -197,50 +197,7 @@ medusaIntegrationTestRunner({
       });
     });
 
-    describe("GET /admin/vouchers (list, admin table)", () => {
-      it("requires admin auth (SEC-04)", async () => {
-        const err = await api.get("/admin/vouchers").catch((e) => e.response);
-        expect(err.status).toBe(401);
-      });
-
-      it("lists created vouchers with the table's required fields", async () => {
-        const created = await api.post(
-          "/admin/vouchers",
-          { ...validBody(), code: "LISTME10" },
-          adminHeaders,
-        );
-        const id = created.data.voucher.id;
-
-        const res = await api.get("/admin/vouchers", adminHeaders);
-        expect(res.status).toBe(200);
-        expect(typeof res.data.count).toBe("number");
-        expect(Array.isArray(res.data.vouchers)).toBe(true);
-
-        const row = res.data.vouchers.find((v: any) => v.id === id);
-        expect(row).toEqual(
-          expect.objectContaining({
-            id,
-            code: "LISTME10",
-            discount_type: "percentage",
-            discount_value: 1000,
-            usage_limit: null,
-            usage_count: 0,
-            is_active: true,
-          }),
-        );
-        expect(row.valid_from).toBeTruthy();
-        expect(row.valid_to).toBeTruthy();
-        expect(row.created_at).toBeTruthy();
-        expect(row.updated_at).toBeTruthy();
-      });
-
-      it("never includes native Promotion fields (reads voucher_config only)", async () => {
-        const res = await api.get("/admin/vouchers", adminHeaders);
-        for (const row of res.data.vouchers) {
-          expect(row).not.toHaveProperty("application_method");
-          expect(row).not.toHaveProperty("promotion_id");
-        }
-      });
-    });
+    // GET /admin/vouchers (list) removed 2026-07-21 (code-review finding) —
+    // confirmed unused by any admin UI; see api/admin/vouchers/route.ts.
   },
 });
