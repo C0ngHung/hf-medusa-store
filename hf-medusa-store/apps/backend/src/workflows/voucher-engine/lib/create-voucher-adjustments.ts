@@ -18,7 +18,7 @@ export function createVoucherLineItemAdjustments({
   lines,
   discount,
 }: {
-  lines: WorkflowData<LineValue[]>;
+  lines: WorkflowData<LineValue[]> | LineValue[];
   discount: WorkflowData<VoucherDiscountResult>;
 }) {
   const adjustmentsToCreate = transform(

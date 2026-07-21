@@ -102,7 +102,7 @@ export const applyVoucherWorkflow = createWorkflow(
 
       removeLineItemAdjustmentsStep({
         lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
-      }).config({ name: "remove-old-voucher-adjustments" });
+      });
     });
 
     // Code-review Task 7.3: checkActiveVoucherStep (above) and this step both

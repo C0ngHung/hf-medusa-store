@@ -158,7 +158,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
         removeLineItemAdjustmentsStep({
           lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
-        }).config({ name: "remove-stale-voucher-adjustments" });
+        });
 
         const { resolved, discount } = resolveAndCalculateVoucherDiscount({
           lookup,
@@ -215,7 +215,7 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
       removeLineItemAdjustmentsStep({
         lineItemAdjustmentIdsToRemove: staleAdjustmentIds,
-      }).config({ name: "remove-invalid-voucher-adjustments" });
+      });
 
       // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
       // (min-order → 3.5.9, no-eligible-items → 3.5.10, …). `revalidation` always

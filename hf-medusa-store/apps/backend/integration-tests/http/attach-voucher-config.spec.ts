@@ -488,7 +488,7 @@ medusaIntegrationTestRunner({
         const service = getContainer().resolve(
           VOUCHER_ENGINE_MODULE,
         ) as VoucherEngineService;
-        await service.redeemVoucherAtomic(voucherId, {
+        await service.redeemVoucherAtomic(voucherId, null, {
           voucher_id: voucherId,
           customer_id: "cus_lifecycle_test",
           order_id: "order_lifecycle_test",

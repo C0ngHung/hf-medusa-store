@@ -50,7 +50,10 @@
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import { Modules } from "@medusajs/framework/utils";
-import type { ICartModuleService } from "@medusajs/framework/types";
+import type {
+  ICartModuleService,
+  CreateLineItemAdjustmentDTO,
+} from "@medusajs/framework/types";
 
 export const createVoucherAdjustmentsStepId = "create-voucher-adjustments";
 
@@ -95,9 +98,7 @@ export const createVoucherAdjustmentsStep = createStep(
         item_id: a.item_id,
         amount: a.amount,
         description: VOUCHER_ADJUSTMENT_DESCRIPTION,
-      })) as unknown as Parameters<
-        ICartModuleService["addLineItemAdjustments"]
-      >[0],
+      })) as unknown as CreateLineItemAdjustmentDTO[],
     );
 
     const output: CreatedVoucherAdjustment[] = created.map((row: any) => ({
