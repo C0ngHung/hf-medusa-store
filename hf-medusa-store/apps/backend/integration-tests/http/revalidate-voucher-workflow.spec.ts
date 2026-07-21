@@ -5,14 +5,14 @@
  * `revalidate-voucher.unit.spec.ts` already pins the PURE V1/V2/V5/V6/V8
  * subset logic in isolation. This file exercises the actual production
  * workflow (`revalidateVoucherWorkflow`) end-to-end against a real cart +
- * voucher credit line — the same workflow the `cart.updated` subscriber
+ * ephemeral Promotion — the same workflow the `cart.updated` subscriber
  * (`../../src/subscribers/voucher-cart-updated.ts`) invokes — so the
- * recompute/auto-remove branches are proven against real credit-line
- * create/delete calls, not just the pure validator subset.
+ * recompute/auto-remove branches are proven against real Promotion
+ * create/attach/detach/delete calls, not just the pure validator subset.
  *
  * Boots the full app via `medusaIntegrationTestRunner` (same pattern as
- * `apply-remove-voucher.spec.ts`) so a real Cart module + credit-line
- * carrier is exercised. Calls the workflow directly
+ * `apply-remove-voucher.spec.ts`) so a real Cart module + Promotion module
+ * + ephemeral-promotion machinery is exercised. Calls the workflow directly
  * (not via the subscriber) since the subscriber only adds async
  * fire-and-forget wiring around this same call (proven working, but
  * unreliable to await in a test without artificial polling).
@@ -24,7 +24,7 @@ import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
 import type VoucherEngineService from "../../src/modules/voucher-engine/service";
 import { applyVoucherWorkflow } from "../../src/workflows/voucher-engine/apply-voucher";
 import { revalidateVoucherWorkflow } from "../../src/workflows/voucher-engine/revalidate-voucher-on-cart-change";
-import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/voucher-cart-metadata";
+import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/ephemeral-promotion";
 import { VOUCHER_NOTICE_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/auto-remove-notice";
 
 jest.setTimeout(60_000);
@@ -365,7 +365,7 @@ medusaIntegrationTestRunner({
         expect(notice?.voucher_code).toBe("RACKETONLY10");
       });
 
-      it("acquires the voucher:cart:{id} lock so two concurrent revalidations on the same cart don't corrupt the voucher credit line (EC-04)", async () => {
+      it("acquires the voucher:cart:{id} lock so two concurrent revalidations on the same cart don't corrupt the ephemeral promotion (EC-04)", async () => {
         const cart = await createCart([
           {
             title: "Racket",
@@ -398,9 +398,10 @@ medusaIntegrationTestRunner({
         // catches/logs (this workflow "Never throws" by design, see file
         // header), so a lost race is a silent no-op, not a corruption. Without
         // the EC-04 lock, BOTH would instead proceed, read the same stale
-        // `existing.active!.credit_line_id`, and race to create a new credit
-        // line + delete the old one — leaving either a duplicate credit line or
-        // a crash from double-deleting the same one.
+        // `existing.active!.ephemeral_promotion_id`, and race to
+        // create+attach a new promotion + delete the old one — leaving either
+        // a duplicate attached promotion or a crash from double-deleting the
+        // same one.
         const results = await Promise.allSettled([
           revalidateVoucherWorkflow(container()).run({
             input: { cart_id: cart.id },
@@ -427,7 +428,7 @@ medusaIntegrationTestRunner({
         const snapshot = (
           afterCart.metadata as Record<string, unknown> | null
         )?.[VOUCHER_METADATA_KEY] as
-          | { discount_amount: number; credit_line_id: string }
+          | { discount_amount: number; ephemeral_promotion_id: string }
           | undefined;
         expect(snapshot?.discount_amount).toBe(400_000);
       });
@@ -463,6 +464,83 @@ medusaIntegrationTestRunner({
           voucher_id: voucher.id,
         });
         expect(logCount).toBe(0);
+      });
+
+      it("never leaves two ephemeral promotions attached during recompute, and the final cart total is authoritative (fix: detach-before-attach + verify)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 2_000_000,
+            quantity: 1,
+            product_id: "prod_racket_norecompute_dupe",
+          },
+        ]);
+        await createVoucher({
+          code: "NODUPE10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+          min_order_value: null,
+        });
+
+        await applyVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id, code: "NODUPE10", customer_id: null },
+        });
+
+        const cartModuleService: ICartModuleService = container().resolve(
+          Modules.CART,
+        );
+        const beforeCart = await cartModuleService.retrieveCart(cart.id, {
+          select: ["id", "total", "metadata"],
+        });
+        expect(Number(beforeCart.total)).toBe(1_800_000); // 2,000,000 - 10%
+        const beforePromotionId = (
+          beforeCart.metadata as Record<string, unknown>
+        )[VOUCHER_METADATA_KEY] as { ephemeral_promotion_id: string };
+
+        // Trigger a recompute (quantity change → still valid, new amount).
+        const lineItemId = await firstLineItemId(cart.id);
+        await cartModuleService.updateLineItems(lineItemId, { quantity: 2 });
+        await revalidateVoucherWorkflow(container()).run({
+          input: { cart_id: cart.id },
+        });
+
+        const afterCart = await cartModuleService.retrieveCart(cart.id, {
+          select: ["id", "total", "discount_total", "metadata"],
+          relations: ["items", "items.adjustments"],
+        });
+
+        // Exactly one voucher discount is reflected in the authoritative
+        // total — never the sum of the old AND new ephemeral promotions.
+        expect(Number(afterCart.total)).toBe(3_600_000); // 4,000,000 - 10%
+
+        // Exactly ONE distinct promotion_id is attached across all line
+        // adjustments — never both the stale and the recomputed one at once.
+        const attachedPromotionIds = new Set(
+          (
+            afterCart.items as unknown as {
+              adjustments?: { promotion_id?: string | null }[];
+            }[]
+          ).flatMap((item) =>
+            (item.adjustments ?? [])
+              .map((a) => a.promotion_id)
+              .filter((id): id is string => !!id),
+          ),
+        );
+        expect(attachedPromotionIds.size).toBe(1);
+
+        const afterMetadata = afterCart.metadata as Record<string, unknown>;
+        const afterPromotion = afterMetadata[VOUCHER_METADATA_KEY] as {
+          ephemeral_promotion_id: string;
+          discount_amount: number;
+        };
+        // The recomputed promotion replaced (not duplicated) the old one.
+        expect(afterPromotion.ephemeral_promotion_id).not.toBe(
+          beforePromotionId.ephemeral_promotion_id,
+        );
+        expect([...attachedPromotionIds]).toEqual([
+          afterPromotion.ephemeral_promotion_id,
+        ]);
+        expect(afterPromotion.discount_amount).toBe(400_000);
       });
     });
   },

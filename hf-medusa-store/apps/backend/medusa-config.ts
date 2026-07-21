@@ -72,6 +72,24 @@ module.exports = defineConfig({
           },
         ]
       : []),
+    // ── Notifications: Local Notification Module Provider, "feed" channel
+    // (Admin Dashboard's built-in notification panel) — 2026-07-21, wires
+    // VoucherEngine Enable/Disable/rate-limit/redemption-exhausted alerts.
+    {
+      resolve: "@medusajs/medusa/notification",
+      options: {
+        providers: [
+          {
+            resolve: "@medusajs/medusa/notification-local",
+            id: "local",
+            options: {
+              name: "Local Notification Provider",
+              channels: ["feed"],
+            },
+          },
+        ],
+      },
+    },
     // ── Custom domain modules ──
     {
       resolve: "./src/modules/suggestive-selling",

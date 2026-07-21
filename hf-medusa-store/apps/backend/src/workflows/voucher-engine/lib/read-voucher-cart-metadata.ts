@@ -11,7 +11,7 @@ import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
 import {
   VOUCHER_METADATA_KEY,
   VoucherCartMetadata,
-} from "./voucher-cart-metadata";
+} from "./ephemeral-promotion";
 
 export interface VoucherCartMetadataRead {
   active: VoucherCartMetadata | null;

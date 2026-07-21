@@ -1,5 +1,8 @@
-import { ContainerRegistrationKeys } from "@medusajs/framework/utils";
-import type { MedusaContainer } from "@medusajs/framework/types";
+import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
+import type {
+  MedusaContainer,
+  INotificationModuleService,
+} from "@medusajs/framework/types";
 import {
   cache,
   failKey,
@@ -41,6 +44,37 @@ function logger(container: MedusaContainer): RateLimitLogger | null {
     ) as RateLimitLogger;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Admin feed alert for a newly-armed cooldown (2026-07-21) — EC-10/SEC-02's
+ * "log IP + customer_id for security monitoring" deserves more visibility
+ * than a passive log line. Called only at the moment a cooldown is newly
+ * armed (never on every subsequent blocked attempt during an already-active
+ * cooldown — that would spam the feed for as long as the attacker keeps
+ * retrying against the 429).
+ */
+async function notifyBruteForceAlert(
+  container: MedusaContainer,
+  fk: string,
+  count: number,
+): Promise<void> {
+  try {
+    const notificationService: INotificationModuleService = container.resolve(
+      Modules.NOTIFICATION,
+    );
+    await notificationService.createNotifications({
+      to: "",
+      channel: "feed",
+      template: "admin-ui",
+      data: {
+        title: "Voucher brute-force attempt detected",
+        description: `${count} failed voucher attempts (key=${fk}) within 15 minutes — cooldown armed for 30 minutes.`,
+      },
+    });
+  } catch {
+    // Never let a notification failure affect rate limiting itself.
   }
 }
 
@@ -118,6 +152,7 @@ export async function recordFailedAttempt(
     const decision = decideRateLimit(count);
     if (decision.shouldSetCooldown && !memCooldown.has(ck)) {
       memCooldown.set(ck, Date.now() + COOLDOWN_S * 1000);
+      await notifyBruteForceAlert(container, fk, count);
     }
     log?.warn(
       `[voucher] failed attempt (in-memory) key=${fk} count=${count} blocked=${decision.blocked}`,
@@ -135,7 +170,10 @@ export async function recordFailedAttempt(
       // Only arm if not already present so the 30-min penalty isn't extended by
       // every subsequent failure (idempotent cooldown).
       const existing = await c.get(ck);
-      if (existing == null) await c.set(ck, 1, COOLDOWN_S);
+      if (existing == null) {
+        await c.set(ck, 1, COOLDOWN_S);
+        await notifyBruteForceAlert(container, fk, count);
+      }
     }
     log?.warn(
       `[voucher] failed attempt key=${fk} count=${count} blocked=${decision.blocked}`,

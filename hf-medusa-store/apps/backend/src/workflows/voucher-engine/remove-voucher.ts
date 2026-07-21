@@ -1,8 +1,9 @@
 /**
- * removeVoucherWorkflow — SPEC §11.2 (task 3.4.2, 3.4.10). Detaches the cart's
- * active voucher (ephemeral Promotion, Decision G) and clears the metadata
- * snapshot. No usage-count change (Rule 12/13) — applying/removing a voucher
- * on a cart never touches redemption accounting.
+ * removeVoucherWorkflow — SPEC §11.2 (task 3.4.2, 3.4.10). Removes the cart's
+ * active voucher discount (raw `LineItemAdjustment` rows, Decision-4 carrier
+ * rewrite) and clears the metadata snapshot. No usage-count change (Rule
+ * 12/13) — applying/removing a voucher on a cart never touches redemption
+ * accounting.
  *
  * No active voucher on the cart is a no-op (idempotent 200), not an error —
  * API_CONTRACT §1.3.
@@ -16,15 +17,15 @@ import {
 } from "@medusajs/framework/workflows-sdk";
 import {
   acquireLockStep,
-  deleteCartCreditLinesWorkflow,
   releaseLockStep,
+  removeLineItemAdjustmentsStep,
 } from "@medusajs/core-flows";
 import type { ICartModuleService } from "@medusajs/framework/types";
 import { Modules } from "@medusajs/framework/utils";
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import { assertActiveVoucherStep } from "./steps/assert-active-voucher";
 import { refetchCartTotalStep } from "./steps/refetch-cart-total";
-import { VOUCHER_METADATA_KEY } from "./lib/voucher-cart-metadata";
+import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import { VOUCHER_NOTICE_METADATA_KEY } from "./lib/auto-remove-notice";
 
 export const removeVoucherWorkflowId = "remove-voucher";
@@ -80,18 +81,13 @@ export const removeVoucherWorkflow = createWorkflow(
     const assertion = assertActiveVoucherStep({ cart_id: input.cart_id });
 
     when({ assertion }, ({ assertion }) => !!assertion.active).then(() => {
-      const creditLineId = transform(
+      const adjustmentIds = transform(
         { assertion },
-        ({ assertion }) => assertion.active!.credit_line_id,
+        ({ assertion }) => assertion.active!.adjustment_ids,
       );
 
-      // Option-B carrier: the voucher discount lives on a cart credit line, not
-      // a Promotion — delete it to reverse the discount. The Cart module
-      // recomputes `total` from source (Rule 18/INT-03), never a stale patch.
-      deleteCartCreditLinesWorkflow.runAsStep({
-        input: transform({ creditLineId }, ({ creditLineId }) => ({
-          id: [creditLineId],
-        })),
+      removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: adjustmentIds,
       });
 
       clearVoucherCartMetadataStep({ cart_id: input.cart_id });

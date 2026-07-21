@@ -17,7 +17,7 @@ import type { ICartModuleService } from "@medusajs/framework/types";
 import {
   VOUCHER_METADATA_KEY,
   VoucherCartMetadata,
-} from "../lib/voucher-cart-metadata";
+} from "../lib/ephemeral-promotion";
 import { VOUCHER_NOTICE_METADATA_KEY } from "../lib/auto-remove-notice";
 
 export const writeVoucherCartMetadataStepId = "write-voucher-cart-metadata";

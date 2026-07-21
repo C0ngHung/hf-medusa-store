@@ -5,7 +5,7 @@ import { convertToLocale } from "@lib/util/money"
 import { fetchAvailableVouchers } from "@lib/data/voucher"
 import ErrorMessage from "@modules/checkout/components/error-message"
 import Modal from "@modules/common/components/modal"
-import { Button, Heading, Text } from "@modules/common/components/ui"
+import { Badge, Button, Heading, Text } from "@modules/common/components/ui"
 import type { AvailableVoucher } from "@modules/voucher/types"
 
 // Duplicated (not imported) deliberately — importing from "./index" here
@@ -28,22 +28,23 @@ type AvailableVouchersModalProps = {
  * "Available vouchers" list (UX-FLOW.md D6 — labeled "available", never "my
  * vouchers": there is no per-customer targeting model in the backend).
  *
- * `GET /store/customers/me/vouchers` is currently NOT public for guests: core
- * Medusa applies a blanket `authenticate("customer", ["session","bearer"])`
- * middleware to the wildcard path `/store/customers/me*`
- * (`@medusajs/medusa/dist/api/store/customers/middlewares.js`), which catches
- * this custom route too regardless of what its own handler does — verified
- * empirically against the running backend: an unauthenticated request to this
- * route returns `401 Unauthorized`, not a 200 with vouchers. This contradicts
- * an earlier (incorrect) claim that the route was unauthenticated/public.
+ * FIXED 2026-07-21: `fetchAvailableVouchers()` now calls the public
+ * `GET /store/vouchers` route instead of `GET /store/customers/me/vouchers`.
+ * The latter is NOT public for guests — core Medusa applies a blanket
+ * `authenticate("customer", ["session","bearer"])` middleware to the
+ * wildcard path `/store/customers/me*`
+ * (`@medusajs/medusa/dist/api/store/customers/middlewares.js`), which caught
+ * that route too regardless of what its own handler did (verified
+ * empirically: an unauthenticated request returned `401`, not a 200 with
+ * vouchers). `/store/vouchers` lives outside that prefix specifically so a
+ * guest can reach it and see every unrestricted (non-segment-gated) voucher;
+ * an authenticated customer additionally sees vouchers gated to a Customer
+ * Group they belong to — see that backend route's own header comment.
  *
- * This component doesn't special-case that 401 — `fetchAvailableVouchers()`
- * (`lib/data/voucher.ts`) catches any failure and resolves to `[]`, so a
- * guest simply sees the ordinary empty-list state ("No vouchers available
- * right now.") below, not an error. Whether the route should be made truly
- * public or should stay customer-gated (with a real sign-in-to-view state) is
- * an open product/backend decision — see
- * `docs/voucher-engine-ui/REQUIREMENTS.md` §2.
+ * `fetchAvailableVouchers()` (`lib/data/voucher.ts`) still catches any
+ * transport failure and resolves to `[]`, so an unrelated network error still
+ * degrades to the ordinary empty-list state ("Hiện chưa có voucher nào khả
+ * dụng.") below rather than an error — that part is unchanged.
  */
 const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
   isOpen,
@@ -88,87 +89,97 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
   return (
     <Modal isOpen={isOpen} close={close} data-testid="available-vouchers-modal">
       <Modal.Title>
-        <Heading className="mb-2">Available vouchers</Heading>
+        <Heading className="mb-2">Voucher khả dụng</Heading>
       </Modal.Title>
       <Modal.Body>
         <div className="flex flex-col gap-y-3 w-full">
           {vouchers === null && (
-            <Text className="text-ui-fg-subtle">Loading...</Text>
+            <Text className="text-ui-fg-subtle">Đang tải...</Text>
           )}
           {vouchers?.length === 0 && (
             <Text className="text-ui-fg-subtle">
-              No vouchers available right now.
+              Hiện chưa có voucher nào khả dụng.
             </Text>
           )}
-          {vouchers?.map((voucher) => {
-            // `eligible` is only present when this list was fetched with a
-            // cart id (see `cartId` prop) — `undefined` means "not computed",
-            // never treated as ineligible.
-            const isIneligible = voucher.eligible === false
-            return (
-              <div
-                key={voucher.code}
-                className="flex items-center justify-between gap-x-4 border rounded-md p-3"
-                data-testid="available-voucher-row"
-              >
-                <div className="flex flex-col text-left">
-                  <Text className="txt-small-plus">{voucher.code}</Text>
-                  <Text className="text-ui-fg-subtle text-small-regular">
-                    {voucher.description}
-                  </Text>
-                  {!isIneligible &&
-                    voucher.estimated_savings != null &&
-                    voucher.estimated_savings > 0 && (
-                      <Text
-                        className="text-ui-fg-interactive text-small-regular"
-                        data-testid="available-voucher-estimated-savings"
-                      >
-                        {`Tiết kiệm ~${convertToLocale({
-                          amount: voucher.estimated_savings,
-                          currency_code: currencyCode,
-                        })}`}
-                      </Text>
-                    )}
-                  {isIneligible ? (
-                    <Text
-                      className="text-ui-fg-error text-small-regular"
-                      data-testid="available-voucher-ineligible-reason"
-                    >
-                      {voucher.ineligible_reason}
-                    </Text>
-                  ) : (
-                    (voucher.min_order ||
-                      voucher.applicable_categories.length > 0) && (
-                      <Text className="text-ui-fg-subtle text-small-regular">
-                        {voucher.min_order
-                          ? `Min. order ${convertToLocale({
-                              amount: voucher.min_order,
-                              currency_code: currencyCode,
-                            })}`
-                          : null}
-                        {voucher.min_order &&
-                          voucher.applicable_categories.length > 0 &&
-                          " · "}
-                        {voucher.applicable_categories.length > 0
-                          ? `Applies to: ${voucher.applicable_categories.join(", ")}`
-                          : null}
-                      </Text>
-                    )
-                  )}
-                </div>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  isLoading={pendingCode === voucher.code}
-                  disabled={pendingCode !== null || isIneligible}
-                  onClick={() => handleApply(voucher.code)}
-                  data-testid="available-voucher-apply-button"
+          {/* 2026-07-22 fix: unbounded list overflowed the modal's own
+           * max-h-[75vh] with no scrollbar (Modal's Dialog.Panel caps total
+           * height but neither it nor this body added overflow handling) —
+           * capped + scrollable here instead so the title/trigger stay
+           * fixed and only the list itself scrolls. */}
+          <div className="flex flex-col gap-y-3 w-full max-h-[50vh] overflow-y-auto pr-1">
+            {vouchers?.map((voucher) => {
+              // `eligible` is only present when this list was fetched with a
+              // cart id (see `cartId` prop) — `undefined` means "not computed",
+              // never treated as ineligible.
+              const isIneligible = voucher.eligible === false
+              return (
+                <div
+                  key={voucher.code}
+                  className="flex items-center justify-between gap-x-4 border rounded-md p-3"
+                  data-testid="available-voucher-row"
                 >
-                  Apply
-                </Button>
-              </div>
-            )
-          })}
+                  <div className="flex flex-col text-left">
+                    <Text className="txt-small-plus flex items-center gap-x-2">
+                      {voucher.code}
+                      {!isIneligible &&
+                        voucher.estimated_savings != null &&
+                        voucher.estimated_savings > 0 && (
+                          <Badge
+                            color="green"
+                            data-testid="available-voucher-savings-badge"
+                          >
+                            Tiết kiệm{" "}
+                            {convertToLocale({
+                              amount: voucher.estimated_savings,
+                              currency_code: currencyCode,
+                            })}
+                          </Badge>
+                        )}
+                    </Text>
+                    <Text className="text-ui-fg-subtle text-small-regular">
+                      {voucher.description}
+                    </Text>
+                    {isIneligible ? (
+                      <Text
+                        className="text-ui-fg-error text-small-regular"
+                        data-testid="available-voucher-ineligible-reason"
+                      >
+                        {voucher.ineligible_reason}
+                      </Text>
+                    ) : (
+                      (voucher.min_order ||
+                        voucher.applicable_categories.length > 0) && (
+                        <Text className="text-ui-fg-subtle text-small-regular">
+                          {voucher.min_order
+                            ? `Đơn tối thiểu ${convertToLocale({
+                                amount: voucher.min_order,
+                                currency_code: currencyCode,
+                              })}`
+                            : null}
+                          {voucher.min_order &&
+                            voucher.applicable_categories.length > 0 &&
+                            " · "}
+                          {voucher.applicable_categories.length > 0
+                            ? `Áp dụng cho: ${voucher.applicable_categories.join(", ")}`
+                            : null}
+                        </Text>
+                      )
+                    )}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="small"
+                    isLoading={pendingCode === voucher.code}
+                    disabled={pendingCode !== null || isIneligible}
+                    onClick={() => handleApply(voucher.code)}
+                    data-testid="available-voucher-apply-button"
+                  >
+                    Áp dụng
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
           <ErrorMessage
             error={errorMessage}
             data-testid="available-vouchers-error"

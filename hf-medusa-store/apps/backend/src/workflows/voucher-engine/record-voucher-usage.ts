@@ -21,6 +21,17 @@
  * therefore runs unconditionally (safe with an empty `voucher_id` — it just
  * finds zero matching rows) and the two conditions are combined into ONE
  * top-level boolean.
+ *
+ * **No post-redemption cleanup step (Decision-4 carrier rewrite).** The
+ * former Backend-5B-1 step deleted the ephemeral Promotion entity that
+ * carried the voucher's discount, once redemption was durably recorded — a
+ * genuine cleanup need because that Promotion was a standalone DB row that
+ * would otherwise persist forever. Raw `LineItemAdjustment` rows (the current
+ * carrier, `steps/create-voucher-adjustments.ts`) have no equivalent
+ * standalone-entity leak: they already copied onto the order's own line
+ * items at `completeCartWorkflow` (verified: `complete-cart.js:344`,
+ * `item.adjustments ?? []` copied regardless of `code`) and are the
+ * permanent receipt record — there is nothing left to delete.
  */
 
 import {
@@ -32,6 +43,7 @@ import {
 import { assertOrderHasVoucherStep } from "./steps/assert-order-has-voucher";
 import { idempotencyCheckStep } from "./steps/idempotency-check";
 import { atomicRedeemStep } from "./steps/atomic-redeem";
+import { resolveVoucherUsageLimitStep } from "./steps/resolve-voucher-usage-limit";
 
 export const recordVoucherUsageWorkflowId = "record-voucher-usage";
 
@@ -60,12 +72,27 @@ export const recordVoucherUsageWorkflow = createWorkflow(
         orderVoucher.has_voucher && !idempotency.already_processed,
     );
 
+    // Decision 3 (2026-07-20) — resolve the LIVE global usage limit from the
+    // linked Promotion's Campaign budget right before redemption; never trust
+    // the raw `voucher_config.usage_limit` column, which can go stale (see
+    // `resolve-voucher-usage-limit.ts`'s header). Unconditional, like the
+    // other reads above — safe with an empty `voucher_id` (resolves to
+    // `null`, i.e. unlimited, a no-op default only ever used inside the
+    // `shouldRedeem` branch below).
+    const liveUsageLimit = resolveVoucherUsageLimitStep({
+      voucher_id: transform(
+        { orderVoucher },
+        ({ orderVoucher }) => orderVoucher.snapshot?.voucher_id,
+      ),
+    });
+
     when({ shouldRedeem }, ({ shouldRedeem }) => shouldRedeem).then(() => {
       atomicRedeemStep({
         voucher_id: transform(
           { orderVoucher },
           ({ orderVoucher }) => orderVoucher.snapshot!.voucher_id,
         ),
+        usage_limit: liveUsageLimit.usage_limit,
         log_entry: transform(
           { input, orderVoucher },
           ({ input, orderVoucher }) => {

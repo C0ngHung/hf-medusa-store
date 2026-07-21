@@ -64,10 +64,16 @@ export interface VoucherSnapshot {
   /** V6 scope: null/empty ⇒ unscoped. */
   applicable_product_ids: string[] | null;
   applicable_category_ids: string[] | null;
-  /** V7: segment rules (schema undefined in SRS — Day 3 treats as pass-through). */
+  /**
+   * V7: segment rules. `null` ⇒ unrestricted. Configured shape is
+   * `{ customer_group_ids: string[] }` — the customer must belong to at least
+   * one listed native Medusa Customer Group (SPEC Decision J; no CRM model
+   * exists in this codebase, so native Customer Groups are the approved
+   * source, see `lib/customer-segment.ts`). Any other/empty shape has no
+   * group that can ever match, so it fails closed — there is no established
+   * convention treating an empty condition as unrestricted.
+   */
   user_segment_conditions: Record<string, unknown> | null;
-  /** V8: false ⇒ cannot combine with item-level promotions. */
-  stackable_with_promotions: boolean;
 }
 
 /** One cart line, reduced to what V5/V6 need. Integer VND. */
@@ -78,13 +84,31 @@ export interface CartLineSnapshot {
   unit_price: number;
 }
 
-/** Cart data the chain needs (V5 subtotal, V6 scope, V8 stacking). */
+/** Cart data the chain needs (V5 subtotal, V6 scope). */
 export interface CartSnapshot {
   /** V5 (decision D3): ORIGINAL pre-promotion subtotal, integer VND. */
   original_subtotal: number;
   items: CartLineSnapshot[];
-  /** V8: true if the cart already has ≥1 item-level promotion applied. */
+  /**
+   * Unused by any validator since V8/`stackable_with_promotions` was removed
+   * (rebuild-decisions.md decision 2, 2026-07-20) — item promotions and the
+   * Voucher always stack now. Kept on the type (still populated by
+   * `mappers.ts`'s `toCartSnapshot`) only because removing it is a pure
+   * cleanup with no behavior change; a future pass may drop it.
+   */
   has_item_promotion: boolean;
+}
+
+/**
+ * V7: the current customer's identity + native Medusa Customer Group
+ * membership, pre-resolved by the caller (`lib/customer-segment.ts`) — the
+ * pure chain performs no I/O itself. `customer_id: null` ⇒ guest / no
+ * customer resolved; a configured segment condition can never pass for a
+ * guest.
+ */
+export interface CustomerSegmentSnapshot {
+  customer_id: string | null;
+  group_ids: string[];
 }
 
 /** Full input to the V1–V8 chain. Assembled by the caller from DB + cart reads. */
@@ -96,4 +120,6 @@ export interface VoucherValidationContext {
   cart: CartSnapshot;
   /** V4: count from voucher_usage_log(voucher_id, customer_id), supplied by caller. */
   user_usage_count: number;
+  /** V7: pre-resolved customer segment/group membership. */
+  customer_segment: CustomerSegmentSnapshot;
 }
