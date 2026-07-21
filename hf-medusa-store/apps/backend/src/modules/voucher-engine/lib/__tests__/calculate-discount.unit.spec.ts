@@ -255,6 +255,33 @@ describe("voucher-engine lib/calculate-discount", () => {
     });
   });
 
+  describe("calculateVoucherDiscount — EC-03 (SRS §8: cart total floors at 1 VND, never 0)", () => {
+    it("floors expected_final_cart_total at 1 VND when item promotion alone consumes the entire subtotal", () => {
+      // SRS EC-03: "cart total always > 0 (minimum 1 VND after all discounts)".
+      // Item promo = 100% of subtotal on its own (never reduced by this engine,
+      // per Rule 6) -> today's clampMin(..., 0) yields exactly 0, not 1.
+      const lines: LineValue[] = [
+        {
+          line_id: "item",
+          unit_price: 1_000_000,
+          quantity: 1,
+          item_promotion_discount: 1_000_000,
+          is_eligible: true,
+        },
+      ];
+
+      const result = calculateVoucherDiscount({
+        lines,
+        discount_type: "percentage",
+        discount_value: 5000, // 50%
+        max_discount_amount: null,
+        global_cap_bps: GLOBAL_CAP_BPS,
+      });
+
+      expect(result.expected_final_cart_total).toBe(1);
+    });
+  });
+
   describe("calculateVoucherDiscount — fixed-amount voucher (SRS §22.2)", () => {
     it("does not exceed the eligible post-promotion subtotal", () => {
       const lines: LineValue[] = [

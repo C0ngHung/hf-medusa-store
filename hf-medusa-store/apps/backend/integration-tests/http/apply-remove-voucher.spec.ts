@@ -392,6 +392,47 @@ medusaIntegrationTestRunner({
         expect(status).toBe(200);
         expect(data.success).toBe(true);
       });
+
+      it("allows applying the same per_user_limit=1 voucher again in the same session after removing it — usage is only consumed at order placement (SRS §8 EC-06)", async () => {
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_ec06",
+          },
+        ]);
+        await createVoucher({
+          code: "REAPPLY10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+          per_user_limit: 1,
+        });
+
+        const first = await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "REAPPLY10" },
+          publishableKeyHeaders,
+        );
+        expect(first.status).toBe(200);
+
+        const removed = await api.delete(
+          `/store/carts/${cart.id}/voucher`,
+          publishableKeyHeaders,
+        );
+        expect(removed.status).toBe(200);
+
+        // Re-apply in the same session: per_user_limit=1 must NOT block this,
+        // because usage_count/VoucherUsageLog are only written by
+        // recordVoucherUsageWorkflow on order.placed — never on apply/remove.
+        const second = await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "REAPPLY10" },
+          publishableKeyHeaders,
+        );
+        expect(second.status).toBe(200);
+        expect(second.data.discount_amount).toBe(100_000);
+      });
     });
   },
 });
