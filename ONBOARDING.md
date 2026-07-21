@@ -55,9 +55,10 @@ npx medusa db:migrate
 1. Catalog: Store (VND) + region Vietnam + sales channel + publishable API key + **9 category, 30 sản phẩm** kèm ảnh S3
 2. SuggestiveSelling: 6 mapping Tier-2 (`Rackets→Strings/Grips/Bags`, `Shoes→Socks/Insoles`, `Shuttlecocks→Tubes`) + Tier-1 product rules + bulk mapping + **4 cart rule CR-01…CR-04** kèm điều kiện (chạy section "Bạn có thể cần thêm" trên giỏ — thiếu chúng thì giỏ không hiện gợi ý)
 3. VoucherEngine: voucher configs + global cap 50%
-4. Customers: 3 account demo (xem [DEMO_SCENARIOS.md](./DEMO_SCENARIOS.md))
-5. Orders: đơn mẫu cho 3 account
-6. Job top-seller: aggregate order → `category_top_seller` (Tier-2 ranking từ đơn hàng thật)
+4. Voucher cap demo: promotion tự động `DEMO-CAP-CONFLICT-40` (giảm 40% trên `yonex-bg65`) để demo sống rule stacking + cap 50% (VOUCH-003) — thêm sản phẩm vào giỏ rồi áp bất kỳ voucher nào (SAVE10/MEGA20/SHUTTLE20), kỳ vọng thành công và bị cap đúng 50% original subtotal
+5. Customers: 3 account demo (xem [DEMO_SCENARIOS.md](./DEMO_SCENARIOS.md))
+6. Orders: đơn mẫu cho 3 account
+7. Job top-seller: aggregate order → `category_top_seller` (Tier-2 ranking từ đơn hàng thật)
 
 > Idempotent: nếu DB đã seed (đã có "Default Sales Channel") thì **toàn bộ** bước seed tự bỏ qua.
 > Mỗi seed con vẫn chạy tay được (vd `npx medusa exec ./src/scripts/seed-suggestive-selling.ts`).
@@ -118,6 +119,7 @@ docker exec hf_medusa_postgres psql -U hfmedusa -d postgres -c "CREATE DATABASE 
 | Migrate + seed TẤT CẢ (chain)    | `npx medusa db:migrate`                                      |
 | Seed suggestive (chạy tay)       | `npx medusa exec ./src/scripts/seed-suggestive-selling.ts`   |
 | Seed voucher (chạy tay)          | `npx medusa exec ./src/scripts/seed-voucher-engine.ts`       |
+| Seed voucher cap demo (chạy tay) | `npx medusa exec ./src/scripts/seed-voucher-cap-demo.ts`     |
 | Seed customer demo               | `npx medusa exec ./src/scripts/seed-customers.ts`            |
 | Seed order demo                  | `npx medusa exec ./src/scripts/seed-orders.ts`               |
 | Build top-seller từ order        | `npx medusa exec ./src/scripts/run-topseller-job.ts`         |

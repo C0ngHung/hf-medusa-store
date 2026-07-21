@@ -25,7 +25,7 @@ import type { IOrderModuleService } from "@medusajs/framework/types";
 import { VOUCHER_ENGINE_MODULE } from "../../src/modules/voucher-engine";
 import type VoucherEngineService from "../../src/modules/voucher-engine/service";
 import { recordVoucherUsageWorkflow } from "../../src/workflows/voucher-engine/record-voucher-usage";
-import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/ephemeral-promotion";
+import { VOUCHER_METADATA_KEY } from "../../src/workflows/voucher-engine/lib/voucher-cart-metadata";
 
 jest.setTimeout(60_000);
 // Known infra flake (not an assertion failure) — see
@@ -64,8 +64,7 @@ medusaIntegrationTestRunner({
         const snapshot = {
           voucher_id: voucher.id,
           code: voucher.code,
-          ephemeral_promotion_id: "promo_test_fixture",
-          ephemeral_code: "VEPH-TEST-FIXTURE",
+          credit_line_id: "crline_test_fixture",
           discount_type: voucher.discount_type,
           discount_value: voucher.discount_value,
           uncapped_voucher_discount: 200_000,

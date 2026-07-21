@@ -29,6 +29,24 @@
  * current item-promotion state, which isn't relevant to "does this cart
  * qualify by category/subtotal" — matches the classic "wrong product/cart
  * too small" cases this feature targets.
+ *
+ * Task 6 (read-through list): shared fields (code/discount_type/discount_value/
+ * is_active/window/usage_limit) now live on the linked Promotion (Decision I),
+ * so every voucher_config row is batch-hydrated via the shared
+ * `hydrateVouchersFromPromotions` helper (also used by `GET /admin/vouchers`
+ * — Task 6 L1 dedupe) before building the DTO — the exact same overlay
+ * `lookupVoucherStep` applies at apply-time
+ * (workflows/voucher-engine/steps/lookup-voucher.ts), just batched over the
+ * whole list instead of a single code. M1 fix: the list is read WITHOUT a DB
+ * `is_active` pre-filter (that column can be stale relative to the linked
+ * Promotion) — the post-hydration filter below is what actually gates on
+ * is_active + validity window, using the hydrated (promotion-sourced) values.
+ * When `?cart_id=` is supplied,
+ * each voucher also gets an `estimated_savings` (ported/adapted from a
+ * colleague's branch feature) computed via the same pure
+ * `resolveEligibleItems`/`calculateVoucherDiscount` the real apply-time
+ * discount math uses (global cap included, INT-01/security.md), and the list
+ * is sorted eligible-first, then by `estimated_savings` descending.
  */
 
 import { MedusaRequest, MedusaResponse } from "@medusajs/framework/http";
@@ -39,6 +57,11 @@ import {
   sumInts,
   toInt,
 } from "../../../../../modules/voucher-engine/lib/money";
+import {
+  calculateVoucherDiscount,
+  resolveEligibleItems,
+  type LineValue,
+} from "../../../../../modules/voucher-engine/lib/calculate-discount";
 import {
   v5MinOrder,
   v6Scope,
@@ -52,6 +75,7 @@ import type {
   CartSnapshot,
   VoucherSnapshot,
 } from "../../../../../workflows/voucher-engine/lib/types";
+import { hydrateVouchersFromPromotions } from "../../../../../workflows/voucher-engine/lib/hydrate-voucher-from-promotion";
 
 interface StoreVoucherDTO {
   code: string;
@@ -64,13 +88,18 @@ interface StoreVoucherDTO {
   /** Only present when `?cart_id=` was supplied. */
   eligible?: boolean;
   ineligible_reason?: string;
+  /** Only present when `?cart_id=` was supplied (Task 6, ported feature). */
+  estimated_savings?: number;
 }
 
 /** The subset of `voucher_config` this route reads. Matches the model 1:1
  * (see `modules/voucher-engine/models/voucher-config.ts`) — `listVoucherConfigs`
  * with no `select` returns every column; this only narrows the compile-time
- * view to what's actually used below. */
+ * view to what's actually used below. `id`/`promotion_id` are read so the
+ * batch Promotion hydration (Task 6, Decision I) can look up each voucher's
+ * linked Promotion. */
 interface RawVoucherConfig {
+  id: string;
   code: string;
   discount_type: "percentage" | "fixed_amount";
   discount_value: number;
@@ -86,6 +115,50 @@ interface RawVoucherConfig {
   is_active: boolean;
   valid_from: unknown;
   valid_to: unknown;
+  promotion_id: string | null;
+}
+
+/**
+ * Task 6 (ported feature, adapted to read-through) — the discount this
+ * voucher WOULD produce against the cart's current contents, using the exact
+ * same pure calculation the real apply-time flow uses
+ * (`resolveEligibleItems` + `calculateVoucherDiscount`). `item_promotion_discount`
+ * is 0 for every line (this preview is basis-agnostic of any item promo
+ * currently on the cart, matching V5's ORIGINAL-subtotal basis, decision D3)
+ * and `global_cap_bps` is the live active cap (security.md — the 50% cap
+ * always applies, even to an estimate). `line_id` is synthetic (index-based):
+ * it's only used for error-message context inside the pure calculator, never
+ * for identity/persistence.
+ */
+function estimateVoucherSavings(
+  voucher: RawVoucherConfig,
+  cart: CartSnapshot,
+  globalCapBps: number,
+): number {
+  const lines: LineValue[] = cart.items.map((item, index) => ({
+    line_id: `line-${index}`,
+    unit_price: item.unit_price,
+    quantity: item.quantity,
+    item_promotion_discount: 0,
+    is_eligible: false,
+    product_id: item.product_id,
+    category_ids: item.category_ids,
+  }));
+
+  const scopedLines = resolveEligibleItems(lines, {
+    product_ids: voucher.applicable_product_ids ?? [],
+    category_ids: voucher.applicable_category_ids ?? [],
+  });
+
+  const { final_voucher_discount } = calculateVoucherDiscount({
+    lines: scopedLines,
+    discount_type: voucher.discount_type,
+    discount_value: voucher.discount_value,
+    max_discount_amount: voucher.max_discount_amount,
+    global_cap_bps: globalCapBps,
+  });
+
+  return final_voucher_discount;
 }
 
 function describeVoucher(voucher: {
@@ -193,15 +266,27 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   const ve = req.scope.resolve(VOUCHER_ENGINE_MODULE) as VoucherEngineService;
 
   const now = new Date();
-  const active = (await ve.listVoucherConfigs(
-    { is_active: true },
+  // Task 6 / M1 fix (Decision I): do NOT pre-filter on the DB's `is_active`
+  // column here — it can be stale relative to the linked Promotion (the
+  // actual source of truth for is_active per Decision I). Filtering on it
+  // before hydration could wrongly HIDE a voucher whose Promotion is active.
+  // List every config row, hydrate from the Promotion, THEN filter below on
+  // the hydrated is_active + validity window.
+  const all = (await ve.listVoucherConfigs(
+    {},
     { take: 1000 },
   )) as RawVoucherConfig[];
 
-  const currentlyValid = active.filter((v) => {
+  // Task 6 (Decision I) — overlay each voucher's linked Promotion BEFORE the
+  // validity-window filter below, so `valid_from`/`valid_to`/`is_active`
+  // reflect the promotion (the source of truth), not a possibly-stale
+  // voucher_config snapshot.
+  const hydrated = await hydrateVouchersFromPromotions(req.scope, all);
+
+  const currentlyValid = hydrated.filter((v) => {
     const from = new Date(v.valid_from as string);
     const to = new Date(v.valid_to as string);
-    return from <= now && now <= to;
+    return v.is_active && from <= now && now <= to;
   });
 
   // Resolve category ids -> names for display (API_CONTRACT §1.3 `applicable_categories`).
@@ -225,6 +310,9 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
   const cartSnapshot = cartId
     ? await loadEligibilityCartSnapshot(req.scope, cartId)
     : null;
+  // Only resolved when a cart is present — no need to touch DiscountCapConfig
+  // for the cart-less list.
+  const globalCapBps = cartSnapshot ? await ve.getActiveCap() : 0;
 
   const vouchers: StoreVoucherDTO[] = currentlyValid.map((v) => {
     const base: StoreVoucherDTO = {
@@ -239,8 +327,20 @@ export const GET = async (req: MedusaRequest, res: MedusaResponse) => {
         .filter((name): name is string => !!name),
     };
     if (!cartSnapshot) return base;
-    return { ...base, ...checkCartEligibility(v, cartSnapshot) };
+    return {
+      ...base,
+      ...checkCartEligibility(v, cartSnapshot),
+      estimated_savings: estimateVoucherSavings(v, cartSnapshot, globalCapBps),
+    };
   });
 
-  res.json({ vouchers });
+  // Task 6 (ported/adapted) — eligible-first, then biggest-savings-first.
+  const sorted = cartSnapshot
+    ? [...vouchers].sort((a, b) => {
+        if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+        return (b.estimated_savings ?? 0) - (a.estimated_savings ?? 0);
+      })
+    : vouchers;
+
+  res.json({ vouchers: sorted });
 };

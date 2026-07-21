@@ -9,7 +9,6 @@ import type {
   SuggestionRule,
   VoucherAnalytics,
   VoucherConfig,
-  VoucherDiscountType,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
@@ -226,50 +225,13 @@ export const useSuggestionEvents = (filters: EventFilters = {}) =>
   });
 
 /* ------------------------------------------------------------------ */
-/* VoucherEngine — admin list + create + analytics (SRS §6.4)          */
-/* Reads/writes ONLY the VoucherConfig table via /admin/vouchers* —    */
-/* never the native Promotion list (SPEC Decision C/G).                */
+/* VoucherEngine — analytics (SRS §6.4)                                 */
+/* Reads ONLY the VoucherConfig table via /admin/vouchers* — never the  */
+/* native Promotion list (SPEC Decision C/G). The list UI was removed   */
+/* 2026-07-20 in favor of inline widgets on the Promotion detail page.  */
 /* ------------------------------------------------------------------ */
 
 const VOUCHERS_KEY = ["vouchers"];
-
-export const useVouchers = () =>
-  useQuery({
-    queryKey: VOUCHERS_KEY,
-    queryFn: () =>
-      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
-        "/admin/vouchers",
-        { query: { limit: 200 } },
-      ),
-  });
-
-export type CreateVoucherPayload = {
-  code?: string;
-  discount_type: VoucherDiscountType;
-  discount_value: number;
-  min_order_value?: number | null;
-  max_discount_amount?: number | null;
-  applicable_product_ids?: string[] | null;
-  applicable_category_ids?: string[] | null;
-  stackable_with_promotions?: boolean;
-  per_user_limit?: number;
-  usage_limit?: number | null;
-  valid_from: string;
-  valid_to: string;
-  is_active?: boolean;
-};
-
-export const useCreateVoucher = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: CreateVoucherPayload) =>
-      sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
-        method: "POST",
-        body,
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
-  });
-};
 
 export const useVoucherAnalytics = (id: string) =>
   useQuery({
@@ -281,3 +243,72 @@ export const useVoucherAnalytics = (id: string) =>
         `/admin/vouchers/${id}/analytics`,
       ),
   });
+
+/* ------------------------------------------------------------------ */
+/* VoucherEngine — promotion-detail "Voucher settings" widget (Task 7). */
+/* Attach/edit/detach a voucher_config directly from the native         */
+/* Promotion detail page (@medusajs/admin-sdk zone                      */
+/* "promotion.details.side.after") — same /admin/vouchers* endpoints,   */
+/* attach mode (Task 4) / PUT (Task 5) / DELETE (Task 5), never the     */
+/* full create-mode body (discount/window/code live on the Promotion).  */
+/* ------------------------------------------------------------------ */
+
+/** The voucher-only fields both attach (POST) and edit (PUT) accept. */
+export type VoucherOnlyFields = {
+  min_order_value?: number | null;
+  max_discount_amount?: number | null;
+  applicable_product_ids?: string[] | null;
+  applicable_category_ids?: string[] | null;
+  stackable_with_promotions?: boolean;
+  per_user_limit?: number;
+  user_segment_conditions?: Record<string, unknown> | null;
+};
+
+export type AttachVoucherPayload = VoucherOnlyFields & {
+  promotion_id: string;
+};
+
+/** Look up the (at most one) voucher_config attached to a Promotion. */
+export const useVoucherByPromotion = (promotionId?: string) =>
+  useQuery({
+    queryKey: [...VOUCHERS_KEY, "by-promotion", promotionId],
+    enabled: !!promotionId,
+    queryFn: () =>
+      sdk.client.fetch<{ vouchers: VoucherConfig[]; count: number }>(
+        "/admin/vouchers",
+        { query: { promotion_id: promotionId, limit: 1 } },
+      ),
+  });
+
+export const useAttachVoucher = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AttachVoucherPayload) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>("/admin/vouchers", {
+        method: "POST",
+        body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};
+
+export const useUpdateVoucherFields = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VoucherOnlyFields) =>
+      sdk.client.fetch<{ voucher: VoucherConfig }>(`/admin/vouchers/${id}`, {
+        method: "PUT",
+        body,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};
+
+export const useDeleteVoucher = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      sdk.client.fetch(`/admin/vouchers/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: VOUCHERS_KEY }),
+  });
+};

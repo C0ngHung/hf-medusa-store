@@ -116,6 +116,19 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
                   <Text className="text-ui-fg-subtle text-small-regular">
                     {voucher.description}
                   </Text>
+                  {!isIneligible &&
+                    voucher.estimated_savings != null &&
+                    voucher.estimated_savings > 0 && (
+                      <Text
+                        className="text-ui-fg-interactive text-small-regular"
+                        data-testid="available-voucher-estimated-savings"
+                      >
+                        {`Tiết kiệm ~${convertToLocale({
+                          amount: voucher.estimated_savings,
+                          currency_code: currencyCode,
+                        })}`}
+                      </Text>
+                    )}
                   {isIneligible ? (
                     <Text
                       className="text-ui-fg-error text-small-regular"

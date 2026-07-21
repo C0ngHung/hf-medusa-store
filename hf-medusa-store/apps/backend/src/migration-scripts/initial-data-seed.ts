@@ -23,6 +23,7 @@ import { S3_IMAGES } from "../data/product-images.generated";
 import { FREE_SHIPPING_THRESHOLD } from "../modules/suggestive-selling/constants";
 import seedSuggestiveSelling from "../scripts/seed-suggestive-selling";
 import seedVoucherEngine from "../scripts/seed-voucher-engine";
+import seedVoucherCapDemo from "../scripts/seed-voucher-cap-demo";
 import seedCustomers from "../scripts/seed-customers";
 import seedOrders from "../scripts/seed-orders";
 import computeCategoryTopSellers from "../jobs/compute-category-top-sellers";
@@ -810,19 +811,23 @@ export default async function initial_data_seed({
   // Ordered by dependency — each step is idempotent, so re-running migrate is safe:
   //   1. suggestive     — rules / complement maps / bulk mappings (needs catalog)
   //   2. voucher        — voucher configs + global cap (needs categories)
-  //   3. customers      — login-capable demo accounts (see DEMO_SCENARIOS.md)
-  //   4. orders         — demo orders for those customers (needs customers + products)
-  //   5. top-seller job — aggregate those orders → category_top_seller snapshot
+  //   3. voucher-cap-demo — automatic item-level Promotion on "yonex-bg65" so
+  //      VOUCH-003's stacking + 50% cap rule (Rule 1/2/6) can be demoed live
+  //      against a real item promo, not just unit tests (needs catalog).
+  //   4. customers      — login-capable demo accounts (see DEMO_SCENARIOS.md)
+  //   5. orders         — demo orders for those customers (needs customers + products)
+  //   6. top-seller job — aggregate those orders → category_top_seller snapshot
   //      (SUGG-001 Tier 2 / SPEC A.6). Runs the REAL job so the Tier-2 ranking is
   //      order-derived; `seed-category-top-sellers.ts` stays a synthetic cold-start
   //      fallback for a DB with no orders.
   logger.info(
-    "[seed] chaining module seeds (suggestive → voucher → customers → orders → top-sellers)...",
+    "[seed] chaining module seeds (suggestive → voucher → voucher-cap-demo → customers → orders → top-sellers)...",
   );
   // The seeds are authored as `medusa exec` scripts (ExecArgs = { container, args }).
   const execArgs = { container, args: [] as string[] };
   await seedSuggestiveSelling(execArgs);
   await seedVoucherEngine(execArgs);
+  await seedVoucherCapDemo(execArgs);
   await seedCustomers(execArgs);
   await seedOrders(execArgs);
   await computeCategoryTopSellers(container);

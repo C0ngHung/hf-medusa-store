@@ -76,7 +76,14 @@ medusaIntegrationTestRunner({
         title,
         status: "published" as const,
         options: [{ title: "Default", values: ["OS"] }],
-        variants: [{ title: "OS", options: { Default: "OS" } }],
+        // manage_inventory: false — untracked/always-purchasable. This suite
+        // tests Tier-1 ordering/dismissal, not stock; without this flag these
+        // raw-created variants have zero inventory items, so
+        // isProductInStock() (pipeline.ts BR-02b) correctly reports them
+        // out-of-stock and BR-02 filters every candidate, emptying the result.
+        variants: [
+          { title: "OS", options: { Default: "OS" }, manage_inventory: false },
+        ],
       });
 
       beforeEach(async () => {

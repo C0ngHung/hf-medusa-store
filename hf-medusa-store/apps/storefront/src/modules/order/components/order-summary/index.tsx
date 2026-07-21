@@ -17,6 +17,14 @@ const OrderSummary = ({ order }: OrderSummaryProps) => {
     })
   }
 
+  // VoucherEngine's discount is carried by a credit line (SPEC Decision H), so
+  // it lands in `credit_line_total`, NOT `discount_total` (which holds only
+  // native item/order promotions). Surface it as its own row so the customer
+  // sees the voucher reflected post-purchase. `credit_line_total` is not on the
+  // published StoreOrder type, so read it defensively.
+  const creditLineTotal =
+    (order as { credit_line_total?: number | null }).credit_line_total ?? 0
+
   return (
     <div>
       <h2 className="text-base-semi">Order Summary</h2>
@@ -30,6 +38,12 @@ const OrderSummary = ({ order }: OrderSummaryProps) => {
             <div className="flex items-center justify-between">
               <span>Discount</span>
               <span>- {getAmount(order.discount_total)}</span>
+            </div>
+          )}
+          {creditLineTotal > 0 && (
+            <div className="flex items-center justify-between">
+              <span>Voucher</span>
+              <span>- {getAmount(creditLineTotal)}</span>
             </div>
           )}
           {order.gift_card_total > 0 && (

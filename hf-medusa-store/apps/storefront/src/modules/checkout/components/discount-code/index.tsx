@@ -63,12 +63,11 @@ const alreadyActiveVi = (code: string) => `Bạn đang dùng mã ${code} rồi.`
  * Apply button, and one applied-codes list. There is no second,
  * voucher-specific input anywhere in this component.
  *
- * VoucherEngine's discount is carried by an ephemeral, cart-specific Medusa
- * Promotion (SPEC Decision G) that DOES appear in `cart.promotions` — it is
- * filtered out of the rows rendered here (identified via
- * `cart.metadata.voucher.ephemeral_promotion_id`) and rendered instead as a
- * dedicated voucher row sourced from `cart.metadata.voucher`, using the
- * HUMAN voucher code, never the ephemeral entry's own internal code.
+ * VoucherEngine's discount is carried by a `cart.credit_lines` entry (SPEC
+ * Decision H), NOT a promotion — so it never appears in `cart.promotions` and
+ * needs no filtering out of the generic list here. It is rendered as a
+ * dedicated voucher row sourced from `cart.metadata.voucher`, using the HUMAN
+ * voucher code.
  */
 
 type DiscountCodeProps = {
@@ -123,20 +122,14 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   const { promotions: allPromotions = [] } = cart
 
   const voucherMeta = readVoucherMetadata(cart)
-  const voucherPromotionId = voucherMeta?.ephemeral_promotion_id
 
-  // VoucherEngine's ephemeral, cart-specific Promotion (SPEC Decision G) must
-  // never surface in this GENERIC promotions list — it gets its own row
-  // below, sourced from cart.metadata.voucher. It MUST still be preserved
-  // whenever this component resubmits the full `promo_codes` array
-  // (`applyPromotions` is a full-array-replace call), otherwise
-  // adding/removing an unrelated generic code would silently detach the
-  // active voucher — see `applyGenericCode`/`removeGenericCode` below, which
-  // always build their arrays from `allPromotions` (unfiltered), never
-  // `displayedPromotions`.
-  const displayedPromotions = allPromotions.filter(
-    (promotion) => promotion.id !== voucherPromotionId,
-  )
+  // VoucherEngine's discount rides a `cart.credit_lines` entry (SPEC Decision
+  // H), NOT a promotion, so it never appears in `cart.promotions` — no
+  // filtering needed and it cannot be accidentally detached by an unrelated
+  // generic promo-code change (those build `promo_codes` from `allPromotions`,
+  // which never contains the voucher). The voucher gets its own row below,
+  // sourced from `cart.metadata.voucher`.
+  const displayedPromotions = allPromotions
 
   const [activeVoucher, setActiveVoucher] = useState<DisplayedVoucher | null>(
     () => (voucherMeta ? toDisplayedVoucher(voucherMeta) : null),
@@ -518,12 +511,13 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
               className="flex items-center justify-between w-full max-w-full"
               data-testid="discount-row"
             >
-              <Text className="flex gap-x-1 items-baseline txt-small-plus w-4/5 pr-1">
+              <Text
+                className={`flex gap-x-1 items-baseline txt-small-plus pr-1 ${
+                  promotion.is_automatic ? "w-full" : "w-4/5"
+                }`}
+              >
                 <span className="truncate" data-testid="discount-code-value">
-                  <Badge color={promotion.is_automatic ? "green" : "grey"}>
-                    {promotion.code}
-                  </Badge>{" "}
-                  (
+                  <Badge color="grey">{promotion.code}</Badge> (
                   {promotion.application_method?.value !== undefined &&
                     promotion.application_method.currency_code !==
                       undefined && (
@@ -539,6 +533,14 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                     )}
                   )
                 </span>
+                {promotion.is_automatic && (
+                  <span
+                    className="text-ui-fg-subtle shrink-0 whitespace-nowrap"
+                    data-testid="auto-applied-label"
+                  >
+                    Auto-applied
+                  </span>
+                )}
               </Text>
               {!promotion.is_automatic && (
                 <button
