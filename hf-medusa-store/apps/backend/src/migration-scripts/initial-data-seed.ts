@@ -530,11 +530,12 @@ type VoucherSeed = {
 type AutoPromotionSeed = {
   code: string;
   discountPercent: number;
-  productHandle: string;
-  status: "active" | "inactive";
+  categoryScope: (typeof CATEGORY_NAMES)[number];
   note: string;
 };
 
+// Voucher/automatic-promotion fixtures are intentionally sourced from
+// docs/voucher-engine/MANUAL_TEST_SCRIPT_VOUCHER_ENGINE.vi.md §1.3.
 const VOUCHER_SEEDS: VoucherSeed[] = [
   {
     code: "SAVE10",
@@ -601,30 +602,26 @@ const AUTO_PROMOTION_SEEDS: AutoPromotionSeed[] = [
   {
     code: "AUTO20_RACKET",
     discountPercent: 20,
-    productHandle: "yonex-astrox-99-pro",
-    status: "active",
-    note: "Default active fixture for T-VOUCH-07.",
+    categoryScope: "Rackets",
+    note: "T-VOUCH-07 happy path.",
   },
   {
     code: "AUTO40_RACKET",
     discountPercent: 40,
-    productHandle: "yonex-astrox-99-pro",
-    status: "inactive",
-    note: "Inactive by default. Activate only after disabling AUTO20_RACKET for T-VOUCH-08.",
+    categoryScope: "Rackets",
+    note: "T-VOUCH-08 cap exceeded.",
   },
   {
     code: "AUTO30_STRING",
     discountPercent: 30,
-    productHandle: "yonex-bg80-power",
-    status: "inactive",
-    note: "Inactive by default. Activate together with AUTO40_RACKET for T-VOUCH-08.",
+    categoryScope: "Strings",
+    note: "T-VOUCH-08 suggested/string item.",
   },
   {
     code: "AUTO50_SUGGESTED",
     discountPercent: 50,
-    productHandle: "yonex-bg65",
-    status: "inactive",
-    note: "Inactive by default. Activate only for T-VOUCH-09.",
+    categoryScope: "Strings",
+    note: "T-VOUCH-09 negative-total prevention with suggested item/category.",
   },
 ];
 
@@ -653,7 +650,6 @@ function voucherWindow(offset: VoucherSeed["validOffset"] = "active") {
 async function seedVoucherAndPromotionFixtures(
   container: MedusaContainer,
   categoryIdByName: Map<string, string>,
-  productIdByHandle: Map<string, string>,
 ) {
   const logger = container.resolve(ContainerRegistrationKeys.LOGGER);
   const promotionModule: any = container.resolve(Modules.PROMOTION);
@@ -748,10 +744,10 @@ async function seedVoucherAndPromotionFixtures(
   }
 
   for (const promotion of AUTO_PROMOTION_SEEDS) {
-    const productId = productIdByHandle.get(promotion.productHandle);
-    if (!productId) {
+    const categoryId = categoryIdByName.get(promotion.categoryScope);
+    if (!categoryId) {
       logger.warn(
-        `[seed:promotion] product "${promotion.productHandle}" not found — skip ${promotion.code}.`,
+        `[seed:promotion] category "${promotion.categoryScope}" not found — skip ${promotion.code}.`,
       );
       continue;
     }
@@ -762,7 +758,7 @@ async function seedVoucherAndPromotionFixtures(
           {
             code: promotion.code,
             type: "standard" as const,
-            status: promotion.status,
+            status: "active" as const,
             is_automatic: true,
             application_method: {
               type: "percentage" as const,
@@ -772,9 +768,9 @@ async function seedVoucherAndPromotionFixtures(
               currency_code: "vnd",
               target_rules: [
                 {
-                  attribute: "items.product_id",
+                  attribute: "items.product.categories.id",
                   operator: "eq",
-                  values: [productId],
+                  values: [categoryId],
                 },
               ],
             },
@@ -783,7 +779,7 @@ async function seedVoucherAndPromotionFixtures(
       },
     });
     logger.info(
-      `[seed:promotion] ${promotion.code} (${promotion.status}) — ${promotion.note}`,
+      `[seed:promotion] ${promotion.code} (active, ${promotion.categoryScope}) — ${promotion.note}`,
     );
   }
 
@@ -1088,17 +1084,8 @@ export default async function initial_data_seed({
     `[seed] Catalog done. ${CATEGORY_NAMES.length} categories, ${PRODUCTS.length} products (VND).`,
   );
 
-  const { data: seededProducts } = await query.graph({
-    entity: "product",
-    fields: ["id", "handle"],
-  });
   const categoryIdByName = new Map(
     categoryResult.map((category) => [category.name, category.id]),
-  );
-  const productIdByHandle = new Map(
-    seededProducts
-      .filter((product: any) => product.handle)
-      .map((product: any) => [product.handle, product.id]),
   );
 
   // Chain every downstream seed so ONE `db:migrate` leaves a fully demo-ready DB.
@@ -1118,11 +1105,7 @@ export default async function initial_data_seed({
   // The seeds are authored as `medusa exec` scripts (ExecArgs = { container, args }).
   const execArgs = { container, args: [] as string[] };
   await seedSuggestiveSelling(execArgs);
-  await seedVoucherAndPromotionFixtures(
-    container,
-    categoryIdByName,
-    productIdByHandle,
-  );
+  await seedVoucherAndPromotionFixtures(container, categoryIdByName);
   await seedTierPromo(execArgs);
   await seedCustomers(execArgs);
   await seedOrders(execArgs);

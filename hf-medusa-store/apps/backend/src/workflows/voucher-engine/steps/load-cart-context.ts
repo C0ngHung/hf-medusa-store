@@ -43,7 +43,9 @@ import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
 import {
   ContainerRegistrationKeys,
   MedusaError,
+  Modules,
 } from "@medusajs/framework/utils";
+import type { ICartModuleService } from "@medusajs/framework/types";
 import { sumInts, toInt } from "../../../modules/voucher-engine/lib/money";
 import {
   LineValue,
@@ -65,6 +67,14 @@ export interface CartContext {
   original_subtotal: number;
   item_promotion_discount: number;
   post_promotion_subtotal: number;
+  /**
+   * Cart's current authoritative shipping fee (0 when no shipping method is
+   * selected yet). A `model.bigNumber().computed()` field — only decorated by
+   * `CartModuleService.retrieveCart`'s totals path, never by `query.graph`
+   * (see file header's framework-bindings note), so this is read via a
+   * separate service call rather than folded into `CART_CONTEXT_FIELDS` below.
+   */
+  shipping_total: number;
   /** Optimistic-concurrency marker (§14.2-C). `[NEEDS_VERIFICATION #3a]` — exact field (`updated_at` used here). */
   concurrency_marker: string;
 }
@@ -127,6 +137,20 @@ export const loadCartContextStep = createStep(
       );
     }
 
+    // shipping_total is a computed field only decorated via the Cart module
+    // service's totals path (see CartContext.shipping_total's doc comment) —
+    // query.graph above never populates it, so it's fetched separately here.
+    const cartModuleService: ICartModuleService = container.resolve(
+      Modules.CART,
+    );
+    const cartWithTotals = await cartModuleService.retrieveCart(input.cart_id, {
+      select: ["id", "shipping_total"],
+    });
+    const shipping_total = toInt(
+      (cartWithTotals as unknown as { shipping_total: unknown }).shipping_total,
+      "load-cart-context.cart.shipping_total",
+    );
+
     const lines: LineValue[] = (rawCart.items ?? []).map((item) => {
       const unit_price = toInt(item.unit_price, `item[${item.id}].unit_price`);
       const quantity = toInt(item.quantity, `item[${item.id}].quantity`);
@@ -176,6 +200,7 @@ export const loadCartContextStep = createStep(
       original_subtotal,
       item_promotion_discount,
       post_promotion_subtotal,
+      shipping_total,
       concurrency_marker: rawCart.updated_at,
     };
 
