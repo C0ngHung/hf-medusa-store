@@ -118,7 +118,7 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
                   className="flex items-center justify-between gap-x-4 border rounded-md p-3"
                   data-testid="available-voucher-row"
                 >
-                  <div className="flex flex-col text-left">
+                  <div className="flex flex-col text-left min-w-0 flex-1">
                     <Text className="txt-small-plus flex items-center gap-x-2">
                       {voucher.code}
                       {!isIneligible &&
@@ -169,6 +169,7 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
                   <Button
                     variant="secondary"
                     size="small"
+                    className="shrink-0"
                     isLoading={pendingCode === voucher.code}
                     disabled={pendingCode !== null || isIneligible}
                     onClick={() => handleApply(voucher.code)}

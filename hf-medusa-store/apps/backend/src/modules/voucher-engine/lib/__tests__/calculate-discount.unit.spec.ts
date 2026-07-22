@@ -194,7 +194,7 @@ describe("voucher-engine lib/calculate-discount", () => {
       expect(result.cap_explanation).toEqual({
         code: "VOUCHER_DISCOUNT_CAPPED",
         message_vi:
-          "Giảm giá đã được điều chỉnh từ 568.000₫ xuống 490.000₫ theo chính sách giảm tối đa 50%.",
+          "Giảm giá voucher được điều chỉnh từ 568.000₫ xuống 490.000₫, vì tổng mức giảm giá (đã gồm khuyến mãi tự động) không được vượt quá 50% giá trị đơn hàng.",
         message_params: {
           original_amount: 568_000,
           final_amount: 490_000,
@@ -287,6 +287,59 @@ describe("voucher-engine lib/calculate-discount", () => {
       });
 
       expect(result.expected_final_cart_total).toBe(1);
+    });
+  });
+
+  describe("calculateVoucherDiscount — shipping_total (2026-07-21 bug fix: voucher+shipping interaction)", () => {
+    // Bug found this session: `verify-cart-totals.ts` asserts exact equality
+    // between this oracle and Medusa's real `cart.total`, which is
+    // shipping-inclusive. Omitting shipping here meant applying/revalidating
+    // a voucher on any cart with a paid (non-zero) shipping method always
+    // threw VOUCHER_CALCULATION_FAILED.
+    it("adds shipping_total unchanged, after the item-side floor, never subject to the cap", () => {
+      const lines: LineValue[] = [
+        {
+          line_id: "item",
+          unit_price: 1_000_000,
+          quantity: 1,
+          item_promotion_discount: 0,
+          is_eligible: true,
+        },
+      ];
+
+      const result = calculateVoucherDiscount({
+        lines,
+        discount_type: "percentage",
+        discount_value: 1000, // 10%
+        max_discount_amount: null,
+        global_cap_bps: GLOBAL_CAP_BPS, // 50%
+        shipping_total: 30_000,
+      });
+
+      expect(result.final_voucher_discount).toBe(100_000); // unaffected by shipping
+      expect(result.expected_final_cart_total).toBe(930_000); // 1,000,000 - 100,000 + 30,000
+    });
+
+    it("defaults to 0 when omitted, matching pre-fix behavior for existing fixtures", () => {
+      const lines: LineValue[] = [
+        {
+          line_id: "item",
+          unit_price: 500_000,
+          quantity: 1,
+          item_promotion_discount: 0,
+          is_eligible: true,
+        },
+      ];
+
+      const result = calculateVoucherDiscount({
+        lines,
+        discount_type: "percentage",
+        discount_value: 1000, // 10%
+        max_discount_amount: null,
+        global_cap_bps: GLOBAL_CAP_BPS,
+      });
+
+      expect(result.expected_final_cart_total).toBe(450_000);
     });
   });
 
@@ -400,7 +453,7 @@ describe("voucher-engine lib/calculate-discount", () => {
       expect(result.cap_explanation).toEqual({
         code: "VOUCHER_DISCOUNT_CAPPED",
         message_vi:
-          "Giảm giá đã được điều chỉnh từ 200.000₫ xuống 100.000₫ theo chính sách giảm tối đa 10%.",
+          "Giảm giá voucher được điều chỉnh từ 200.000₫ xuống 100.000₫, vì tổng mức giảm giá (đã gồm khuyến mãi tự động) không được vượt quá 10% giá trị đơn hàng.",
         message_params: {
           original_amount: 200_000,
           final_amount: 100_000,

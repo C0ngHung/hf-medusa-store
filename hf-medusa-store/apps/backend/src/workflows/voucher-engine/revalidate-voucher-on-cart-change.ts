@@ -156,8 +156,18 @@ export const revalidateVoucherWorkflow = createWorkflow(
           ({ existing }) => existing.active!.adjustment_ids,
         );
 
-        removeLineItemAdjustmentsStep({
+        // workflows-sdk's WorkflowData<undefined> collapses to `never` for
+        // void-output steps (verified: @medusajs/workflows-sdk
+        // dist/utils/composer/type.d.ts StepFunction/WorkflowData generics),
+        // so `.config` is inaccessible by type even though it exists and works
+        // at runtime — needed here to give this 2nd same-workflow call to
+        // removeLineItemAdjustmentsStep a distinct step id (see branch below).
+        const removeOldAdjustments = removeLineItemAdjustmentsStep({
           lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+        });
+        // @ts-expect-error — see comment above.
+        removeOldAdjustments.config({
+          name: "remove-line-item-adjustments-recompute",
         });
 
         const { resolved, discount } = resolveAndCalculateVoucherDiscount({
@@ -213,8 +223,15 @@ export const revalidateVoucherWorkflow = createWorkflow(
         ({ existing }) => existing.active!.adjustment_ids,
       );
 
-      removeLineItemAdjustmentsStep({
+      // See the matching comment on the other removeLineItemAdjustmentsStep
+      // call above (workflows-sdk void-output step typing gap; `.config`
+      // exists and works at runtime).
+      const removeStaleAdjustments = removeLineItemAdjustmentsStep({
         lineItemAdjustmentIdsToRemove: staleAdjustmentIds,
+      });
+      // @ts-expect-error — see comment above.
+      removeStaleAdjustments.config({
+        name: "remove-line-item-adjustments-auto-remove",
       });
 
       // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure

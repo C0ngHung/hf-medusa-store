@@ -73,6 +73,14 @@ export interface VoucherDiscountInput {
   max_discount_amount: number | null;
   /** Global discount-cap percentage in basis points (Rule 9/10). */
   global_cap_bps: number;
+  /**
+   * Cart's current shipping fee (Medusa's authoritative `cart.shipping_total`),
+   * folded UNCHANGED into `expected_final_cart_total` below — shipping is never
+   * discounted by the voucher and never subject to the global cap (Rule 9/10
+   * apply to item subtotal only). Defaults to 0 (no shipping method selected
+   * yet) so existing item-only fixtures/tests keep compiling unchanged.
+   */
+  shipping_total?: number;
 }
 
 export interface VoucherDiscountResult {
@@ -184,7 +192,12 @@ function buildCapExplanation(
 ): CapExplanation {
   return {
     code: "VOUCHER_DISCOUNT_CAPPED",
-    message_vi: `Giảm giá đã được điều chỉnh từ ${formatVnd(originalAmount)} xuống ${formatVnd(finalAmount)} theo chính sách giảm tối đa ${formatCapPercent(globalCapBps)}%.`,
+    // 2026-07-21 wording fix: the cap applies to the COMBINED discount
+    // (item-level auto-promotions + voucher), not to the voucher alone — the
+    // prior wording ("theo chính sách giảm tối đa X%") read as if X% capped
+    // the voucher by itself, which was confusing when an auto-promotion
+    // alone already consumed the whole cap (voucher reduced to 0).
+    message_vi: `Giảm giá voucher được điều chỉnh từ ${formatVnd(originalAmount)} xuống ${formatVnd(finalAmount)}, vì tổng mức giảm giá (đã gồm khuyến mãi tự động) không được vượt quá ${formatCapPercent(globalCapBps)}% giá trị đơn hàng.`,
     message_params: {
       original_amount: originalAmount,
       final_amount: finalAmount,
@@ -314,7 +327,9 @@ export function calculateVoucherDiscount(
     discount_value,
     max_discount_amount,
     global_cap_bps,
+    shipping_total = 0,
   } = input;
+  assertSafeInt(shipping_total, "shipping_total");
 
   // 1. original Cart subtotal
   const original_subtotal = calculateOriginalSubtotal(lines);
@@ -391,9 +406,15 @@ export function calculateVoucherDiscount(
 
   // 10. expected final Cart total — internal verification oracle ONLY (§23.4); the
   // Cart Module's own recomputed `cart.total` remains the single pricing truth.
-  const expected_final_cart_total = clampMin(
-    original_subtotal - item_promotion_discount - final_voucher_discount,
-  );
+  // `cart.total` (the authoritative value this oracle is compared against in
+  // `verify-cart-totals.ts`) is shipping-inclusive, so shipping_total is added
+  // back UNCHANGED here — never discounted, never subject to the global cap,
+  // added after the item-side floor so a paid shipping fee can never be
+  // masked by an item-side clamp-to-0.
+  const expected_final_cart_total =
+    clampMin(
+      original_subtotal - item_promotion_discount - final_voucher_discount,
+    ) + shipping_total;
 
   return {
     original_subtotal,

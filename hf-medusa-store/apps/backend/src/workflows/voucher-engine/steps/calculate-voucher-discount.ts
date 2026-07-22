@@ -28,6 +28,8 @@ export interface CalculateVoucherDiscountInput {
   >;
   /** VOUCH-003 — resolved server-side by `lookupVoucherStep` (task 3.3.10). */
   global_cap_bps: number;
+  /** Cart's current authoritative shipping fee (0 when no shipping method selected yet). */
+  shipping_total: number;
 }
 
 export const calculateVoucherDiscountStep = createStep(
@@ -39,6 +41,7 @@ export const calculateVoucherDiscountStep = createStep(
       discount_value: input.voucher.discount_value,
       max_discount_amount: input.voucher.max_discount_amount,
       global_cap_bps: input.global_cap_bps,
+      shipping_total: input.shipping_total,
     });
 
     return new StepResponse(result);

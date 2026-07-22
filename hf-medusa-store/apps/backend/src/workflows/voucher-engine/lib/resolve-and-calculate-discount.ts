@@ -41,6 +41,7 @@ export function resolveAndCalculateVoucherDiscount({
     lines: resolved.lines,
     voucher: voucherTerms,
     global_cap_bps: lookup.global_cap_bps,
+    shipping_total: cart.shipping_total,
   });
 
   // `resolved.lines` (per-line `is_eligible`/`item_promotion_discount`) is

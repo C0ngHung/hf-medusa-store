@@ -614,9 +614,9 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         <div className="w-full flex flex-col gap-y-3">
           {autoPromotions.length > 0 && (
             <div className="flex flex-col gap-y-2">
-              <Heading className="txt-medium">
+              <Text className="txt-medium text-ui-fg-subtle">
                 Khuyến mãi tự động áp dụng:
-              </Heading>
+              </Text>
               {autoPromotions.map((promotion) => {
                 // Bug-bash fallback (2026-07-21): a native automatic
                 // Promotion has no requirement to carry a `code` — an empty
@@ -626,29 +626,28 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                 return (
                   <div
                     key={promotion.id}
-                    className="flex items-center justify-between w-full max-w-full"
+                    className="flex items-center justify-between gap-x-2 w-full max-w-full"
                     data-testid="auto-promotion-row"
                   >
-                    <Text className="flex gap-x-1 items-baseline txt-small-plus w-4/5 pr-1">
-                      <span
-                        className="truncate"
-                        data-testid="auto-promotion-code-value"
+                    <Badge
+                      color="grey"
+                      className="shrink-0 max-w-[60%] truncate"
+                      data-testid="auto-promotion-code-value"
+                    >
+                      {label}
+                    </Badge>
+                    {savedAmount > 0 && (
+                      <Text
+                        className="txt-small-plus text-ui-fg-subtle shrink-0"
+                        data-testid="auto-promotion-savings"
                       >
-                        <Badge color="grey">{label}</Badge>{" "}
-                        <span className="text-ui-fg-subtle text-small-regular">
-                          Tự động áp dụng
-                        </span>{" "}
-                        {savedAmount > 0 && (
-                          <span data-testid="auto-promotion-savings">
-                            — Đã giảm{" "}
-                            {convertToLocale({
-                              amount: savedAmount,
-                              currency_code: currencyCode,
-                            })}
-                          </span>
-                        )}
-                      </span>
-                    </Text>
+                        Đã giảm{" "}
+                        {convertToLocale({
+                          amount: savedAmount,
+                          currency_code: currencyCode,
+                        })}
+                      </Text>
+                    )}
                   </div>
                 )
               })}
@@ -657,7 +656,9 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
 
           {manualPromotions.length > 0 && (
             <div className="flex flex-col gap-y-2">
-              <Heading className="txt-medium">Mã đã áp dụng:</Heading>
+              <Text className="txt-medium text-ui-fg-subtle">
+                Mã đã áp dụng:
+              </Text>
               {manualPromotions.map((promotion) => (
                 <div
                   key={promotion.id}
@@ -707,7 +708,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
 
           {activeVoucher && (
             <div className="flex flex-col gap-y-2">
-              <Heading className="txt-medium">Voucher:</Heading>
+              <Text className="txt-medium text-ui-fg-subtle">Voucher:</Text>
               <div
                 className="flex items-center justify-between w-full max-w-full"
                 data-testid="voucher-applied-row"

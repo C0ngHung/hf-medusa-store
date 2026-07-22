@@ -152,6 +152,45 @@ medusaIntegrationTestRunner({
         expect(data.voucher_details.value).toBe(1000);
       });
 
+      it("applies a voucher on a cart that already has a paid shipping method — 2026-07-21 bug fix regression (voucher+shipping interaction)", async () => {
+        // Bug found this session: `verify-cart-totals.ts` compared Medusa's
+        // real, shipping-inclusive `cart.total` against an oracle computed
+        // purely from item subtotal, so applying/replacing a voucher on any
+        // cart with a non-zero shipping fee always threw
+        // VOUCHER_CALCULATION_FAILED. Fixed by threading `shipping_total`
+        // into `calculateVoucherDiscount`'s oracle (never discounted, never
+        // capped — see lib/calculate-discount.ts).
+        const cart = await createCart([
+          {
+            title: "Racket",
+            unit_price: 1_000_000,
+            quantity: 1,
+            product_id: "prod_racket_shipping",
+          },
+        ]);
+        const cartModuleService = container().resolve(Modules.CART);
+        await cartModuleService.addShippingMethods(cart.id, [
+          { name: "Standard Shipping", amount: 30_000 },
+        ]);
+        await createVoucher({
+          code: "SHIPHTTP10",
+          discount_type: "percentage",
+          discount_value: 1000, // 10%
+        });
+
+        const { status, data } = await api.post(
+          `/store/carts/${cart.id}/voucher`,
+          { code: "SHIPHTTP10" },
+          publishableKeyHeaders,
+        );
+
+        // voucher 10% of 1,000,000 = 100,000; total = 1,000,000 - 100,000 +
+        // 30,000 shipping = 930,000 (shipping never discounted/capped).
+        expect(status).toBe(200);
+        expect(data.discount_amount).toBe(100_000);
+        expect(data.updated_cart_total).toBe(930_000);
+      });
+
       it("preserves a coexisting percentage item-promotion's discount when a voucher is applied on top — Rule 11 regression (credit-line carrier, CONFLICT-8/PD-15 fix)", async () => {
         const cart = await createCart([
           {
