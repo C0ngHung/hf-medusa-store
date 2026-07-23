@@ -1,0 +1,27 @@
+meta {
+  name: Get analytics by id
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/admin/vouchers/{{voucherId}}/analytics
+  body: none
+  auth: inherit
+}
+
+tests {
+  test("200 ok", function () {
+    expect(res.getStatus()).to.equal(200);
+  });
+  test("has analytics shape", function () {
+    const a = res.getBody().analytics;
+    expect(a).to.have.all.keys('voucher_id', 'total_uses', 'total_discount_given', 'avg_order_value', 'capped_count', 'conversion_rate');
+  });
+}
+
+docs {
+  3.4.12 — Analytics tổng hợp từ `voucher_usage_log`. Response 200:
+  `{ analytics: { voucher_id, total_uses, total_discount_given, avg_order_value, capped_count, conversion_rate } }`.
+  Voucher mới → tất cả = 0. `total_uses`/`total_discount_given` tăng sau khi order.placed ghi usage (Day 5).
+}

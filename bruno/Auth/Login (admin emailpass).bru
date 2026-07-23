@@ -1,0 +1,35 @@
+meta {
+  name: Login (admin emailpass)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/auth/user/emailpass
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "{{adminEmail}}",
+    "password": "{{adminPassword}}"
+  }
+}
+
+script:post-response {
+  const json = res.getBody();
+  if (json && json.token) {
+    bru.setVar('token', json.token);
+  }
+}
+
+tests {
+  test("got token", function () {
+    expect(res.getBody().token).to.be.a('string');
+  });
+}

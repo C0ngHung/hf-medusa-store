@@ -1,0 +1,11 @@
+meta {
+  name: Delete rule (soft)
+  type: http
+  seq: 5
+}
+
+delete {
+  url: {{baseUrl}}/admin/suggestion-rules/{{ruleId}}
+  body: none
+  auth: inherit
+}

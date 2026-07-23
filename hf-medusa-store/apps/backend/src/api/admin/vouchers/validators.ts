@@ -1,0 +1,54 @@
+import { z } from "zod";
+import { MIN_CODE_LENGTH } from "../../../modules/voucher-engine/constants";
+
+/**
+ * Zod validators for admin voucher APIs (3.4.13, SRS §6.4).
+ * validateAndTransformBody (see src/api/middlewares.ts) parses the request body
+ * with this schema and populates req.validatedBody. Money is integer VND (INT-01);
+ * `discount_value` is basis-points for percentage, raw VND for fixed_amount.
+ * No `stackable_with_promotions` (rebuild-decisions.md decision 2,
+ * 2026-07-20): not configurable, removed from this DTO too.
+ */
+export const CreateVoucherSchema = z
+  .object({
+    // Optional — auto-generated when omitted. If supplied: ≥6 alphanumeric,
+    // stored UPPERCASE (SEC-03; normalized in the create step).
+    code: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9]+$/, "code must be alphanumeric")
+      .min(MIN_CODE_LENGTH)
+      .optional(),
+    discount_type: z.enum(["percentage", "fixed_amount"]),
+    // Must give a real discount: >= 1 (0 is meaningless, negative invalid). INT-01.
+    discount_value: z.number().int().min(1, "discount_value must be >= 1"),
+    min_order_value: z.number().int().nonnegative().nullish(),
+    max_discount_amount: z.number().int().nonnegative().nullish(),
+    applicable_product_ids: z.array(z.string().min(1)).nullish(),
+    applicable_category_ids: z.array(z.string().min(1)).nullish(),
+    per_user_limit: z.number().int().positive().default(1),
+    usage_limit: z.number().int().positive().nullish(),
+    user_segment_conditions: z.record(z.string(), z.any()).nullish(),
+    valid_from: z.coerce.date(),
+    valid_to: z.coerce.date(),
+    is_active: z.boolean().default(true),
+  })
+  // V2 sanity: the window must be non-empty.
+  .refine((v) => v.valid_to > v.valid_from, {
+    message: "valid_to must be after valid_from",
+    path: ["valid_to"],
+  })
+  // A percentage voucher can't exceed 100% (10000 basis-points). The global 50%
+  // cap trims at apply-time (EC-03); this only rejects nonsensical config.
+  .superRefine((v, ctx) => {
+    if (v.discount_type === "percentage" && v.discount_value > 10000) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "percentage discount_value must be <= 10000 basis points (100%)",
+      });
+    }
+  });
+
+export type CreateVoucherBody = z.infer<typeof CreateVoucherSchema>;

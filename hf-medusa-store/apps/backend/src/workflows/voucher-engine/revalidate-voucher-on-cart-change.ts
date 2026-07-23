@@ -1,0 +1,319 @@
+/**
+ * revalidateVoucherWorkflow — SPEC §11.3/§11.5 (tasks 3.5.1, 3.5.7, 3.5.8).
+ *
+ * Invoked by the `cart.updated` subscriber (`../../subscribers/voucher-cart-updated.ts`)
+ * for cart mutations VoucherEngine does not own (item add/remove, qty change,
+ * suggestive-selling adds). Re-runs the cart-change validation SUBSET (V1, V2,
+ * V5, V6 — §9.2, no V8 per rebuild-decisions.md decision 2): if still valid
+ * AND the global cap still has room, recomputes and rewrites the discount at
+ * the new amount; otherwise auto-removes the voucher with a reason
+ * (VOUCHER_AUTO_REMOVED).
+ *
+ * CR (2026-07-22): a cart mutation can make item/automatic promotions ALONE
+ * newly consume the entire global cap for an ALREADY-applied voucher (e.g. a
+ * suggested item add that triggers a bigger auto-promotion). V1/V2/V5/V6 all
+ * still pass in that case, so the OLD logic here recomputed the voucher to a
+ * silent 0đ and kept it attached — mirrors the `VOUCHER_CAP_EXHAUSTED` gap
+ * `apply-voucher.ts` closed for fresh applies, but this revalidation path
+ * can't just throw (see below), so it auto-removes instead, reusing the SAME
+ * `VOUCHER_AUTO_REMOVED` notice mechanism as every other revalidation
+ * failure — `discount.cap_exhausted_by_promotion` (computed unconditionally,
+ * see below) is now a THIRD input into `shouldRecompute`/`shouldRemove`.
+ *
+ * No-op (nothing mutates) when the cart has no active voucher — the common
+ * case for the vast majority of cart mutations. Never throws — errors are
+ * caught and logged by the calling subscriber (async, non-blocking, skill
+ * best-practice 2), since this path must never break an unrelated cart
+ * mutation the customer is waiting on.
+ *
+ * Flat, non-nested `when()`: Medusa's workflow composer does not support a
+ * `when().then()` call nested inside another `when().then()` callback (it
+ * throws at workflow-definition/load time, breaking the whole app boot, not
+ * just this workflow — verified empirically this session). So
+ * `loadCartContextStep`/`lookupVoucherStep`/`revalidateStep`/the
+ * eligibility+discount calculation ALL run UNCONDITIONALLY (each is safe with
+ * a "no active voucher" input — cart_id is always valid, an empty `code`
+ * resolves to `voucher: null`, a null voucher's revalidation result is simply
+ * ignored below, and the discount calc below uses harmless zero-value
+ * voucher terms when there's no real voucher — `cap_exhausted_by_promotion`
+ * is independent of a voucher's own discount_type/value, so this is still the
+ * correct answer even with dummy terms), and the two real branches are
+ * combined into two independent TOP-LEVEL booleans (`shouldRecompute`,
+ * `shouldRemove`) — both require `existing.has_voucher`, so neither fires
+ * when there is nothing to revalidate. The small always-on eligibility/cap
+ * computation this adds for carts with no voucher at all is an accepted
+ * tradeoff for not needing a second, nested conditional.
+ */
+
+import {
+  WorkflowResponse,
+  createWorkflow,
+  transform,
+  when,
+} from "@medusajs/framework/workflows-sdk";
+import {
+  acquireLockStep,
+  releaseLockStep,
+  removeLineItemAdjustmentsStep,
+} from "@medusajs/core-flows";
+import { Modules } from "@medusajs/framework/utils";
+import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
+import type { ICartModuleService } from "@medusajs/framework/types";
+import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
+import { loadCartContextStep } from "./steps/load-cart-context";
+import { lookupVoucherStep } from "./steps/lookup-voucher";
+import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
+import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
+import { revalidateStep } from "./steps/revalidate-voucher";
+import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
+import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
+import { toVoucherScope } from "./lib/mappers";
+import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
+import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
+import {
+  VOUCHER_NOTICE_METADATA_KEY,
+  VoucherAutoRemoveNotice,
+  buildAutoRemoveNotice,
+} from "./lib/auto-remove-notice";
+
+export const revalidateVoucherWorkflowId = "revalidate-voucher-on-cart-change";
+
+export interface RevalidateVoucherWorkflowInput {
+  cart_id: string;
+}
+
+/**
+ * Auto-remove path (tasks 3.5.7/3.5.8/3.5.9/3.5.10): clears the `voucher`
+ * snapshot from `cart.metadata` AND writes the `VOUCHER_AUTO_REMOVED`
+ * notification (with the specific reason) under `cart.metadata.voucher_notice`
+ * so the storefront can tell the customer WHY on its next cart refetch (§11.3
+ * step 3b / §8.4; PD-09 = MVP refetch/polling, no real-time push). Both changes
+ * are one merge-patch write.
+ *
+ * **Framework finding (Day 4 session, still load-bearing here):**
+ * `CartModuleService.updateCarts`'s `metadata` patch is a MERGE-PATCH, not a
+ * replace — verified via `@medusajs/utils/dist/common/merge-metadata.js`
+ * (`mergeMetadata`, used by every `MedusaService`-based module's generic update
+ * path, `dist/modules-sdk/medusa-internal-service.js:238`): keys absent from
+ * the patch are preserved untouched; a key is DELETED only when the patch sets
+ * it to the empty string `""`; any other value overwrites. So in one patch:
+ * `voucher: ""` deletes the stale snapshot, `voucher_notice: <object>` writes
+ * the reason, and every other metadata key is preserved. Passing `{}` or simply
+ * omitting `voucher` would be a NO-OP for that key (confirmed empirically Day 4),
+ * so `""` is required to actually clear it.
+ */
+const removeAndNotifyStepId = "remove-voucher-and-notify-auto-removed";
+const removeAndNotifyStep = createStep(
+  removeAndNotifyStepId,
+  async (
+    input: { cart_id: string; notice: VoucherAutoRemoveNotice },
+    { container },
+  ) => {
+    const cartModuleService: ICartModuleService = container.resolve(
+      Modules.CART,
+    );
+    await cartModuleService.updateCarts(input.cart_id, {
+      metadata: {
+        [VOUCHER_METADATA_KEY]: "", // merge-patch delete of the stale snapshot
+        [VOUCHER_NOTICE_METADATA_KEY]: input.notice, // async reason (3.5.9/3.5.10)
+      },
+    });
+    return new StepResponse({ cleared: true, notified: true });
+  },
+);
+
+export const revalidateVoucherWorkflow = createWorkflow(
+  revalidateVoucherWorkflowId,
+  (input: RevalidateVoucherWorkflowInput) => {
+    // Same lock namespace as applyVoucherWorkflow/removeVoucherWorkflow
+    // (EC-04) — a cart mutation's revalidation must not race an in-flight
+    // apply/remove request touching cart.metadata.voucher.
+    const lockKey = transform(
+      { input },
+      ({ input }) => `voucher:cart:${input.cart_id}`,
+    );
+    acquireLockStep({ key: lockKey, ttl: 10 });
+
+    const existing = checkVoucherExistsStep({ cart_id: input.cart_id });
+
+    const cart = loadCartContextStep({ cart_id: input.cart_id });
+
+    const lookup = lookupVoucherStep({
+      code: transform(
+        { existing },
+        ({ existing }) => existing.active?.code ?? "",
+      ),
+      customer_id: "",
+    });
+
+    const revalidation = revalidateStep({ voucher: lookup.voucher, cart });
+
+    // Cap-exhaustion check (CR 2026-07-22) — computed UNCONDITIONALLY (see
+    // header comment) so it's available before branching, without nesting a
+    // second `when()`. Zero-value voucher terms when there's no real active
+    // voucher are harmless: `cap_exhausted_by_promotion` only depends on
+    // `item_promotion_discount`/`maximum_combined_discount`, never on a
+    // voucher's own discount_type/value.
+    const voucherTerms = transform({ lookup }, ({ lookup }) => ({
+      discount_type: lookup.voucher?.discount_type ?? ("percentage" as const),
+      discount_value: lookup.voucher?.discount_value ?? 0,
+      max_discount_amount: lookup.voucher?.max_discount_amount ?? null,
+    }));
+    const scope = transform({ lookup }, ({ lookup }) =>
+      toVoucherScope(
+        lookup.voucher ?? {
+          applicable_product_ids: null,
+          applicable_category_ids: null,
+        },
+      ),
+    );
+    const resolved = resolveEligibleItemsStep({ lines: cart.lines, scope });
+    const discount = calculateVoucherDiscountStep({
+      lines: resolved.lines,
+      voucher: voucherTerms,
+      global_cap_bps: lookup.global_cap_bps,
+      shipping_total: cart.shipping_total,
+    });
+
+    const shouldRecompute = transform(
+      { existing, revalidation, discount },
+      ({ existing, revalidation, discount }) =>
+        existing.has_voucher &&
+        revalidation.still_valid &&
+        !discount.cap_exhausted_by_promotion,
+    );
+    const shouldRemove = transform(
+      { existing, revalidation, discount },
+      ({ existing, revalidation, discount }) =>
+        existing.has_voucher &&
+        (!revalidation.still_valid || discount.cap_exhausted_by_promotion),
+    );
+
+    // Still valid → recompute the amount and rewrite the voucher's
+    // LineItemAdjustments (Decision-4 carrier rewrite; amounts aren't mutated
+    // in place — a fresh split is written and the old one removed). Mirrors
+    // applyVoucherWorkflow's replace ordering: remove the OLD adjustments
+    // FIRST (reversible — compensation restores them if a later step in this
+    // branch fails), THEN create the new ones, THEN verify authoritative
+    // totals. A single removal step now covers what previously needed a
+    // detach-then-later-irreversible-delete pair, since there is no separate
+    // Promotion entity to delete once the adjustment rows themselves are
+    // gone.
+    when({ shouldRecompute }, ({ shouldRecompute }) => shouldRecompute).then(
+      () => {
+        const oldAdjustmentIds = transform(
+          { existing },
+          ({ existing }) => existing.active!.adjustment_ids,
+        );
+
+        // workflows-sdk's WorkflowData<undefined> collapses to `never` for
+        // void-output steps (verified: @medusajs/workflows-sdk
+        // dist/utils/composer/type.d.ts StepFunction/WorkflowData generics),
+        // so `.config` is inaccessible by type even though it exists and works
+        // at runtime — needed here to give this 2nd same-workflow call to
+        // removeLineItemAdjustmentsStep a distinct step id (see branch below).
+        const removeOldAdjustments = removeLineItemAdjustmentsStep({
+          lineItemAdjustmentIdsToRemove: oldAdjustmentIds,
+        });
+        // @ts-expect-error — see comment above.
+        removeOldAdjustments.config({
+          name: "remove-line-item-adjustments-recompute",
+        });
+
+        // Reuse the `resolved`/`discount` already computed unconditionally
+        // above (this branch only runs when `!discount.cap_exhausted_by_promotion`,
+        // so it's the correct, non-degenerate result here) — no need to
+        // recompute a second time.
+        const newAdjustments = createVoucherLineItemAdjustments({
+          lines: resolved.lines,
+          discount,
+        });
+
+        writeVoucherCartMetadataStep({
+          cart_id: input.cart_id,
+          voucher: transform(
+            { lookup, discount, newAdjustments, existing },
+            ({ lookup, discount, newAdjustments, existing }) => ({
+              voucher_id: lookup.voucher!.id,
+              code: lookup.voucher!.code,
+              adjustment_ids: newAdjustments.adjustment_ids,
+              discount_type: lookup.voucher!.discount_type,
+              discount_value: lookup.voucher!.discount_value,
+              uncapped_voucher_discount: discount.raw_voucher_discount,
+              voucher_discount_after_voucher_cap:
+                discount.voucher_discount_after_voucher_cap,
+              discount_amount: discount.final_voucher_discount,
+              discount_capped: discount.discount_capped,
+              original_discount: discount.voucher_discount_after_voucher_cap,
+              cap_percentage_bps: lookup.global_cap_bps,
+              original_subtotal: discount.original_subtotal,
+              item_promotion_discount: discount.item_promotion_discount,
+              revalidation_marker: existing.active!.revalidation_marker,
+            }),
+          ),
+          previous_metadata: existing.previous_metadata,
+        });
+
+        // Authoritative-total verification (task 3.3.14/3.8.4).
+        verifyCartTotalsStep({
+          cart_id: input.cart_id,
+          adjustment_ids: newAdjustments.adjustment_ids,
+          final_voucher_discount: discount.final_voucher_discount,
+          expected_final_cart_total: discount.expected_final_cart_total,
+        });
+      },
+    );
+
+    // Invalid → auto-remove: remove the adjustments and clear the metadata
+    // snapshot (tasks 3.5.7/3.5.8, VOUCHER_AUTO_REMOVED).
+    when({ shouldRemove }, ({ shouldRemove }) => shouldRemove).then(() => {
+      const staleAdjustmentIds = transform(
+        { existing },
+        ({ existing }) => existing.active!.adjustment_ids,
+      );
+
+      // See the matching comment on the other removeLineItemAdjustmentsStep
+      // call above (workflows-sdk void-output step typing gap; `.config`
+      // exists and works at runtime).
+      const removeStaleAdjustments = removeLineItemAdjustmentsStep({
+        lineItemAdjustmentIdsToRemove: staleAdjustmentIds,
+      });
+      // @ts-expect-error — see comment above.
+      removeStaleAdjustments.config({
+        name: "remove-line-item-adjustments-auto-remove",
+      });
+
+      // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
+      // (min-order → 3.5.9, no-eligible-items → 3.5.10, …) OR, CR 2026-07-22,
+      // the cap being newly exhausted by promotions alone — `revalidation`
+      // only carries `failure_code` when `still_valid === false`; when this
+      // branch fires instead because `still_valid` is true but
+      // `discount.cap_exhausted_by_promotion` is true, fall back to
+      // `VOUCHER_CAP_EXHAUSTED` explicitly.
+      const notice = transform(
+        { existing, revalidation, discount },
+        ({ existing, revalidation, discount }) =>
+          buildAutoRemoveNotice({
+            voucher_code: existing.active!.code,
+            failure_code:
+              revalidation.failure_code ??
+              (discount.cap_exhausted_by_promotion
+                ? "VOUCHER_CAP_EXHAUSTED"
+                : undefined),
+          }),
+      );
+
+      removeAndNotifyStep({ cart_id: input.cart_id, notice });
+    });
+
+    releaseLockStep({ key: lockKey });
+
+    return new WorkflowResponse(
+      transform({ existing }, ({ existing }) => ({
+        revalidated: existing.has_voucher,
+      })),
+    );
+  },
+);
+
+export default revalidateVoucherWorkflow;

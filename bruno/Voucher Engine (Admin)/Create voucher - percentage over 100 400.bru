@@ -1,0 +1,35 @@
+meta {
+  name: Create voucher — percentage > 100% → 400
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/admin/vouchers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "discount_type": "percentage",
+    "discount_value": 9999999,
+    "valid_from": "2026-01-01T00:00:00.000Z",
+    "valid_to": "2026-12-31T23:59:59.000Z"
+  }
+}
+
+tests {
+  test("400 validation error", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}
+
+docs {
+  3.4.13 — `percentage` vượt 100% (10000 bps), vd 9999999 → schema chặn → 400. (Trần 50% toàn cục là
+  lớp runtime độc lập, không thay cho validate đầu vào.)
+}

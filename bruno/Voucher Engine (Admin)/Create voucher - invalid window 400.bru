@@ -1,0 +1,35 @@
+meta {
+  name: Create voucher — invalid (window đảo) → 400
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/admin/vouchers
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "discount_type": "percentage",
+    "discount_value": 1000,
+    "valid_from": "2026-12-31T00:00:00.000Z",
+    "valid_to": "2026-01-01T00:00:00.000Z"
+  }
+}
+
+tests {
+  test("400 validation error", function () {
+    expect(res.getStatus()).to.equal(400);
+  });
+}
+
+docs {
+  3.4.13 — `valid_from` > `valid_to` vi phạm refine của Zod CreateVoucherSchema → 400. (Các input xấu
+  khác cũng 400: thiếu discount_type, discount_value âm, code < 6 hoặc ký tự lạ.)
+}

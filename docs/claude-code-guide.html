@@ -1,0 +1,242 @@
+<title>Hướng dẫn Claude Code — hf-medusa-store</title>
+<style>
+  :root {
+    --bg: #FAFAFB; --surface: #FFFFFF; --surface-2: #F3F3F6;
+    --border: #E5E4EC; --border-strong: #D2D0DC;
+    --text: #1A1A22; --text-dim: #5A5B67; --text-faint: #8B8B98;
+    --accent: #6D3BEB; --accent-soft: #ECE6FD;
+    --good: #17795E; --good-soft: #E1F1EC;
+    --bad: #B23528; --bad-soft: #F8E5E2;
+    --warn: #8A5D00; --warn-soft: #F6ECD3;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --shadow: 0 1px 2px rgba(20,20,34,.04), 0 8px 24px rgba(20,20,34,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #15141B; --surface: #1C1B24; --surface-2: #24232F;
+      --border: #302E3D; --border-strong: #403D50;
+      --text: #EAE9F0; --text-dim: #A3A1B0; --text-faint: #71707D;
+      --accent: #B69CFF; --accent-soft: #272044;
+      --good: #5FD3A8; --good-soft: #16281F;
+      --bad: #F0897B; --bad-soft: #301B18;
+      --warn: #E0B450; --warn-soft: #2A2411;
+      --shadow: 0 1px 2px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #FAFAFB; --surface: #FFFFFF; --surface-2: #F3F3F6; --border: #E5E4EC;
+    --border-strong: #D2D0DC; --text: #1A1A22; --text-dim: #5A5B67; --text-faint: #8B8B98;
+    --accent: #6D3BEB; --accent-soft: #ECE6FD; --good: #17795E; --good-soft: #E1F1EC;
+    --bad: #B23528; --bad-soft: #F8E5E2; --warn: #8A5D00; --warn-soft: #F6ECD3;
+    --shadow: 0 1px 2px rgba(20,20,34,.04), 0 8px 24px rgba(20,20,34,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #15141B; --surface: #1C1B24; --surface-2: #24232F; --border: #302E3D;
+    --border-strong: #403D50; --text: #EAE9F0; --text-dim: #A3A1B0; --text-faint: #71707D;
+    --accent: #B69CFF; --accent-soft: #272044; --good: #5FD3A8; --good-soft: #16281F;
+    --bad: #F0897B; --bad-soft: #301B18; --warn: #E0B450; --warn-soft: #2A2411;
+    --shadow: 0 1px 2px rgba(0,0,0,.25), 0 10px 30px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.62; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 44px 22px 100px; }
+
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+  h1 { font-size: clamp(29px, 5vw, 42px); line-height: 1.08; letter-spacing: -.02em; text-wrap: balance; margin: 0 0 12px; font-weight: 680; }
+  .lede { color: var(--text-dim); font-size: 17px; margin: 0 0 24px; max-width: 62ch; }
+
+  .metarow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .tag { font-family: var(--mono); font-size: 11.5px; padding: 4px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); }
+  .tag b { color: var(--text); font-weight: 600; }
+
+  .callout { display: flex; gap: 13px; align-items: flex-start; border-radius: 13px; padding: 15px 17px; margin: 22px 0; font-size: 14.5px; }
+  .callout .ico { font-size: 18px; line-height: 1.35; flex: none; }
+  .callout.warn { background: var(--warn-soft); border: 1px solid color-mix(in srgb, var(--warn) 32%, transparent); }
+  .callout.warn b { color: var(--warn); }
+  .callout.info { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); }
+
+  hr.rule { height: 1px; background: var(--border); border: 0; margin: 40px 0 0; }
+
+  section.step { padding-top: 34px; }
+  .step-head { display: flex; align-items: baseline; gap: 13px; margin-bottom: 4px; }
+  .num { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 4px 10px; flex: none; }
+  h2 { font-size: 21px; letter-spacing: -.01em; margin: 0; font-weight: 660; text-wrap: balance; }
+  .step > p { color: var(--text-dim); font-size: 15px; margin: 9px 0 0; }
+  .step > p.tight { margin-top: 4px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-top: 16px; overflow: hidden; box-shadow: var(--shadow); }
+  .card-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 11px 15px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .card-bar .name { font-family: var(--mono); font-size: 13.5px; font-weight: 600; }
+  .card-body { padding: 15px 16px; }
+  .card-body p { margin: 0 0 8px; font-size: 14.5px; color: var(--text-dim); }
+  .card-body p:last-child { margin-bottom: 0; }
+
+  pre { margin: 0; padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 12.8px; line-height: 1.6; color: var(--text); tab-size: 2; }
+  pre code { white-space: pre; }
+  :not(pre) > code { font-family: var(--mono); font-size: .9em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+
+  table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.tbl th, table.tbl td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.tbl th { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-faint); font-weight: 600; }
+  table.tbl tr:last-child td { border-bottom: 0; }
+  table.tbl td code { white-space: nowrap; }
+  .tbl-wrap { overflow-x: auto; }
+
+  .perms { display: grid; grid-template-columns: 1fr; gap: 14px; }
+  @media (min-width: 620px) { .perms { grid-template-columns: 1fr 1fr; } }
+  .permcol h4 { font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; margin: 0 0 10px; display: flex; align-items: center; gap: 7px; }
+  .permcol.allow h4 { color: var(--good); }
+  .permcol.deny h4 { color: var(--bad); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .allow .dot { background: var(--good); } .deny .dot { background: var(--bad); }
+  .chip { display: inline-block; font-family: var(--mono); font-size: 12px; padding: 5px 9px; border-radius: 8px; margin: 0 6px 6px 0; border: 1px solid var(--border); }
+  .allow .chip { background: var(--good-soft); border-color: color-mix(in srgb, var(--good) 22%, transparent); }
+  .deny .chip { background: var(--bad-soft); border-color: color-mix(in srgb, var(--bad) 25%, transparent); }
+
+  .prompts { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .prompt { border-left: 3px solid var(--accent); background: var(--surface); border: 1px solid var(--border); border-left-width: 3px; border-radius: 10px; padding: 12px 15px; font-size: 14.5px; }
+  .prompt .who { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-faint); display: block; margin-bottom: 5px; }
+  .prompt em { color: var(--text); font-style: italic; }
+
+  ul.plain { margin: 12px 0 0; padding-left: 0; list-style: none; }
+  ul.plain li { position: relative; padding: 8px 0 8px 26px; border-top: 1px solid var(--border); font-size: 14.5px; color: var(--text-dim); }
+  ul.plain li:first-child { border-top: 0; }
+  ul.plain li::before { content: ""; position: absolute; left: 3px; top: 14px; width: 13px; height: 7px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
+  ul.plain li b { color: var(--text); font-weight: 620; }
+
+  footer { margin-top: 50px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--text-faint); font-size: 13px; }
+  footer code { color: var(--text-dim); }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">SmartOSC · hf-medusa-store</p>
+  <h1>Hướng dẫn dùng Claude Code cho dự án</h1>
+  <p class="lede">Dự án đã được cấu hình sẵn <code>.claude/</code> + plugin Medusa chính thức. Tài liệu này hướng dẫn cả team cài đặt và khai thác toàn bộ công cụ — từ quyền, hook tự format, lệnh tắt, đến plugin dựng tính năng Medusa.</p>
+
+  <div class="metarow">
+    <span class="tag">pnpm <b>11.8</b></span>
+    <span class="tag">Medusa <b>2.16</b></span>
+    <span class="tag">Next.js <b>15</b> · cổng <b>8008</b></span>
+    <span class="tag">Turborepo</span>
+    <span class="tag">plugin <b>medusa-dev</b></span>
+  </div>
+
+  <div class="callout warn">
+    <span class="ico">⚠️</span>
+    <div><b>Bẫy quan trọng — 2 thư mục lồng nhau.</b> Gốc git là thư mục ngoài; workspace pnpm là thư mục <code>hf-medusa-store/</code> <b>bên trong</b>. Mọi lệnh <code>pnpm</code>/<code>turbo</code> phải chạy ở thư mục trong. (Claude đã biết điều này qua <code>CLAUDE.md</code>.)</div>
+  </div>
+
+  <hr class="rule" />
+
+  <!-- 1 -->
+  <section class="step">
+    <div class="step-head"><span class="num">1</span><h2>Cài đặt cho thành viên mới</h2></div>
+    <p>Cấu hình dự án (CLAUDE.md, quyền, hook, lệnh tắt, rules) đã nằm trong repo — kéo code về là có. Chỉ cần cài <b>plugin Medusa</b> một lần cho máy bạn.</p>
+    <div class="card">
+      <div class="card-bar"><span class="name">Terminal — trong thư mục dự án</span></div>
+      <div class="card-body">
+        <p>Mở Claude Code ở terminal thật rồi gõ lần lượt (mỗi lệnh Enter riêng):</p>
+        <pre><code>/plugin marketplace add medusajs/medusa-agent-skills
+/plugin install medusa-dev@medusa</code></pre>
+        <p>Khi hỏi phạm vi, chọn <b>“Install for all collaborators (project scope)”</b>. Sau đó chạy <code>/reload-plugins</code> (hoặc mở lại Claude) để áp dụng.</p>
+      </div>
+    </div>
+    <div class="callout info">
+      <span class="ico">💡</span>
+      <div>Cấu hình <code>enabledPlugins</code> đã được commit sẵn, nên nhiều máy sẽ tự nhận plugin. Nếu chưa, chạy 2 lệnh trên là xong. <b>MedusaDocs</b> (tra cứu tài liệu) đi kèm plugin — không cần cài riêng.</div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="step">
+    <div class="step-head"><span class="num">2</span><h2>Dùng hằng ngày — Claude tự lo</h2></div>
+    <p>Bạn không phải gõ lệnh đặc biệt. Mỗi phiên làm việc, Claude tự đọc <code>CLAUDE.md</code> và <code>.claude/rules/project-conventions.md</code> nên đã biết:</p>
+    <ul class="plain">
+      <li>Dùng <b>pnpm</b> (không npm/yarn) và chạy lệnh ở đúng thư mục workspace bên trong.</li>
+      <li><b>suggestive-selling</b> là khuôn mẫu module; tham chiếu module khác qua Link Module, không dùng FK.</li>
+      <li>Storefront chỉ gọi SDK trong <code>lib/data/*</code>; cổng 8008; Redis là tùy chọn; <code>react-router</code> ghim 6.30.4.</li>
+      <li>Comment nên trích mục SRS (vd <code>SUGG-001</code>); quy ước đặt tên test.</li>
+    </ul>
+  </section>
+
+  <!-- 3 -->
+  <section class="step">
+    <div class="step-head"><span class="num">3</span><h2>Quyền — bớt hỏi xin phép</h2></div>
+    <p>Các lệnh an toàn chạy không cần bấm “cho phép”; lệnh nguy hiểm luôn bị chặn.</p>
+    <div class="card">
+      <div class="card-bar"><span class="name">.claude/settings.json</span></div>
+      <div class="card-body">
+        <div class="perms">
+          <div class="permcol allow">
+            <h4><span class="dot"></span>Cho phép (không hỏi)</h4>
+            <span class="chip">git status</span><span class="chip">git diff</span><span class="chip">git log</span><span class="chip">git show</span><span class="chip">git branch</span><span class="chip">ls</span><span class="chip">cat</span><span class="chip">find</span><span class="chip">grep</span><span class="chip">pnpm lint</span><span class="chip">pnpm test</span><span class="chip">pnpm build</span>
+          </div>
+          <div class="permcol deny">
+            <h4><span class="dot"></span>Luôn chặn</h4>
+            <span class="chip">rm -rf</span><span class="chip">git push</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="tight">Muốn thêm/bớt: gõ <code>/permissions</code>. Quyền riêng máy bạn (không commit) để trong <code>.claude/settings.local.json</code>.</p>
+  </section>
+
+  <!-- 4 -->
+  <section class="step">
+    <div class="step-head"><span class="num">4</span><h2>Hook tự động format</h2></div>
+    <p>Sau khi Claude sửa/tạo file <code>.ts .tsx .js .json .css .md</code>… → Prettier tự chạy làm đẹp code. An toàn: chỉ đụng file trong workspace, không bao giờ chặn thao tác. Bạn không cần làm gì.</p>
+  </section>
+
+  <!-- 5 -->
+  <section class="step">
+    <div class="step-head"><span class="num">5</span><h2>Lệnh tắt của dự án</h2></div>
+    <p>Gõ <code>/</code> để thấy. Các lệnh này định nghĩa trong <code>.claude/commands/</code>.</p>
+    <div class="card"><div class="tbl-wrap"><table class="tbl">
+      <tr><th>Lệnh</th><th>Tác dụng</th></tr>
+      <tr><td><code>/seed</code></td><td>Nạp dữ liệu mẫu — <code>pnpm backend:seed</code></td></tr>
+      <tr><td><code>/dev-backend</code></td><td>Bật server backend Medusa</td></tr>
+      <tr><td><code>/dev-storefront</code></td><td>Bật storefront (cổng 8008)</td></tr>
+    </table></div></div>
+  </section>
+
+  <!-- 6 -->
+  <section class="step">
+    <div class="step-head"><span class="num">6</span><h2>Plugin medusa-dev — sức mạnh chính</h2></div>
+    <p>Cứ mô tả tính năng bằng lời, Claude tự vận dụng kiến thức Medusa chuẩn (module, API, workflow, admin UI, storefront) để làm.</p>
+    <div class="card"><div class="tbl-wrap"><table class="tbl">
+      <tr><th>Lệnh plugin</th><th>Tác dụng</th></tr>
+      <tr><td><code>/medusa-dev:db-generate &lt;module&gt;</code></td><td>Tạo migration cho một module</td></tr>
+      <tr><td><code>/medusa-dev:db-migrate</code></td><td>Chạy migration</td></tr>
+      <tr><td><code>/medusa-dev:new-user &lt;email&gt; &lt;pass&gt;</code></td><td>Tạo tài khoản admin</td></tr>
+    </table></div></div>
+    <p class="tight"><b>Tra cứu tài liệu:</b> MCP <code>MedusaDocs</code> cho Claude tra tài liệu Medusa chính thức khi code — tự động, bạn không phải làm gì.</p>
+
+    <div class="prompts">
+      <div class="prompt"><span class="who">Ví dụ prompt</span><em>“Tạo module wishlist: khách lưu sản phẩm yêu thích, có API thêm/xóa/lấy danh sách.”</em></div>
+      <div class="prompt"><span class="who">Ví dụ prompt</span><em>“Thêm widget vào trang chi tiết sản phẩm trong admin để quản lý sản phẩm liên quan.”</em></div>
+      <div class="prompt"><span class="who">Ví dụ prompt</span><em>“Tích hợp API reviews vào storefront, hiển thị review ở trang sản phẩm kèm phân trang.”</em></div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="step">
+    <div class="step-head"><span class="num">7</span><h2>Toàn cảnh các file cấu hình</h2></div>
+    <div class="card"><div class="card-body">
+<pre><code>CLAUDE.md                          hướng dẫn dự án (Claude tự đọc mỗi phiên)
+.claude/
+├── settings.json                  quyền + hook + bật plugin medusa-dev
+├── settings.local.json            (tùy chọn) quyền riêng bạn — KHÔNG commit
+├── hooks/format.sh                auto-format Prettier
+├── rules/project-conventions.md   quy ước riêng repo
+└── commands/                      /seed · /dev-backend · /dev-storefront
+docs/claude-code-guide.html        chính tài liệu này</code></pre>
+    </div></div>
+  </section>
+
+  <footer>
+    Cập nhật khi cấu hình đổi. Chi tiết quy ước kỹ thuật xem <code>.claude/rules/project-conventions.md</code>;
+    hướng dẫn dự án xem <code>CLAUDE.md</code>. Plugin nguồn: <code>medusajs/medusa-agent-skills</code>.
+  </footer>
+</div>

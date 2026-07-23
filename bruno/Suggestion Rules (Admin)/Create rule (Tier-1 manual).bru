@@ -1,0 +1,45 @@
+meta {
+  name: Create rule (Tier-1 manual)
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/admin/suggestion-rules
+  body: json
+  auth: inherit
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Complete your setup (demo)",
+    "type": "product",
+    "tier": "manual",
+    "priority": 5,
+    "is_active": true,
+    "source_product_ids": ["{{sourceProductId}}"],
+    "items": [
+      { "suggested_product_id": "{{suggestedProductId}}", "display_order": 0, "custom_label": "Best Match" }
+    ]
+  }
+}
+
+script:post-response {
+  const j = res.getBody();
+  if (j && j.suggestion_rule && j.suggestion_rule.id) {
+    bru.setVar('ruleId', j.suggestion_rule.id);
+  }
+}
+
+tests {
+  test("201 created", function () {
+    expect(res.getStatus()).to.equal(201);
+  });
+  test("has pivot source", function () {
+    expect(res.getBody().suggestion_rule.sources.length).to.be.above(0);
+  });
+}

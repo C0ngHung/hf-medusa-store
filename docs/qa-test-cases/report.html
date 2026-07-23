@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>QA Test Case Matrix — VoucherEngine + SuggestiveSelling</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; }
+  table { border-collapse: collapse; margin: 12px 0; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
+  th { background: #f0f0f0; font-weight: bold; }
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; margin-top: 28px; border-bottom: 2px solid #ccc; padding-bottom: 4px; }
+  h3 { font-size: 16px; margin-top: 22px; }
+  h4 { font-size: 14px; margin-top: 18px; }
+  code { background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-family: "Courier New", monospace; }
+  hr { border: none; border-top: 1px solid #ccc; margin: 24px 0; }
+  body { max-width: 1100px; margin: 0 auto 60px; padding: 0 20px; }
+  #search-bar { position: sticky; top: 0; background: #fff; padding: 12px 0; border-bottom: 2px solid #ddd; z-index: 10; }
+  #search-bar input { width: 100%; max-width: 420px; padding: 8px 10px; font-size: 14px; border: 1px solid #bbb; border-radius: 4px; }
+  #search-count { margin-left: 10px; color: #666; font-size: 12px; }
+  tr.row-hidden { display: none; }
+  td.status-pass { color: #1a7f37; font-weight: bold; }
+  td.status-fail { color: #cf222e; font-weight: bold; background: #fff0f0; }
+  #back-to-top { position: fixed; bottom: 20px; right: 20px; padding: 8px 14px; background: #333; color: #fff;
+    border-radius: 20px; text-decoration: none; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.3); display: none; }
+</style>
+</head>
+<body>
+
+<div id="search-bar">
+  <input id="search-input" type="text" placeholder="Tìm test case, mã TC, EC-XX, T-VOUCH-XX... (lọc theo dòng bảng)">
+  <span id="search-count"></span>
+</div>
+<a id="back-to-top" href="#top">↑ Đầu trang</a>
+<a id="top"></a>
+
+<h1>QA Test Case Matrix — Edge Cases &amp; Business Rules (SRS §8)</h1>
+
+<h2>📋 Tổng hợp báo cáo cho Team (2026-07-21)</h2>
+
+<p><strong>Phạm vi đã audit:</strong> toàn bộ SRS §8 "Edge Cases &amp; Business Rules Matrix" (EC-01→EC-10) +
+§10 "Acceptance Test Checklist" (T-VOUCH-01→12, T-SUGG-01→10) — <strong>32/32 hạng mục</strong>, đối chiếu với
+SRS gốc trên Google Docs (không dùng bản PDF/md tĩnh trong repo vì có thể lệch).</p>
+
+<p><strong>Kết quả tổng quan:</strong></p>
+
+<table>
+<thead>
+<tr><th></th><th>Số lượng</th></tr>
+</thead>
+<tbody>
+<tr><td>✅ Pass (re-run thật, có bằng chứng)</td><td>27 / 32</td></tr>
+<tr><td>🔴 Gap thật, chưa fix</td><td>1 (EC-03 / T-VOUCH-09 — sàn 1 VND)</td></tr>
+<tr><td>🟡 Partially done, chưa fix (blocked chờ quyết định)</td><td>1 (EC-04 — optimistic lock)</td></tr>
+<tr><td>❌ Chưa implement (thiếu hạ tầng test)</td><td>1 (T-SUGG-06 — E2E, không có Playwright)</td></tr>
+<tr><td>⚠️ SRS annotation sai/lỗi thời (đã đính chính)</td><td>2 (EC-08 "not done"→thực ra Done; T-SUGG-10 "missing"→thực ra có)</td></tr>
+</tbody>
+</table>
+
+<p><strong>Kiểm kê toàn bộ Unit Test suite (<code>pnpm test:unit</code>, re-run 2026-07-21 để xác nhận số hiện tại):</strong><br>
+<strong>253 passed / 254 total, 21 file</strong> (1 fail = đúng RED test của EC-03 đã biết, xem bảng dưới).
+Đây là toàn bộ unit test đang có trong backend VoucherEngine + SuggestiveSelling — khác với 56 test
+case ở phụ lục cuối trang (56 test case đó là tập con được chọn ra vì mỗi cái chứng minh trực tiếp
+1 mục cụ thể trong SRS §8/§10; 253 là TẤT CẢ, kể cả test cho các hàm phụ trợ không gắn với 1 SRS ID
+cụ thể nào, ví dụ <code>money.ts</code>, <code>normalize.ts</code>, <code>gen-code.ts</code>).</p>
+
+<table>
+<thead>
+<tr><th>#</th><th>File</th><th>Pass</th><th>Fail</th><th>Tổng</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td><code>src/modules/voucher-engine/lib/__tests__/money.unit.spec.ts</code></td><td>32</td><td>0</td><td>32</td></tr>
+<tr><td>2</td><td><code>src/modules/suggestive-selling/__tests__/pipeline.unit.spec.ts</code></td><td>32</td><td>0</td><td>32</td></tr>
+<tr><td>3</td><td><code>src/workflows/voucher-engine/__tests__/validators.unit.spec.ts</code></td><td>28</td><td>0</td><td>28</td></tr>
+<tr><td>4</td><td><code>src/api/store/carts/[id]/voucher/__tests__/validators.unit.spec.ts</code></td><td>28</td><td>0</td><td>28</td></tr>
+<tr><td>5</td><td><code>src/modules/voucher-engine/lib/__tests__/calculate-discount.unit.spec.ts</code></td><td>25</td><td><strong>1</strong></td><td>26</td></tr>
+<tr><td>6</td><td><code>src/modules/suggestive-selling/__tests__/cart-rules.unit.spec.ts</code></td><td>19</td><td>0</td><td>19</td></tr>
+<tr><td>7</td><td><code>src/lib/__tests__/suggestion-cache.unit.spec.ts</code></td><td>12</td><td>0</td><td>12</td></tr>
+<tr><td>8</td><td><code>src/workflows/voucher-engine/admin/lib/__tests__/build-backing-promotion.unit.spec.ts</code></td><td>10</td><td>0</td><td>10</td></tr>
+<tr><td>9</td><td><code>src/workflows/voucher-engine/__tests__/revalidate-voucher.unit.spec.ts</code></td><td>8</td><td>0</td><td>8</td></tr>
+<tr><td>10</td><td><code>src/workflows/suggestive-selling/__tests__/evaluate.unit.spec.ts</code></td><td>8</td><td>0</td><td>8</td></tr>
+<tr><td>11</td><td><code>src/api/admin/vouchers/__tests__/validators.unit.spec.ts</code></td><td>7</td><td>0</td><td>7</td></tr>
+<tr><td>12</td><td><code>src/lib/__tests__/compute-sales-ranking.unit.spec.ts</code></td><td>7</td><td>0</td><td>7</td></tr>
+<tr><td>13</td><td><code>src/workflows/voucher-engine/__tests__/auto-remove-notice.unit.spec.ts</code></td><td>5</td><td>0</td><td>5</td></tr>
+<tr><td>14</td><td><code>src/workflows/voucher-engine/__tests__/assert-cart-unchanged.unit.spec.ts</code></td><td>5</td><td>0</td><td>5</td></tr>
+<tr><td>15</td><td><code>src/workflows/voucher-engine/__tests__/analytics.unit.spec.ts</code></td><td>5</td><td>0</td><td>5</td></tr>
+<tr><td>16</td><td><code>src/workflows/voucher-engine/lib/__tests__/hydrate-voucher-from-promotion.unit.spec.ts</code></td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>17</td><td><code>src/workflows/voucher-engine/__tests__/rate-limit-policy.unit.spec.ts</code></td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>18</td><td><code>src/workflows/voucher-engine/lib/__tests__/has-stale-voucher-promotion.unit.spec.ts</code></td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>19</td><td><code>src/workflows/voucher-engine/__tests__/normalize.unit.spec.ts</code></td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>20</td><td><code>src/workflows/voucher-engine/__tests__/gen-code.unit.spec.ts</code></td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>21</td><td><code>src/api/middlewares/__tests__/voucher-rate-limit.unit.spec.ts</code></td><td>2</td><td>0</td><td>2</td></tr>
+<tr><td colspan="2"><strong>TỔNG</strong></td><td><strong>253</strong></td><td><strong>1</strong></td><td><strong>254</strong></td></tr>
+</tbody>
+</table>
+
+<p>Lệnh: <code>pnpm test:unit</code> (không chỉ định file, chạy toàn bộ suite gate bởi <code>TEST_TYPE=unit</code>), từ
+<code>apps/backend</code>. File #5 chứa RED test cố ý của EC-03 (chưa fix, xem <em>(xem EC-03)</em>) — 20/21 file sạch
+100%.</p>
+
+<p><strong>Unit/Integration test đã viết hoặc sửa trong phiên này</strong> (5 file, +76 dòng, chưa commit):</p>
+
+<table>
+<thead>
+<tr><th>File</th><th>Loại thay đổi</th><th>Số test case</th><th>Ghi chú</th></tr>
+</thead>
+<tbody>
+<tr>
+<td><code>integration-tests/http/add-suggested-item.spec.ts</code></td>
+<td>🆕 File hoàn toàn mới</td>
+<td>3</td>
+<td>Route <code>POST /store/carts/:id/suggested-items</code> trước đó <strong>0% coverage</strong>. Test: in-stock baseline, out-of-stock 409 (EC-07), rule bị deactivate vẫn add được (EC-09).</td>
+</tr>
+<tr>
+<td><code>integration-tests/http/voucher-suggestion-tier-cascade.spec.ts</code></td>
+<td>🆕 File hoàn toàn mới</td>
+<td>1</td>
+<td>EC-08: thêm suggested item vượt ngưỡng tier promotion → voucher tính lại đúng trên subtotal mới + cap. Trước đó chỉ có demo script thủ công.</td>
+</tr>
+<tr>
+<td><code>integration-tests/http/apply-remove-voucher.spec.ts</code></td>
+<td>➕ Bổ sung test mới</td>
+<td>1</td>
+<td>EC-06: apply→remove→re-apply cùng session với <code>per_user_limit=1</code> phải được cho phép.</td>
+</tr>
+<tr>
+<td><code>src/modules/voucher-engine/lib/__tests__/calculate-discount.unit.spec.ts</code></td>
+<td>➕ Bổ sung test mới (RED, TDD)</td>
+<td>1</td>
+<td>EC-03: xác nhận sàn 1 VND <strong>CHƯA</strong> được implement — test cố ý fail (<code>Expected: 1, Received: 0</code>) làm bằng chứng, <strong>chưa fix code</strong>.</td>
+</tr>
+<tr>
+<td><code>integration-tests/http/suggestion.spec.ts</code></td>
+<td>🐛 Sửa bug trong test cũ</td>
+<td>0 (fix, không thêm mới)</td>
+<td>Test cũ thiếu <code>manage_inventory: false</code> khiến route suggestion lọc oan mọi sản phẩm là hết hàng → 3 test (T-SUGG-01, T-SUGG-05 ×2) fail oan. Đã sửa, cả file 9/9 pass.</td>
+</tr>
+</tbody>
+</table>
+
+<p><strong>Việc còn tồn đọng cần team quyết định:</strong></p>
+<ol>
+<li><strong>Fix EC-03 / T-VOUCH-09</strong> (sàn 1 VND) — vị trí đã biết (<code>calculate-discount.ts</code>), RED test sẵn sàng cho bước GREEN.</li>
+<li><strong>Hướng kiến trúc cho EC-04</strong> (concurrent lock) — cần bàn trước khi code/test tiếp.</li>
+<li><strong>Viết Playwright cho T-SUGG-06</strong> — cần setup E2E framework mới hoàn toàn, chưa tồn tại trong repo.</li>
+<li>Cập nhật SRS gốc: EC-08 annotation "not done" → "Done"; T-SUGG-10 annotation liên quan "missing" → "Done".</li>
+<li>(Thấp ưu tiên) Message lỗi T-VOUCH-03/04 chưa interpolate literal <code>{date}</code>/<code>{count}</code>/<code>{limit}</code>; T-SUGG-02/04 mới test ở tầng pure-logic, chưa có integration test ghép DB thật; admin cache-invalidation stub + SUGG-002(b) store-scoping (từ Step-1 audit, ngoài phạm vi EC/T-ID).</li>
+</ol>
+
+<p>Chi tiết đầy đủ từng hạng mục ở 2 bảng dưới + 32 file <code>EC-XX.md</code>/<code>T-VOUCH-XX.md</code>/<code>T-SUGG-XX.md</code>.</p>
+
+<hr>
+
+<p>Nguồn chuẩn (source of truth): SRS gốc trên Google Docs
+(<code>1cXsHQfqrKBhx6E-B6DQN1zUeUXVjdpXhBp2ivocng3c</code>), mục §8 "Edge Cases &amp; Business Rules Matrix"
+(EC-01 → EC-10). Mỗi file <code>EC-XX.md</code> trong folder này ghi lại (các) test case đã xác minh cho
+1 Edge Case, theo đúng cấu trúc cột dưới đây — copy/paste thẳng bảng markdown vào Excel để có
+<code>.xlsx</code> báo cáo (mỗi <code>|...|</code> row → 1 hàng, mỗi cột → 1 cột).</p>
+
+<h2>Cấu trúc cột (áp dụng cho mọi file <code>EC-XX.md</code>)</h2>
+
+<table>
+<thead>
+<tr><th>Cột</th><th>Ý nghĩa</th></tr>
+</thead>
+<tbody>
+<tr><td>STT</td><td>Số thứ tự trong file</td></tr>
+<tr><td>Mã Test Case (TC ID)</td><td>Định dạng <code>TC_&lt;MODULE&gt;_EC&lt;NN&gt;_&lt;seq&gt;</code>, vd <code>TC_VOUCH_EC01_01</code></td></tr>
+<tr><td>Hạng mục / Chức năng</td><td>Nhóm chức năng + SRS ID liên quan (VOUCH-003, SUGG-002, …)</td></tr>
+<tr><td>Mô tả kịch bản test</td><td>Kịch bản test bằng tiếng Việt, ngắn gọn</td></tr>
+<tr><td>Dữ liệu đầu vào</td><td>Input cụ thể (số tiền, mã voucher, cấu hình…)</td></tr>
+<tr><td>Kết quả mong muốn</td><td>Expected result theo đúng SRS</td></tr>
+<tr><td>Kết quả thực tế</td><td>Actual result — chỉ điền sau khi <strong>đã chạy test thật</strong>, không suy đoán</td></tr>
+<tr><td>Trạng thái</td><td><code>Pass</code> / <code>Failed</code> / <code>Blocked</code> / <code>Not Implemented</code></td></tr>
+<tr><td>Ghi chú</td><td>File:line của test + implementation, lệnh đã chạy, thời điểm chạy, ghi chú lỗi nếu có</td></tr>
+</tbody>
+</table>
+
+<p><strong>Nguyên tắc:</strong> "Kết quả thực tế" + "Trạng thái" chỉ được điền dựa trên một lần chạy test thật
+trong phiên làm việc (không copy từ báo cáo cũ mà không re-run), theo
+<code>superpowers:verification-before-completion</code> — evidence trước khi assertion.</p>
+
+<h2>Tiến độ theo Edge Case (SRS §8)</h2>
+
+<table>
+<thead>
+<tr><th>EC</th><th>Mô tả ngắn</th><th>Priority</th><th>Annotation trong SRS gốc</th><th>File</th><th>Trạng thái audit</th></tr>
+</thead>
+<tbody>
+<tr><td>EC-01</td><td>Item promo + voucher gần cap 50%</td><td>Must</td><td>Done</td><td>EC-01.md</td><td>✅ Verified — Pass (re-run 2026-07-21)</td></tr>
+<tr><td>EC-02</td><td>Xoá hết item scope voucher → auto-remove</td><td>Must</td><td>Done</td><td>EC-02.md</td><td>✅ Verified — Pass (re-run 2026-07-21)</td></tr>
+<tr><td>EC-03</td><td>Sàn tối thiểu 1 VND sau combined discount</td><td>Must</td><td>Not done</td><td>EC-03.md</td><td>🔴 Confirmed gap — RED test (TDD), chưa fix</td></tr>
+<tr><td>EC-04</td><td>Concurrent apply voucher vs xoá item (optimistic lock)</td><td>Must</td><td>Not done</td><td>EC-04.md</td><td>🟡 Partially done — documented, blocked on architecture decision</td></tr>
+<tr><td>EC-05</td><td>Item thêm từ suggestion (PDP) không bị gợi ý lại ở cart</td><td>Must</td><td>Done</td><td>EC-05.md</td><td>✅ Verified — Pass; adjacent T-SUGG-01/05 fail found + FIXED (test bug)</td></tr>
+<tr><td>EC-06</td><td>Apply→remove→re-apply cùng session, usage_count chỉ tăng khi đặt hàng</td><td>Must</td><td>Done</td><td>EC-06.md</td><td>✅ Verified — Pass (new regression test added + re-run 2026-07-21)</td></tr>
+<tr><td>EC-07</td><td>Suggested item hết hàng giữa lúc render và tap Add</td><td>Must</td><td>Done</td><td>EC-07.md</td><td>✅ Verified — Pass (2 brand-new tests added, route had 0 coverage before)</td></tr>
+<tr><td>EC-08</td><td>Thêm suggested item vượt ngưỡng tier promotion mới</td><td>Should</td><td>Not done</td><td>EC-08.md</td><td>✅ Verified — Pass (new test added); SRS annotation "not done" is stale</td></tr>
+<tr><td>EC-09</td><td>Admin deactivate rule trong khi cache còn hiệu lực</td><td>Should</td><td>Done</td><td>EC-09.md</td><td>✅ Verified — Pass (new test added, route had 0 coverage for this case)</td></tr>
+<tr><td>EC-10</td><td>Rate limit brute-force voucher</td><td>Must</td><td>Done</td><td>EC-10.md</td><td>✅ Verified — Pass (re-run 2026-07-21, real Redis)</td></tr>
+</tbody>
+</table>
+
+<p><strong>EC-01 → EC-10: hoàn tất.</strong> Xem "Tổng kết vòng EC-01 → EC-10" cuối EC-10.md cho việc
+còn tồn đọng cần quyết định tiếp theo (EC-03 fix, EC-04 hướng kiến trúc, T-SUGG-01/05 điều tra, SRS
+annotation EC-08 cần sửa).</p>
+
+<h2>Tiến độ theo Acceptance Test Checklist (SRS §10)</h2>
+
+<p>Cùng cấu trúc cột như trên. File <code>T-VOUCH-XX.md</code> / <code>T-SUGG-XX.md</code>.</p>
+
+<table>
+<thead>
+<tr><th>T-ID</th><th>Mô tả ngắn</th><th>Validates</th><th>Type</th><th>File</th><th>Trạng thái audit</th></tr>
+</thead>
+<tbody>
+<tr><td>T-VOUCH-01</td><td>Valid voucher applied → discount + total</td><td>VOUCH-001</td><td>Integration</td><td>T-VOUCH-01.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-02</td><td>Invalid code → error</td><td>V1</td><td>Unit</td><td>T-VOUCH-02.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-03</td><td>Expired → error + date</td><td>V2</td><td>Unit</td><td>T-VOUCH-03.md</td><td>✅ Verified — Pass; message không interpolate {date} (minor)</td></tr>
+<tr><td>T-VOUCH-04</td><td>Per-user limit exceeded → error</td><td>V4</td><td>Unit</td><td>T-VOUCH-04.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-05</td><td>Below min_order → amount needed</td><td>V5</td><td>Unit</td><td>T-VOUCH-05.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-06</td><td>No eligible items → category error</td><td>V6</td><td>Unit</td><td>T-VOUCH-06.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-07</td><td>Item promo 20% + voucher 10% → under cap</td><td>VOUCH-003 happy</td><td>Unit</td><td>T-VOUCH-07.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-08</td><td>Item promo 40% + voucher 20% → capped</td><td>VOUCH-003 cap exceeded</td><td>Unit</td><td>T-VOUCH-08.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-09</td><td>Suggested 50% promo + voucher 50% → cap prevents negative</td><td>EC-03</td><td>Unit</td><td>T-VOUCH-09.md</td><td>🟡 Pass but incomplete — only proves "not negative", not "min 1 VND" (see EC-03)</td></tr>
+<tr><td>T-VOUCH-10</td><td>Remove voucher → reverted, no usage increment</td><td>VOUCH-004</td><td>Integration</td><td>T-VOUCH-10.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-11</td><td>Remove eligible items → auto-removed</td><td>VOUCH-005</td><td>Integration</td><td>T-VOUCH-11.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-VOUCH-12</td><td>5 failed attempts → rate limited</td><td>EC-10</td><td>Integration</td><td>T-VOUCH-12.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-SUGG-01</td><td>3 manual suggestions → all shown in order</td><td>SUGG-001 Tier1</td><td>Integration</td><td>T-SUGG-01.md</td><td>🛠️ Was failing (test bug) — FIXED, now Pass</td></tr>
+<tr><td>T-SUGG-02</td><td>1 manual → backfill 2-4 category complements</td><td>SUGG-001 Tier2</td><td>Integration</td><td>T-SUGG-02.md</td><td>✅ Verified — Pass (pure-logic level; workflow/DB layer not integration-tested)</td></tr>
+<tr><td>T-SUGG-03</td><td>Already in cart → excluded</td><td>SUGG-002(a)</td><td>Unit</td><td>T-SUGG-03.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-SUGG-04</td><td>Out of stock → excluded</td><td>SUGG-002(b)</td><td>Unit</td><td>T-SUGG-04.md</td><td>✅ Verified — Pass (global stock only, not store-scoped — known gap)</td></tr>
+<tr><td>T-SUGG-05</td><td>Dismissed → not shown again in session</td><td>SUGG-002(c)</td><td>Integration</td><td>T-SUGG-05.md</td><td>🛠️ Was failing (test bug) — FIXED, now Pass</td></tr>
+<tr><td>T-SUGG-06</td><td>One-tap add → item in cart, toast shown</td><td>SUGG-003</td><td>E2E</td><td>T-SUGG-06.md</td><td>❌ Not Implemented — no Playwright in repo; backend half covered via EC-07</td></tr>
+<tr><td>T-SUGG-07</td><td>Racket no string → CR-01 fires</td><td>SUGG-004 CR-01</td><td>Unit</td><td>T-SUGG-07.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-SUGG-08</td><td>Near free-ship threshold → badge shown</td><td>SUGG-004 CR-02</td><td>Unit</td><td>T-SUGG-08.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-SUGG-09</td><td>Cart change → suggestions refresh, cache invalidated</td><td>SUGG-005</td><td>Integration</td><td>T-SUGG-09.md</td><td>✅ Verified — Pass</td></tr>
+<tr><td>T-SUGG-10</td><td>Suggestion events tracked</td><td>SUGG-006</td><td>Integration</td><td>T-SUGG-10.md</td><td>✅ Verified — Pass; đính chính audit code cũ nói "missing" là sai</td></tr>
+</tbody>
+</table>
+
+<p><strong>§10 (22/22): hoàn tất.</strong> 20/22 Pass sạch. Việc còn tồn đọng:</p>
+<ol>
+<li><strong>T-VOUCH-09 / EC-03</strong> — sàn 1 VND chưa fix (đã có RED test, xem <em>(xem EC-03)</em>).</li>
+<li><strong>T-SUGG-06</strong> — E2E chưa viết được (không có Playwright trong repo); phần backend đã có test qua EC-07.</li>
+<li><strong>T-SUGG-01/05 — bug thật đã tìm thấy VÀ SỬA</strong> trong phiên này: test cũ thiếu <code>manage_inventory: false</code> khiến route lọc oan mọi suggestion là hết hàng. Đã sửa <code>suggestion.spec.ts</code>, 9/9 pass.</li>
+<li>Message error T-VOUCH-03/04 không interpolate literal {date}/{count}/{limit} như câu chữ SRS (minor, có <code>details</code> object thay thế).</li>
+<li>T-SUGG-02, T-SUGG-04 chỉ có test ở tầng pure-logic/global — chưa có integration test ghép với DB thật (category_top_seller) hoặc store-scoping.</li>
+</ol>
+
+<hr>
+
+<h2>📎 Phụ lục — Toàn bộ 56 Test Case (chi tiết đầy đủ, không cần mở file riêng)</h2>
+
+<p>Gộp lại từ tất cả 32 file <code>EC-XX.md</code> / <code>T-VOUCH-XX.md</code> / <code>T-SUGG-XX.md</code> ở trên, để team đọc 1 file
+duy nhất là đủ. Cột đầu (<code>EC</code> hoặc <code>T-ID</code>) cho biết row đó thuộc hạng mục nào — bấm vào file tương
+ứng ở 2 bảng phía trên nếu cần xem thêm ngữ cảnh/bằng chứng đầy đủ hơn.</p>
+
+<h3>A. SRS §8 — Edge Cases (19 test case)</h3>
+
+<table>
+<thead>
+<tr><th>EC</th><th>STT</th><th>Mã Test Case (TC ID)</th><th>Hạng mục / Chức năng</th><th>Mô tả kịch bản test</th><th>Dữ liệu đầu vào</th><th>Kết quả mong muốn</th><th>Kết quả thực tế</th><th>Trạng thái</th><th>Ghi chú</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>EC-01</td><td>1</td><td>TC_VOUCH_EC01_01</td>
+<td>VoucherEngine — Discount Stacking, Rule 11 (VOUCH-003 Rule 1-6)</td>
+<td>Áp voucher % lên cart đã có 1 item-promotion % (test hồi quy Rule 11 — đảm bảo credit-line carrier không làm co lại discount của item promotion, khác với carrier ephemeral-promotion cũ bị compound qua <code>computeActions</code>)</td>
+<td>Cart: "Racket" 1,000,000₫ x1. Promotion <code>ITEMPROMO40</code> (percentage, target_type=items, allocation=across, value=40%). Voucher <code>STACK20</code> (percentage, discount_value=2000=20%)</td>
+<td>HTTP 200; <code>discount_amount=100,000</code>; <code>discount_capped=true</code>; <code>updated_cart_total=500,000</code>; adjustment của item promotion KHÔNG đổi (vẫn 400,000, không bị voucher làm co lại)</td>
+<td>Khớp 100%: <code>discount_amount=100000</code>, <code>discount_capped=true</code>, <code>updated_cart_total=500000</code>, item-promo adjustment vẫn 400,000</td>
+<td>Pass</td>
+<td>Test: <code>apply-remove-voucher.spec.ts:155</code>. Chạy 2026-07-21 11:09, 7/7 suite pass, 6832 ms.</td>
+</tr>
+<tr>
+<td>EC-01</td><td>2</td><td>TC_VOUCH_EC01_02</td>
+<td>VoucherEngine — Discount Stacking, worked example dưới cap (VOUCH-003 §4.1 happy path, T-VOUCH-07)</td>
+<td>Tính discount thuần (pure function) cho cart có 1 dòng đã có item promotion, 1 dòng không, áp voucher % toàn bộ, tổng discount dưới cap 50%</td>
+<td>Lines: racket 4,500,000 (<code>item_promotion_discount=900,000</code>), string 200,000 (không promo). Voucher: percentage 10%, global cap mặc định 50%</td>
+<td><code>raw_voucher_discount=380,000</code>; <code>final_voucher_discount=380,000</code>; <code>discount_capped=false</code>; <code>expected_final_cart_total=3,420,000</code>; <code>combined_discount=1,280,000</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>calculate-discount.unit.spec.ts:98-141</code> (T-VOUCH-07). Chạy 2026-07-21, 25/25 pass, 0.329s.</td>
+</tr>
+<tr>
+<td>EC-02</td><td>1</td><td>TC_VOUCH_EC02_01</td>
+<td>VoucherEngine — Auto-invalidation on cart change (VOUCH-005)</td>
+<td>Voucher scope 1 sản phẩm. Thêm sản phẩm khác (ngoài scope), xoá đúng sản phẩm trong scope → cart chỉ còn item không hợp lệ → revalidate</td>
+<td>Cart: Racket (scope) 2,000,000₫ x1. Voucher <code>RACKETONLY10</code> (10%, scoped). Thêm Shoes (ngoài scope) 1,500,000₫, xoá dòng Racket</td>
+<td><code>cart.metadata.voucher</code> bị xoá; <code>voucher_notice.code="VOUCHER_AUTO_REMOVED"</code>; <code>reason_code="VOUCHER_NO_ELIGIBLE_ITEMS"</code></td>
+<td>Khớp 100% cả 3 field</td>
+<td>Pass</td>
+<td>Test: <code>revalidate-voucher-workflow.spec.ts:307</code>. Chạy 2026-07-21 11:12, 7/7 pass, 6195 ms.</td>
+</tr>
+<tr>
+<td>EC-03</td><td>1</td><td>TC_VOUCH_EC03_01</td>
+<td>VoucherEngine — Global cap floor (SRS §8 EC-03)</td>
+<td>[TDD RED] Item promotion chiếm 100% subtotal → tổng cuối phải floor ở 1 VND, không phải 0</td>
+<td>Line: unit_price=1,000,000, item_promotion_discount=1,000,000. Voucher 50%, global cap 50%</td>
+<td><code>expected_final_cart_total = 1</code></td>
+<td><code>expected_final_cart_total = 0</code></td>
+<td><strong>Failed (RED, chưa fix)</strong></td>
+<td>Test mới: <code>calculate-discount.unit.spec.ts:257-280</code>. Cần sửa <code>calculate-discount.ts</code> (<code>clampMin(..., {floor:1})</code>). Chạy 2026-07-21: 1 failed, 25 passed, 26 total. <strong>Chờ quyết định Cealus.</strong></td>
+</tr>
+<tr>
+<td>EC-03</td><td>2</td><td>TC_VOUCH_EC03_02</td>
+<td>VoucherEngine — Admin warning log (EC-03, phần log cảnh báo)</td>
+<td>Chưa viết — cần quyết định layer chịu trách nhiệm log (pure fn không được có I/O)</td>
+<td>—</td>
+<td>—</td>
+<td>—</td>
+<td><strong>Not Implemented</strong></td>
+<td>Chưa viết, cần bàn kiến trúc trước.</td>
+</tr>
+<tr>
+<td>EC-04</td><td>1</td><td>TC_VOUCH_EC04_01</td>
+<td>VoucherEngine — Lock mutual exclusion (SPEC §14.2-C, phạm vi hẹp hơn EC-04 SRS)</td>
+<td>2 lệnh <code>revalidateVoucherWorkflow</code> cùng lúc trên 1 cart — xác nhận 1 thắng lock, 1 thua fail-fast</td>
+<td>Cart: Racket 2,000,000₫. Voucher <code>LOCKRACE10</code> (10%, unscoped). Fire 2 <code>revalidateVoucherWorkflow</code> đồng thời</td>
+<td>1 fulfilled, 1 rejected <code>/Failed to acquire lock/</code>; <code>cart.total=3,600,000</code>; <code>discount_amount=400,000</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>revalidate-voucher-workflow.spec.ts:368</code>. <strong>Lưu ý:</strong> chỉ test race giữa 2 workflow VoucherEngine, KHÔNG phải race với native Medusa cart-mutation như SRS literal. Chạy 2026-07-21 11:12, 7/7 pass, 5816 ms.</td>
+</tr>
+<tr>
+<td>EC-04</td><td>2</td><td>TC_VOUCH_EC04_02</td>
+<td>VoucherEngine — literal "apply vs native item-removal" race (đúng kịch bản SRS)</td>
+<td>Chưa viết</td>
+<td>—</td>
+<td>Cả 2 request cùng thành công, không inconsistent state</td>
+<td>—</td>
+<td><strong>Blocked — chờ quyết định kiến trúc</strong></td>
+<td>Cealus quyết định (2026-07-21): document only, chưa test/fix — chờ hướng kiến trúc (version column? mở rộng lock?).</td>
+</tr>
+<tr>
+<td>EC-05</td><td>1</td><td>TC_SUGG_EC05_01</td>
+<td>SuggestiveSelling — Filter đã có trong cart (SUGG-002a, T-SUGG-03)</td>
+<td>Sản phẩm gợi ý đã có trong cart → bị loại với reason <code>in_cart</code></td>
+<td>Candidate <code>product_id:"in_cart"</code>; <code>cartProductIds=Set(["in_cart"])</code></td>
+<td>Candidate bị drop với <code>reason:"in_cart"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>pipeline.unit.spec.ts:167-174</code>. Chạy 2026-07-21, 32/32 pass.</td>
+</tr>
+<tr>
+<td>EC-05</td><td>2</td><td>TC_SUGG_EC05_02</td>
+<td>SuggestiveSelling — Cache invalidation cơ chế lõi (SUGG-005, T-SUGG-09)</td>
+<td>Cache cart-suggestions bị xoá ngay khi gọi <code>invalidateCartSuggestions</code> (real cache)</td>
+<td>Seed cache key <code>cart:{cartId}:suggestions</code> dữ liệu giả</td>
+<td><code>cache.get(key)</code> → <code>null</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>suggestion.spec.ts:292-299</code>. Chạy 2026-07-21 11:36, 5556 ms.</td>
+</tr>
+<tr>
+<td>EC-05</td><td>3</td><td>TC_SUGG_EC05_03</td>
+<td>SuggestiveSelling — Subscriber <code>cart.updated</code> gọi invalidate (SUGG-005)</td>
+<td>Gọi trực tiếp handler với event <code>cart.updated</code> → cache bị xoá</td>
+<td>Cache đã seed; event <code>{data:{id:CART_ID}}</code></td>
+<td><code>cache.get(key)</code> → <code>null</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>suggestion.spec.ts:301-313</code>. Cùng lần chạy, 5433 ms.</td>
+</tr>
+<tr>
+<td>EC-05</td><td>4</td><td>TC_SUGG_EC05_04</td>
+<td>SuggestiveSelling — Wiring end-to-end qua Event Bus thật (SUGG-005)</td>
+<td>Emit <code>cart.updated</code> qua Event Bus thật → subscriber thực sự nhận</td>
+<td><code>eventBus.emit({name:"cart.updated", data:{id:CART_ID}})</code></td>
+<td>Cache bị xoá trong 8000ms</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>suggestion.spec.ts:315-326</code>. Cùng lần chạy, 7144 ms.</td>
+</tr>
+<tr>
+<td>EC-06</td><td>1</td><td>TC_VOUCH_EC06_01</td>
+<td>VoucherEngine — Re-apply cùng session (EC-06, per_user_limit) [test MỚI]</td>
+<td>Apply voucher <code>per_user_limit=1</code> → 200. Remove → 200. Apply lại cùng session → vẫn phải 200</td>
+<td>Cart: Racket 1,000,000₫. Voucher <code>REAPPLY10</code> (10%, <code>per_user_limit=1</code>)</td>
+<td>Cả 3 request 200; lần apply 2, <code>discount_amount=100,000</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><strong>Test mới</strong> trong <code>apply-remove-voucher.spec.ts</code>. Chạy 2026-07-21: 8/8 pass, 6179 ms.</td>
+</tr>
+<tr>
+<td>EC-06</td><td>2</td><td>TC_VOUCH_EC06_02</td>
+<td>VoucherEngine — Apply không tăng usage (task 3.6.11, Rule 12)</td>
+<td>Apply voucher (global usage_limit) → <code>usage_count</code>/<code>VoucherUsageLog</code> phải vẫn 0</td>
+<td>Cart: Racket 2,000,000₫. Voucher <code>NOINCREMENT10</code> (usage_limit=100)</td>
+<td><code>usage_count=0</code>; <code>logCount=0</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>revalidate-voucher-workflow.spec.ts:435</code>. Chạy 2026-07-21 11:12, 5811 ms.</td>
+</tr>
+<tr>
+<td>EC-06</td><td>3</td><td>TC_VOUCH_EC06_03</td>
+<td>VoucherEngine — Remove không tăng usage (tasks 3.4.2/3.4.10)</td>
+<td>Remove voucher đã apply → total revert, usage_count không tăng</td>
+<td>(dùng chung dữ liệu apply trước đó)</td>
+<td><code>usage_count</code> không tăng sau remove</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>apply-remove-voucher.spec.ts:330</code>. Cùng lô 8/8 pass.</td>
+</tr>
+<tr>
+<td>EC-07</td><td>1</td><td>TC_SUGG_EC07_01</td>
+<td>SuggestiveSelling — One-tap add baseline, còn hàng [test MỚI]</td>
+<td>Sản phẩm còn 10 tồn kho tại stock location đúng sales channel → add thành công</td>
+<td>Product manage_inventory:true, stocked_quantity:10; cart cùng sales channel</td>
+<td>HTTP 200; <code>line_item</code> không null, <code>quantity=1</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><strong>Test mới</strong>: <code>add-suggested-item.spec.ts</code> (file hoàn toàn mới). Chạy 2026-07-21: 2/2 pass, 3246 ms.</td>
+</tr>
+<tr>
+<td>EC-07</td><td>2</td><td>TC_SUGG_EC07_02</td>
+<td>SuggestiveSelling — Hết hàng tại thời điểm add (EC-07) [test MỚI]</td>
+<td><code>stocked_quantity:0</code> (vừa hết hàng) → add phải bị từ chối</td>
+<td>Product manage_inventory:true, stocked_quantity:0</td>
+<td>HTTP 409, <code>code:"SUGGESTION_STOCK_CONFLICT"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><strong>Test mới</strong>, cùng file trên. Cùng lần chạy, 6170 ms.</td>
+</tr>
+<tr>
+<td>EC-08</td><td>1</td><td>TC_VOUCH_EC08_01</td>
+<td>VoucherEngine × SuggestiveSelling — Cascading tier + voucher + cap (EC-08) [test MỚI]</td>
+<td>Cart có voucher 10% (dưới ngưỡng tier). Seed automatic Promotion "spend 5,000,000→5% off order". Thêm item String qua <code>addToCartWorkflow</code> thật → vượt ngưỡng. Không gọi <code>revalidateVoucherWorkflow</code> tay — chờ subscriber tự trigger</td>
+<td>Racket 4,000,000₫ + voucher TIER10 (10%) đã áp (discount=400,000, total=3,600,000). Promotion TIER5M5 (automatic, order 5%, rule item_total≥5,000,000). Thêm String 1,500,000₫ → subtotal 5,500,000</td>
+<td>Item promo=275,000 (5%×5,500,000). Voucher tính lại trên post-promo mới (5,225,000): <code>discount_amount=522,500</code>, <code>discount_capped=false</code>. <code>cart.total=4,702,500</code></td>
+<td>Khớp 100% tất cả</td>
+<td>Pass</td>
+<td><strong>Test mới</strong>: <code>voucher-suggestion-tier-cascade.spec.ts</code> (file hoàn toàn mới). Pass sau 2 lần sửa test (lock race + thiếu <code>metadata</code> trong <code>select</code>). Chạy 2026-07-21: 1/1 pass, 3441 ms.</td>
+</tr>
+<tr>
+<td>EC-09</td><td>1</td><td>TC_SUGG_EC09_01</td>
+<td>SuggestiveSelling — Add vẫn hoạt động khi rule đã bị deactivate (EC-09) [test MỚI]</td>
+<td>Rule <code>is_active=false</code> (admin đã tắt) → khách vẫn tap Add với <code>attribution.rule_id</code> trỏ rule đó → phải thành công, chỉ bỏ attribution</td>
+<td>Product còn hàng (10). Rule is_active:false. Body add có <code>attribution.rule_id</code></td>
+<td>HTTP 200; <code>line_item</code> không null; <code>line_item.metadata.suggestion_rule_id=null</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><strong>Test mới</strong>, cùng file <code>add-suggested-item.spec.ts</code>. Chạy 2026-07-21: 3/3 pass, 5661 ms.</td>
+</tr>
+<tr>
+<td>EC-10</td><td>1</td><td>TC_VOUCH_EC10_01</td>
+<td>VoucherEngine — Rate limit brute-force (SEC-02/EC-10)</td>
+<td>5 lần mã voucher sai liên tiếp → vẫn 404. Lần 6 → phải bị chặn</td>
+<td>Cart trống. <code>{code:"NOTREAL123"}</code> gửi 6 lần</td>
+<td>5 lần đầu 404; lần 6: 429, <code>code:"VOUCHER_RATE_LIMITED"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>voucher-rate-limit.spec.ts:81</code> (cần Redis thật). Chạy 2026-07-21: 1/1 pass, 2738 ms.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>B. SRS §10 — T-VOUCH-01→12 (21 test case)</h3>
+
+<table>
+<thead>
+<tr><th>T-ID</th><th>STT</th><th>Mã Test Case (TC ID)</th><th>Hạng mục / Chức năng</th><th>Mô tả kịch bản test</th><th>Dữ liệu đầu vào</th><th>Kết quả mong muốn</th><th>Kết quả thực tế</th><th>Trạng thái</th><th>Ghi chú</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>T-VOUCH-01</td><td>1</td><td>TC_VOUCH_T01_01</td>
+<td>VoucherEngine — Apply Voucher Code (VOUCH-001)</td>
+<td>Áp voucher percentage hợp lệ (code lowercase) lên cart 1 item</td>
+<td>Cart: Racket 1,000,000₫. Voucher <code>HTTPAPPLY10</code> (10%). Body <code>{code:"httpapply10"}</code></td>
+<td>HTTP 200; <code>discount_amount=100,000</code>; <code>updated_cart_total=900,000</code>; <code>voucher_details.code="HTTPAPPLY10"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>apply-remove-voucher.spec.ts:123</code>. 8/8 pass, 5787 ms.</td>
+</tr>
+<tr>
+<td>T-VOUCH-02</td><td>1</td><td>TC_VOUCH_T02_01</td>
+<td>VoucherEngine — V1 exists+active</td>
+<td>Voucher <code>null</code> → lỗi cụ thể</td>
+<td><code>v1Exists(null)</code></td>
+<td><code>{ok:false, code:"VOUCHER_NOT_FOUND", http_status:404}</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Test: <code>validators.unit.spec.ts:93-100</code>. 28/28 pass.</td>
+</tr>
+<tr>
+<td>T-VOUCH-02</td><td>2</td><td>TC_VOUCH_T02_02</td>
+<td>VoucherEngine — V1 anti-enumeration</td>
+<td><code>is_active=false</code> → CÙNG message như not-found</td>
+<td><code>v1Exists(voucher({is_active:false}))</code></td>
+<td><code>{code:"VOUCHER_INACTIVE", http_status:422}</code>, message giống NOT_FOUND</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-03</td><td>1</td><td>TC_VOUCH_T03_01</td>
+<td>VoucherEngine — V2 date window</td>
+<td><code>valid_to</code> đã qua → EXPIRED</td>
+<td><code>v2Window(voucher({valid_to:"2026-07-13"}), NOW)</code></td>
+<td><code>{code:"VOUCHER_EXPIRED"}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>28/28 pass. Message không interpolate <code>{date}</code> (minor).</td>
+</tr>
+<tr>
+<td>T-VOUCH-03</td><td>2</td><td>TC_VOUCH_T03_02</td>
+<td>VoucherEngine — V2 chưa hiệu lực</td>
+<td><code>valid_from</code> tương lai → NOT_YET_VALID</td>
+<td><code>v2Window(voucher({valid_from:"2026-08-01"}), NOW)</code></td>
+<td><code>{code:"VOUCHER_NOT_YET_VALID"}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-03</td><td>3</td><td>TC_VOUCH_T03_03</td>
+<td>VoucherEngine — V2 biên</td>
+<td><code>now==valid_from</code>/<code>now==valid_to</code> đều pass</td>
+<td>2 case boundary</td>
+<td>Cả 2 <code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-04</td><td>1</td><td>TC_VOUCH_T04_01</td>
+<td>VoucherEngine — V4 per-user limit</td>
+<td><code>user_usage_count==per_user_limit</code> → lỗi kèm details</td>
+<td><code>v4UserLimit(voucher({per_user_limit:1}),1)</code></td>
+<td><code>{code:"VOUCHER_PER_USER_LIMIT_REACHED"}</code>, <code>details={count:1,limit:1}</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>28/28 pass. Message không interpolate count/limit (minor, có details).</td>
+</tr>
+<tr>
+<td>T-VOUCH-04</td><td>2</td><td>TC_VOUCH_T04_02</td>
+<td>VoucherEngine — V4 dưới limit</td>
+<td><code>2&lt;3</code> → pass</td>
+<td><code>v4UserLimit(voucher({per_user_limit:3}),2)</code></td>
+<td><code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-05</td><td>1</td><td>TC_VOUCH_T05_01</td>
+<td>VoucherEngine — V5 min order</td>
+<td>subtotal&lt;min → lỗi kèm remaining chính xác</td>
+<td><code>v5MinOrder(voucher({min_order_value:200000}), cart({original_subtotal:150000}))</code></td>
+<td><code>{code:"VOUCHER_MIN_ORDER_NOT_MET"}</code>, <code>details={remaining:50000,min_order_value:200000}</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>28/28 pass. Message CÓ interpolate <code>{remaining}</code> (đúng SRS).</td>
+</tr>
+<tr>
+<td>T-VOUCH-05</td><td>2</td><td>TC_VOUCH_T05_02</td>
+<td>VoucherEngine — V5 biên</td>
+<td><code>subtotal==min</code> → pass</td>
+<td>boundary case</td>
+<td><code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-05</td><td>3</td><td>TC_VOUCH_T05_03</td>
+<td>VoucherEngine — V5 không giới hạn</td>
+<td><code>min_order_value=null</code> → luôn pass</td>
+<td>null case</td>
+<td><code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-06</td><td>1</td><td>TC_VOUCH_T06_01</td>
+<td>VoucherEngine — V6 scope, không item hợp lệ</td>
+<td>Category không khớp → lỗi kèm category list</td>
+<td><code>v6Scope(voucher({applicable_category_ids:["cat_shuttlecock"]}), cart())</code></td>
+<td><code>{code:"VOUCHER_NO_ELIGIBLE_ITEMS"}</code>, <code>details={applicable_categories:[...]}</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>28/28 pass.</td>
+</tr>
+<tr>
+<td>T-VOUCH-06</td><td>2</td><td>TC_VOUCH_T06_02</td>
+<td>VoucherEngine — V6 unscoped</td>
+<td>Cả 2 mảng null → mọi item hợp lệ</td>
+<td><code>v6Scope(voucher(), cart())</code></td>
+<td><code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-06</td><td>3</td><td>TC_VOUCH_T06_03</td>
+<td>VoucherEngine — V6 category/product match</td>
+<td>Category/product khớp → pass</td>
+<td>2 case</td>
+<td>Cả 2 <code>{ok:true}</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-VOUCH-07</td><td>1</td><td>TC_VOUCH_T07_01</td>
+<td>VoucherEngine — Stacking happy path (VOUCH-003 §4.1)</td>
+<td>Item promo 900,000 + voucher 10% → cả 2 áp, dưới cap</td>
+<td>Lines racket/string. Voucher 10%, cap 50%</td>
+<td><code>final_voucher_discount=380,000</code>; <code>expected_final_cart_total=3,420,000</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>calculate-discount.unit.spec.ts:98-141</code>. 25/26 pass (1 fail = EC-03 RED riêng).</td>
+</tr>
+<tr>
+<td>T-VOUCH-08</td><td>1</td><td>TC_VOUCH_T08_01</td>
+<td>VoucherEngine — Stacking cap exceeded (VOUCH-003 §4.1)</td>
+<td>Item promo 1,860,000 + voucher 20% → vượt cap → voucher giảm còn 490,000</td>
+<td>Lines racket/string. Voucher 20%, cap 50%</td>
+<td><code>final_voucher_discount=490,000</code>; <code>discount_capped=true</code>; <code>cap_explanation</code> tiếng Việt đúng</td>
+<td>Khớp 100% kể cả message</td>
+<td>Pass</td>
+<td>Cùng file:144-196. Cùng lần chạy.</td>
+</tr>
+<tr>
+<td>T-VOUCH-09</td><td>1</td><td>TC_VOUCH_T09_01 (test cũ)</td>
+<td>VoucherEngine — cap ngăn tổng âm (nửa đầu EC-03)</td>
+<td>Item promo ăn hết cap → voucher giảm về 0, tổng không âm</td>
+<td>Line 4,700,000, item_promo=2,350,000. Voucher 50%</td>
+<td><code>final_voucher_discount=0</code>; tổng không âm (=2,350,000)</td>
+<td>Khớp — chỉ đúng "không âm"</td>
+<td>Pass (nhưng KHÔNG chứng minh "min 1 VND")</td>
+<td>Cùng file:199-232.</td>
+</tr>
+<tr>
+<td>T-VOUCH-09</td><td>2</td><td>TC_VOUCH_EC03_01 (test MỚI)</td>
+<td>VoucherEngine — sàn 1 VND (nửa sau EC-03)</td>
+<td>Item promo 100% subtotal → tổng phải floor ở 1</td>
+<td>Line 1,000,000, item_promo=1,000,000. Voucher 50%</td>
+<td><code>expected_final_cart_total=1</code></td>
+<td><code>expected_final_cart_total=0</code></td>
+<td><strong>Failed (RED, chưa fix)</strong></td>
+<td>Xem <em>(xem EC-03)</em>. 1 fail, 25 passed, 26 total.</td>
+</tr>
+<tr>
+<td>T-VOUCH-10</td><td>1</td><td>TC_VOUCH_T10_01</td>
+<td>VoucherEngine — Remove Voucher (VOUCH-004)</td>
+<td>Remove → total revert, usage_count không tăng</td>
+<td>Cart đã apply voucher</td>
+<td><code>updated_cart_total</code>=tổng trước apply; usage_count không tăng</td>
+<td>Khớp</td>
+<td>Pass</td>
+<td><code>apply-remove-voucher.spec.ts:330</code>. 8/8 pass, 5819 ms.</td>
+</tr>
+<tr>
+<td>T-VOUCH-11</td><td>1</td><td>TC_VOUCH_T11_01</td>
+<td>VoucherEngine — Auto-invalidation (VOUCH-005)</td>
+<td>Xoá item scope duy nhất → voucher tự gỡ</td>
+<td>Racket(scope)+Shoes(ngoài scope). Xoá Racket</td>
+<td><code>voucher</code> bị xoá; <code>notice.code="VOUCHER_AUTO_REMOVED"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>revalidate-voucher-workflow.spec.ts:307</code>. 7/7 pass, 6195 ms.</td>
+</tr>
+<tr>
+<td>T-VOUCH-12</td><td>1</td><td>TC_VOUCH_T12_01</td>
+<td>VoucherEngine — Rate limit (SEC-02/EC-10)</td>
+<td>5 lần sai → 404. Lần 6 → 429</td>
+<td>6 lần POST voucher sai</td>
+<td>5×404, lần 6: 429 <code>VOUCHER_RATE_LIMITED</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>voucher-rate-limit.spec.ts:81</code>. 1/1 pass, 2738 ms.</td>
+</tr>
+</tbody>
+</table>
+
+<h3>C. SRS §10 — T-SUGG-01→10 (16 test case)</h3>
+
+<table>
+<thead>
+<tr><th>T-ID</th><th>STT</th><th>Mã Test Case (TC ID)</th><th>Hạng mục / Chức năng</th><th>Mô tả kịch bản test</th><th>Dữ liệu đầu vào</th><th>Kết quả mong muốn</th><th>Kết quả thực tế</th><th>Trạng thái</th><th>Ghi chú</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>T-SUGG-01</td><td>1</td><td>TC_SUGG_T01_01</td>
+<td>SuggestiveSelling — Tier 1 manual, display_order (SUGG-001)</td>
+<td>Rule 3 item, display_order cố ý không theo thứ tự → route phải trả đúng thứ tự sắp xếp lại</td>
+<td>Rule manual, items display_order=[1,0,2]</td>
+<td><code>suggestions.map(product_id)=[s1,s2,s3]</code>; <code>label="Best Match"</code> cho s1</td>
+<td>Khớp 100% (SAU FIX)</td>
+<td>Pass</td>
+<td><code>suggestion.spec.ts:117-132</code>. <strong>Trước fix:</strong> 3 failed/9. <strong>Sau fix <code>manage_inventory:false</code>:</strong> 9/9 pass, 3019 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-02</td><td>1</td><td>TC_SUGG_T02_01</td>
+<td>SuggestiveSelling — Tier 2 category backfill (SUGG-001)</td>
+<td>1 manual → lấp đầy đến limit 5 bằng category complement, loại dup+source</td>
+<td>1 manual + 7 complement candidates (có dup)</td>
+<td>5 phần tử: manual + 4 category đầu</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>evaluate.unit.spec.ts:53-94</code>. 8/8 pass. Chỉ pin logic thuần, chưa integration với DB.</td>
+</tr>
+<tr>
+<td>T-SUGG-03</td><td>1</td><td>TC_SUGG_T03_01</td>
+<td>SuggestiveSelling — Filter in-cart (SUGG-002a)</td>
+<td>Candidate đã trong cart → drop reason <code>in_cart</code></td>
+<td>candidate in_cart</td>
+<td><code>dropped[0].reason="in_cart"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>pipeline.unit.spec.ts:167-174</code>. 32/32 pass.</td>
+</tr>
+<tr>
+<td>T-SUGG-04</td><td>1</td><td>TC_SUGG_T04_01</td>
+<td>SuggestiveSelling — Filter out-of-stock (SUGG-002b)</td>
+<td><code>in_stock=false</code> → drop reason <code>out_of_stock</code></td>
+<td>candidate in_stock:false</td>
+<td><code>dropped[0].reason="out_of_stock"</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>pipeline.unit.spec.ts:176-183</code>. 32/32 pass. Chỉ test logic thuần, chưa store-scoped (gap đã biết).</td>
+</tr>
+<tr>
+<td>T-SUGG-05</td><td>1</td><td>TC_SUGG_T05_01</td>
+<td>SuggestiveSelling — Dismiss persist cùng session (SUGG-002c)</td>
+<td>Dismiss s2 → GET lại cùng session → s2 biến mất, s1/s3 còn</td>
+<td>dismiss event s2, session A</td>
+<td>s2 vắng mặt; s1,s3 còn</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>suggestion.spec.ts:141-177</code>. Sau fix: 9/9 pass, 6550 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-05</td><td>2</td><td>TC_SUGG_T05_02</td>
+<td>SuggestiveSelling — Dismiss scoped theo session (SUGG-002c)</td>
+<td>Session khác chưa dismiss → vẫn thấy s2</td>
+<td>GET session khác</td>
+<td><code>suggestions</code> chứa s2</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Cùng file. 7266 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-06</td><td>1</td><td>TC_SUGG_T06_01</td>
+<td>SuggestiveSelling — One-tap add E2E (SUGG-003)</td>
+<td>Tap Add trên storefront thật → item vào cart, toast hiện</td>
+<td>— (chưa làm được)</td>
+<td>Item trong cart; toast đúng; Undo hoạt động</td>
+<td>—</td>
+<td><strong>Not Implemented</strong></td>
+<td>Không có Playwright trong repo. Backend đã test qua EC-07.</td>
+</tr>
+<tr>
+<td>T-SUGG-07</td><td>1</td><td>TC_SUGG_T07_01</td>
+<td>SuggestiveSelling — CR-01 category_missing (SUGG-004)</td>
+<td>Category theo dõi có trong cart → fires; category khác → không fires</td>
+<td>2 context</td>
+<td>true / false đúng</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>cart-rules.unit.spec.ts:80-91</code>. 19/19 pass.</td>
+</tr>
+<tr>
+<td>T-SUGG-07</td><td>2</td><td>TC_SUGG_T07_02</td>
+<td>SuggestiveSelling — CR-01 không cấu hình category</td>
+<td>Rule thiếu source_category_ids → never fires</td>
+<td>condition_params:{}</td>
+<td>false</td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file.</td>
+</tr>
+<tr>
+<td>T-SUGG-08</td><td>1</td><td>TC_SUGG_T08_01</td>
+<td>SuggestiveSelling — CR-02 threshold_near (SUGG-004)</td>
+<td>Trong band 15% + percentage hợp lệ → fires; percentage sai/thiếu → không fires</td>
+<td>3 case (0.15, 2, {})</td>
+<td>true/false/false đúng</td>
+<td>Khớp 100% cả 3</td>
+<td>Pass</td>
+<td><code>cart-rules.unit.spec.ts:103-129</code>. 19/19 pass.</td>
+</tr>
+<tr>
+<td>T-SUGG-09</td><td>1</td><td>TC_SUGG_T09_01</td>
+<td>SuggestiveSelling — Cache invalidation lõi (SUGG-005)</td>
+<td>Gọi <code>invalidateCartSuggestions</code> → cache xoá ngay</td>
+<td>seed cache</td>
+<td><code>cache.get→null</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td><code>suggestion.spec.ts:292-299</code>. 9/9 pass, 6660 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-09</td><td>2</td><td>TC_SUGG_T09_02</td>
+<td>SuggestiveSelling — Subscriber cart.updated (SUGG-005)</td>
+<td>Gọi handler trực tiếp → cache xoá</td>
+<td>event data</td>
+<td><code>cache.get→null</code></td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file. 5841 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-09</td><td>3</td><td>TC_SUGG_T09_03</td>
+<td>SuggestiveSelling — Wiring Event Bus thật (SUGG-005)</td>
+<td>Emit event bus thật → subscriber nhận</td>
+<td>eventBus.emit</td>
+<td>Cache xoá trong 8000ms</td>
+<td>Khớp</td>
+<td>Pass</td>
+<td>Cùng file. 5770 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-10</td><td>1</td><td>TC_SUGG_T10_01</td>
+<td>SuggestiveSelling — Track đủ 4 action (SUGG-006)</td>
+<td>Batch 4 event → ghi đúng payload</td>
+<td>events:[impression,tap,add_to_cart,dismiss]</td>
+<td><code>{accepted:4,rejected:0}</code>; 4 dòng ghi đúng</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td><code>suggestion.spec.ts:202-244</code>. 9/9 pass, 6748 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-10</td><td>2</td><td>TC_SUGG_T10_02</td>
+<td>SuggestiveSelling — Reject event lỗi riêng lẻ (SEC-04)</td>
+<td>1 hợp lệ + 2 lỗi → chỉ lỗi bị reject</td>
+<td>3 events</td>
+<td><code>{accepted:1,rejected:2}</code></td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Cùng file. 7155 ms.</td>
+</tr>
+<tr>
+<td>T-SUGG-10</td><td>3</td><td>TC_SUGG_T10_03</td>
+<td>SuggestiveSelling — Dismiss event → dismissal set (bug-fix, BR-02c)</td>
+<td>Event dismiss qua endpoint events → cập nhật dismissal set</td>
+<td>dismiss event</td>
+<td><code>getDismissed</code> chứa product</td>
+<td>Khớp 100%</td>
+<td>Pass</td>
+<td>Cùng file. 6666 ms.</td>
+</tr>
+</tbody>
+</table>
+
+<hr>
+
+<h2>📎 Phụ lục B — Chi tiết TOÀN BỘ 253 Unit Test (từng test một, không gộp)</h2>
+
+<p>Đây là phần "đầy đủ, toàn bộ" của <strong>253 unit test pass / 254 total</strong> đã nêu ở bảng kiểm kê đầu trang
+— liệt kê <strong>từng <code>it()</code> một</strong>, không chỉ đếm theo file. 21 file, đúng thứ tự như bảng kiểm kê.
+File #5 có 1 test <strong>Failed</strong> (RED, cố ý, của EC-03 — xem <em>(xem EC-03)</em>), 20 file còn lại sạch 100%.</p>
+
+<p>Đây KHÁC với Phụ lục A ở trên: Phụ lục A (56 dòng) là tập được chọn lọc vì mỗi dòng chứng minh
+trực tiếp 1 mục SRS §8/§10 cụ thể. Phụ lục B (253 dòng dưới đây) là <strong>kiểm kê toàn bộ</strong>, không lọc —
+gồm cả các test cho hàm phụ trợ (<code>money.ts</code>, <code>normalize.ts</code>, <code>gen-code.ts</code>, schema validators,
+<code>analytics.ts</code>...) không gắn với 1 SRS ID cụ thể nào nhưng vẫn là một phần sức khỏe của bộ test.</p>
+
+<h4>1. <code>src/modules/voucher-engine/lib/__tests__/money.unit.spec.ts</code> (32 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>voucher-engine lib/money source hygiene never calls parseFloat, Number.parseFloat, or toFixed</td><td>Pass</td></tr>
+<tr><td>2</td><td>voucher-engine lib/money toInt normalizes a plain integer number</td><td>Pass</td></tr>
+<tr><td>3</td><td>voucher-engine lib/money toInt normalizes a numeric string (BigNumberRawValue.value)</td><td>Pass</td></tr>
+<tr><td>4</td><td>voucher-engine lib/money toInt normalizes an IBigNumber-shaped object via .numeric</td><td>Pass</td></tr>
+<tr><td>5</td><td>voucher-engine lib/money toInt normalizes a BigNumberJS-like object via .toNumber()</td><td>Pass</td></tr>
+<tr><td>6</td><td>voucher-engine lib/money toInt rejects a non-integer monetary value</td><td>Pass</td></tr>
+<tr><td>7</td><td>voucher-engine lib/money toInt rejects a non-finite monetary value</td><td>Pass</td></tr>
+<tr><td>8</td><td>voucher-engine lib/money toInt rejects an unrecognized value shape</td><td>Pass</td></tr>
+<tr><td>9</td><td>voucher-engine lib/money toInt rejects an unsafe integer</td><td>Pass</td></tr>
+<tr><td>10</td><td>voucher-engine lib/money assertSafeInt passes for a safe integer</td><td>Pass</td></tr>
+<tr><td>11</td><td>voucher-engine lib/money assertSafeInt throws for an unsafe integer (e.g. 1e20)</td><td>Pass</td></tr>
+<tr><td>12</td><td>voucher-engine lib/money assertSafeInt throws for a non-integer number</td><td>Pass</td></tr>
+<tr><td>13</td><td>voucher-engine lib/money bps — basis-point percentage (floor rounding) computes 10% (1000 bps) of 3,800,000 -&gt; 380,000 (SPEC §10.4)</td><td>Pass</td></tr>
+<tr><td>14</td><td>voucher-engine lib/money bps — basis-point percentage (floor rounding) computes 20% (2000 bps) of 2,840,000 -&gt; 568,000 (SPEC §10.5)</td><td>Pass</td></tr>
+<tr><td>15</td><td>voucher-engine lib/money bps — basis-point percentage (floor rounding) floors a fractional result instead of rounding</td><td>Pass</td></tr>
+<tr><td>16</td><td>voucher-engine lib/money bps — basis-point percentage (floor rounding) rejects basisPoints outside 0..10000</td><td>Pass</td></tr>
+<tr><td>17</td><td>voucher-engine lib/money bps — basis-point percentage (floor rounding) detects overflow before dividing</td><td>Pass</td></tr>
+<tr><td>18</td><td>voucher-engine lib/money clampMin returns the value when above the floor</td><td>Pass</td></tr>
+<tr><td>19</td><td>voucher-engine lib/money clampMin clamps a negative value to 0 by default</td><td>Pass</td></tr>
+<tr><td>20</td><td>voucher-engine lib/money clampMin clamps to a custom floor</td><td>Pass</td></tr>
+<tr><td>21</td><td>voucher-engine lib/money sumInts sums a list of integers</td><td>Pass</td></tr>
+<tr><td>22</td><td>voucher-engine lib/money sumInts throws when an element is not a safe integer</td><td>Pass</td></tr>
+<tr><td>23</td><td>voucher-engine lib/money sumInts throws on running-total overflow</td><td>Pass</td></tr>
+<tr><td>24</td><td>voucher-engine lib/money toRawNumber unwraps the same BigNumberValue shapes toInt does, without the integer check</td><td>Pass</td></tr>
+<tr><td>25</td><td>voucher-engine lib/money toRawNumber does NOT reject a non-integer numeric value (unlike toInt)</td><td>Pass</td></tr>
+<tr><td>26</td><td>voucher-engine lib/money toRawNumber rejects an unrecognized value shape</td><td>Pass</td></tr>
+<tr><td>27</td><td>voucher-engine lib/money sumRawToInt sums exact integers to their exact total</td><td>Pass</td></tr>
+<tr><td>28</td><td>voucher-engine lib/money sumRawToInt reproduces the scoped-voucher across-split repro: two fractional per-line adjustments summing to the exact integer voucher discount</td><td>Pass</td></tr>
+<tr><td>29</td><td>voucher-engine lib/money sumRawToInt tolerates BigNumberValue-shaped per-line inputs, not just raw numbers</td><td>Pass</td></tr>
+<tr><td>30</td><td>voucher-engine lib/money sumRawToInt rejects a total that is genuinely fractional, not just an allocation artifact</td><td>Pass</td></tr>
+<tr><td>31</td><td>voucher-engine lib/money sumRawToInt rejects a non-finite element</td><td>Pass</td></tr>
+<tr><td>32</td><td>voucher-engine lib/money sumRawToInt rejects an unsafe integer total</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>2. <code>src/modules/suggestive-selling/__tests__/pipeline.unit.spec.ts</code> (32 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>rankAndLimit — BR-01 (T-SUGG-01) keeps three manual suggestions in display_order</td><td>Pass</td></tr>
+<tr><td>2</td><td>rankAndLimit — BR-01 (T-SUGG-01) orders Tier-1 manual ahead of Tier-2 category regardless of display_order</td><td>Pass</td></tr>
+<tr><td>3</td><td>rankAndLimit — BR-01 (T-SUGG-01) dedupes by product_id keeping the highest-priority slot</td><td>Pass</td></tr>
+<tr><td>4</td><td>rankAndLimit — BR-01 (T-SUGG-01) caps at the requested limit</td><td>Pass</td></tr>
+<tr><td>5</td><td>backfill interleaves with the filter — SUGG-002 / SPEC A.5 (regression) refills out-of-stock manual slots from Tier-2 up to the limit</td><td>Pass</td></tr>
+<tr><td>6</td><td>backfill interleaves with the filter — SUGG-002 / SPEC A.5 (regression) keeps only Tier-1 when all curated items survive (Tier-2 stays hidden)</td><td>Pass</td></tr>
+<tr><td>7</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops a product already in the cart (a)</td><td>Pass</td></tr>
+<tr><td>8</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops an out-of-stock product (b)</td><td>Pass</td></tr>
+<tr><td>9</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops a dismissed product (c)</td><td>Pass</td></tr>
+<tr><td>10</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops a recently-bought durable but keeps a recently-bought consumable (d)</td><td>Pass</td></tr>
+<tr><td>11</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops the source product itself (e)</td><td>Pass</td></tr>
+<tr><td>12</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) drops an unpublished product (f)</td><td>Pass</td></tr>
+<tr><td>13</td><td>applyBr02Filter — SUGG-002 (T-SUGG-03/04/05) keeps a clean candidate</td><td>Pass</td></tr>
+<tr><td>14</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=true when available (stocked − reserved) &gt; 0</td><td>Pass</td></tr>
+<tr><td>15</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=false when stocked=0 (BG65 originally reported)</td><td>Pass</td></tr>
+<tr><td>16</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=false when fully reserved (stocked=1, reserved=1 → available 0)</td><td>Pass</td></tr>
+<tr><td>17</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=true when partly reserved (stocked=5, reserved=2 → available 3)</td><td>Pass</td></tr>
+<tr><td>18</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=true when manage_inventory=false (untracked)</td><td>Pass</td></tr>
+<tr><td>19</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=true when allow_backorder=true despite 0 available</td><td>Pass</td></tr>
+<tr><td>20</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=true if ANY variant has availability</td><td>Pass</td></tr>
+<tr><td>21</td><td>enrichProductRow — inventory stock checks (BR-02b) in_stock=false when product has no variants</td><td>Pass</td></tr>
+<tr><td>22</td><td>isConsumable — BR-02(d) matches case-insensitively</td><td>Pass</td></tr>
+<tr><td>23</td><td>resolveVariant — SUGG-003 auto-selects a single variant</td><td>Pass</td></tr>
+<tr><td>24</td><td>resolveVariant — SUGG-003 requires selection when there are multiple variants</td><td>Pass</td></tr>
+<tr><td>25</td><td>resolveVariant — SUGG-003 handles a product with no variants</td><td>Pass</td></tr>
+<tr><td>26</td><td>computePriceFields — API Contract §1.1 / INT-01 returns null discount_price when there is no item promotion</td><td>Pass</td></tr>
+<tr><td>27</td><td>computePriceFields — API Contract §1.1 / INT-01 exposes discount_price when calculated &lt; original</td><td>Pass</td></tr>
+<tr><td>28</td><td>computePriceFields — API Contract §1.1 / INT-01 uses the cheapest variant as the "from" price</td><td>Pass</td></tr>
+<tr><td>29</td><td>computePriceFields — API Contract §1.1 / INT-01 floors fractional amounts to integer VND (D1)</td><td>Pass</td></tr>
+<tr><td>30</td><td>computePriceFields — API Contract §1.1 / INT-01 returns nulls when no variant is priced</td><td>Pass</td></tr>
+<tr><td>31</td><td>toProductSuggestion / finalizeSuggestions — task 4 response shape projects the mandated display fields and 1-based display_order</td><td>Pass</td></tr>
+<tr><td>32</td><td>toProductSuggestion / finalizeSuggestions — task 4 response shape runs filter → rank → limit → project end to end</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>3. <code>src/workflows/voucher-engine/__tests__/validators.unit.spec.ts</code> (28 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>VoucherEngine · code format (3.2.2) accepts 6+ uppercase alphanumerics after normalize</td><td>Pass</td></tr>
+<tr><td>2</td><td>VoucherEngine · code format (3.2.2) rejects too-short / non-alnum, collapsing to VOUCHER_NOT_FOUND</td><td>Pass</td></tr>
+<tr><td>3</td><td>VoucherEngine · V1 exists+active (3.2.4) null voucher ⇒ NOT_FOUND (404)</td><td>Pass</td></tr>
+<tr><td>4</td><td>VoucherEngine · V1 exists+active (3.2.4) inactive voucher ⇒ INACTIVE (422), same message as NOT_FOUND</td><td>Pass</td></tr>
+<tr><td>5</td><td>VoucherEngine · V1 exists+active (3.2.4) active voucher passes</td><td>Pass</td></tr>
+<tr><td>6</td><td>VoucherEngine · V2 date window (3.2.5) before valid_from ⇒ NOT_YET_VALID</td><td>Pass</td></tr>
+<tr><td>7</td><td>VoucherEngine · V2 date window (3.2.5) after valid_to ⇒ EXPIRED</td><td>Pass</td></tr>
+<tr><td>8</td><td>VoucherEngine · V2 date window (3.2.5) inclusive boundaries: now == valid_from and now == valid_to both pass</td><td>Pass</td></tr>
+<tr><td>9</td><td>VoucherEngine · V3 global usage limit (3.2.6) usage_count &gt;= usage_limit ⇒ USAGE_LIMIT_REACHED</td><td>Pass</td></tr>
+<tr><td>10</td><td>VoucherEngine · V3 global usage limit (3.2.6) null usage_limit ⇒ unlimited ⇒ pass</td><td>Pass</td></tr>
+<tr><td>11</td><td>VoucherEngine · V3 global usage limit (3.2.6) under limit passes</td><td>Pass</td></tr>
+<tr><td>12</td><td>VoucherEngine · V4 per-user limit (3.2.7) user_usage &gt;= per_user_limit ⇒ PER_USER_LIMIT_REACHED with details</td><td>Pass</td></tr>
+<tr><td>13</td><td>VoucherEngine · V4 per-user limit (3.2.7) under per-user limit passes</td><td>Pass</td></tr>
+<tr><td>14</td><td>VoucherEngine · V5 min order value (3.2.8) subtotal &lt; min ⇒ MIN_ORDER_NOT_MET with integer remaining</td><td>Pass</td></tr>
+<tr><td>15</td><td>VoucherEngine · V5 min order value (3.2.8) subtotal == min ⇒ pass (boundary)</td><td>Pass</td></tr>
+<tr><td>16</td><td>VoucherEngine · V5 min order value (3.2.8) null min_order_value ⇒ pass</td><td>Pass</td></tr>
+<tr><td>17</td><td>VoucherEngine · V6 item scope (3.2.9) unscoped (both null) ⇒ all eligible ⇒ pass</td><td>Pass</td></tr>
+<tr><td>18</td><td>VoucherEngine · V6 item scope (3.2.9) category scope match ⇒ pass</td><td>Pass</td></tr>
+<tr><td>19</td><td>VoucherEngine · V6 item scope (3.2.9) product scope match ⇒ pass</td><td>Pass</td></tr>
+<tr><td>20</td><td>VoucherEngine · V6 item scope (3.2.9) scoped but no matching item ⇒ NO_ELIGIBLE_ITEMS</td><td>Pass</td></tr>
+<tr><td>21</td><td>VoucherEngine · V7 segment (3.2.10, stub) always passes in Day 3 (segment source undefined)</td><td>Pass</td></tr>
+<tr><td>22</td><td>VoucherEngine · V8 stacking conflict (3.2.11) non-stackable + cart has promo ⇒ STACKING_CONFLICT</td><td>Pass</td></tr>
+<tr><td>23</td><td>VoucherEngine · V8 stacking conflict (3.2.11) non-stackable but no promo ⇒ pass</td><td>Pass</td></tr>
+<tr><td>24</td><td>VoucherEngine · V8 stacking conflict (3.2.11) stackable ⇒ pass even with promo</td><td>Pass</td></tr>
+<tr><td>25</td><td>VoucherEngine · validateVoucher fail-fast (3.2.12) all rules pass ⇒ ok</td><td>Pass</td></tr>
+<tr><td>26</td><td>VoucherEngine · validateVoucher fail-fast (3.2.12) null voucher ⇒ NOT_FOUND (format+V1)</td><td>Pass</td></tr>
+<tr><td>27</td><td>VoucherEngine · validateVoucher fail-fast (3.2.12) returns only the FIRST failure: expired (V2) wins over min-order (V5)</td><td>Pass</td></tr>
+<tr><td>28</td><td>VoucherEngine · validateVoucher fail-fast (3.2.12) V1 short-circuits before V3: inactive wins over usage-limit</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>4. <code>src/api/store/carts/[id]/voucher/__tests__/validators.unit.spec.ts</code> (28 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>store cart voucher validators ApplyVoucherSchema accepts a minimal valid apply body</td><td>Pass</td></tr>
+<tr><td>2</td><td>store cart voucher validators ApplyVoucherSchema rejects a code shorter than 6 characters (SEC-03)</td><td>Pass</td></tr>
+<tr><td>3</td><td>store cart voucher validators ApplyVoucherSchema rejects a non-alphanumeric code (SEC-03)</td><td>Pass</td></tr>
+<tr><td>4</td><td>store cart voucher validators ApplyVoucherSchema rejects a missing code</td><td>Pass</td></tr>
+<tr><td>5</td><td>store cart voucher validators ApplyVoucherSchema rejects a cart_id in the body (belongs in the route param)</td><td>Pass</td></tr>
+<tr><td>6</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: discount_amount</td><td>Pass</td></tr>
+<tr><td>7</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: final_voucher_discount</td><td>Pass</td></tr>
+<tr><td>8</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: original_discount</td><td>Pass</td></tr>
+<tr><td>9</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: expected_final_cart_total</td><td>Pass</td></tr>
+<tr><td>10</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: cart_total</td><td>Pass</td></tr>
+<tr><td>11</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: eligible_post_promotion_subtotal</td><td>Pass</td></tr>
+<tr><td>12</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: post_promotion_subtotal</td><td>Pass</td></tr>
+<tr><td>13</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: item_promotion_discount</td><td>Pass</td></tr>
+<tr><td>14</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: promotion_id</td><td>Pass</td></tr>
+<tr><td>15</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: voucher_id</td><td>Pass</td></tr>
+<tr><td>16</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: eligible_item_ids</td><td>Pass</td></tr>
+<tr><td>17</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: customer_id</td><td>Pass</td></tr>
+<tr><td>18</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: usage_count</td><td>Pass</td></tr>
+<tr><td>19</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: min_order_value</td><td>Pass</td></tr>
+<tr><td>20</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: discount_capped</td><td>Pass</td></tr>
+<tr><td>21</td><td>store cart voucher validators ApplyVoucherSchema rejects a client-supplied pricing/identity/eligibility field: confirm_replace</td><td>Pass</td></tr>
+<tr><td>22</td><td>store cart voucher validators ApplyVoucherQuerySchema accepts an empty query (replace defaults to falsy)</td><td>Pass</td></tr>
+<tr><td>23</td><td>store cart voucher validators ApplyVoucherQuerySchema accepts ?replace=true coerced from a query string</td><td>Pass</td></tr>
+<tr><td>24</td><td>store cart voucher validators ApplyVoucherQuerySchema accepts ?replace=false and parses it as false, not true (z.coerce.boolean regression)</td><td>Pass</td></tr>
+<tr><td>25</td><td>store cart voucher validators ApplyVoucherQuerySchema rejects an unrecognized query field</td><td>Pass</td></tr>
+<tr><td>26</td><td>store cart voucher validators RemoveVoucherSchema accepts an empty body</td><td>Pass</td></tr>
+<tr><td>27</td><td>store cart voucher validators RemoveVoucherSchema rejects a client-supplied pricing field</td><td>Pass</td></tr>
+<tr><td>28</td><td>store cart voucher validators RemoveVoucherSchema rejects a cart_id in the body (belongs in the route param)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>5. <code>src/modules/voucher-engine/lib/__tests__/calculate-discount.unit.spec.ts</code> (26 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>voucher-engine lib/calculate-discount calculateOriginalSubtotal sums unit_price * quantity across lines</td><td>Pass</td></tr>
+<tr><td>2</td><td>voucher-engine lib/calculate-discount calculateItemPromotionDiscount sums per-line item-promotion discounts (voucher's own adjustment already excluded upstream)</td><td>Pass</td></tr>
+<tr><td>3</td><td>voucher-engine lib/calculate-discount calculateEligiblePostPromotionSubtotal only sums eligible lines, net of their item promotion discount</td><td>Pass</td></tr>
+<tr><td>4</td><td>voucher-engine lib/calculate-discount calculateEligiblePostPromotionSubtotal clamps a line to 0 when its promotion discount exceeds its original total</td><td>Pass</td></tr>
+<tr><td>5</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — SPEC §10.4 worked example (under global cap) reproduces 380,000 discount / 3,420,000 final total (T-VOUCH-07)</td><td>Pass</td></tr>
+<tr><td>6</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — SPEC §10.5 worked example (global cap exceeded) reproduces 490,000 final discount (capped from 568,000) / 2,350,000 final total (T-VOUCH-08)</td><td>Pass</td></tr>
+<tr><td>7</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — SPEC §10.6 / EC-03 (would-be negative total) clamps final_voucher_discount to 0 when item promo alone already consumes the global cap (T-VOUCH-09)</td><td>Pass</td></tr>
+<tr><td>8</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — SPEC §10.6 / EC-03 (would-be negative total) item promotion consuming the entire cap alone (no voucher headroom) -&gt; final voucher discount is 0</td><td>Pass</td></tr>
+<tr><td>9</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — EC-03 (SRS §8: cart total floors at 1 VND, never 0) floors expected_final_cart_total at 1 VND when item promotion alone consumes the entire subtotal</td><td><strong>Failed</strong></td></tr>
+<tr><td>10</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — fixed-amount voucher (SRS §22.2) does not exceed the eligible post-promotion subtotal</td><td>Pass</td></tr>
+<tr><td>11</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — voucher-specific max_discount_amount (Rule 8) caps the voucher discount before the global cap is applied</td><td>Pass</td></tr>
+<tr><td>12</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — discount_capped semantics matrix (task 3.3.12) false when neither cap binds</td><td>Pass</td></tr>
+<tr><td>13</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — discount_capped semantics matrix (task 3.3.12) false when only the voucher's own max_discount_amount binds</td><td>Pass</td></tr>
+<tr><td>14</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — discount_capped semantics matrix (task 3.3.12) true when only the global cap binds</td><td>Pass</td></tr>
+<tr><td>15</td><td>voucher-engine lib/calculate-discount calculateVoucherDiscount — discount_capped semantics matrix (task 3.3.12) true when the voucher cap binds first but the global cap binds tighter</td><td>Pass</td></tr>
+<tr><td>16</td><td>voucher-engine lib/calculate-discount postPromotionLineValue (task 3.3.4) returns unit_price * quantity minus the line's item promotion discount</td><td>Pass</td></tr>
+<tr><td>17</td><td>voucher-engine lib/calculate-discount postPromotionLineValue (task 3.3.4) floors at 0 when the discount exceeds the line's original total</td><td>Pass</td></tr>
+<tr><td>18</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) marks every line eligible when the voucher is unscoped</td><td>Pass</td></tr>
+<tr><td>19</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) marks only the matching line eligible for a product-scoped voucher</td><td>Pass</td></tr>
+<tr><td>20</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) marks only the matching line eligible for a category-scoped voucher</td><td>Pass</td></tr>
+<tr><td>21</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) combines product and category scope with OR</td><td>Pass</td></tr>
+<tr><td>22</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) duplicate ids in the scope arrays do not change the eligibility outcome</td><td>Pass</td></tr>
+<tr><td>23</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) leaves a line ineligible when it has no product_id/category_ids and the voucher is scoped</td><td>Pass</td></tr>
+<tr><td>24</td><td>voucher-engine lib/calculate-discount resolveEligibleItems (task 3.3.5) does not mutate the input lines</td><td>Pass</td></tr>
+<tr><td>25</td><td>voucher-engine lib/calculate-discount formatVnd (task 3.3.13) formats with dot thousands separators and a ₫ suffix, no space, no decimals</td><td>Pass</td></tr>
+<tr><td>26</td><td>voucher-engine lib/calculate-discount DEFAULT_GLOBAL_CAP_BPS (task 3.3.10) defaults to 50% (5000 bps), matching SRS §5.2 DiscountCapConfig default</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>6. <code>src/modules/suggestive-selling/__tests__/cart-rules.unit.spec.ts</code> (19 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>cr02Fires — D5 (within 15% of threshold) fires at the lower edge threshold×0.85</td><td>Pass</td></tr>
+<tr><td>2</td><td>cr02Fires — D5 (within 15% of threshold) fires just below the threshold</td><td>Pass</td></tr>
+<tr><td>3</td><td>cr02Fires — D5 (within 15% of threshold) does not fire at/above the threshold</td><td>Pass</td></tr>
+<tr><td>4</td><td>cr02Fires — D5 (within 15% of threshold) does not fire below the band</td><td>Pass</td></tr>
+<tr><td>5</td><td>cr02Fires — D5 (within 15% of threshold) never fires for a non-positive threshold</td><td>Pass</td></tr>
+<tr><td>6</td><td>cr02Band — D4 (remaining ≤ price ≤ remaining×2) bands from remaining to remaining×2 by default</td><td>Pass</td></tr>
+<tr><td>7</td><td>cr02Band — D4 (remaining ≤ price ≤ remaining×2) honours a custom multiplier</td><td>Pass</td></tr>
+<tr><td>8</td><td>matchesCartCondition CR-01 category_missing fires when a watched source category is in the cart (2.4.2)</td><td>Pass</td></tr>
+<tr><td>9</td><td>matchesCartCondition CR-01 does not fire without configured source categories</td><td>Pass</td></tr>
+<tr><td>10</td><td>matchesCartCondition CR-02 threshold_near fires inside the band and rejects invalid pct (2.4.3)</td><td>Pass</td></tr>
+<tr><td>11</td><td>matchesCartCondition CR-03 brand_match fires only when exactly one distinct brand is present (2.4.5)</td><td>Pass</td></tr>
+<tr><td>12</td><td>matchesCartCondition CR-04 consumable_upsell fires for a low-qty line in scope (2.4.6)</td><td>Pass</td></tr>
+<tr><td>13</td><td>matchesCartCondition CR-04 without a category scope accepts any low-qty line</td><td>Pass</td></tr>
+<tr><td>14</td><td>matchesCartRule — AND semantics (2.4.7) fires only when every condition matches</td><td>Pass</td></tr>
+<tr><td>15</td><td>matchesCartRule — AND semantics (2.4.7) an empty rule never fires</td><td>Pass</td></tr>
+<tr><td>16</td><td>mergeDedupeCart — 2.4.8 / BR-04 projects to the wire shape with tier=cart and rule_id=null</td><td>Pass</td></tr>
+<tr><td>17</td><td>mergeDedupeCart — 2.4.8 / BR-04 dedupes by product keeping the FIRST rule's code and badge (BR-04)</td><td>Pass</td></tr>
+<tr><td>18</td><td>mergeDedupeCart — 2.4.8 / BR-04 caps at the limit (default CART_LIMIT = 3)</td><td>Pass</td></tr>
+<tr><td>19</td><td>mergeDedupeCart — 2.4.8 / BR-04 preserves fire order across rules</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>7. <code>src/lib/__tests__/suggestion-cache.unit.spec.ts</code> (12 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) remembers a dismissal across requests, then the filter hides it (roundtrip)</td><td>Pass</td></tr>
+<tr><td>2</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) writes the dismissal set under the 24h session TTL (D6)</td><td>Pass</td></tr>
+<tr><td>3</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) is idempotent — dismissing the same product twice stores it once</td><td>Pass</td></tr>
+<tr><td>4</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) isolates contexts — a product dismissed in cart still shows on the PDP</td><td>Pass</td></tr>
+<tr><td>5</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) scopes by customer when logged in, else by session (BR-08 / SF-05)</td><td>Pass</td></tr>
+<tr><td>6</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) undo removes a dismissal so the product can show again</td><td>Pass</td></tr>
+<tr><td>7</td><td>dismissal persistence — T-SUGG-05 (SUGG-002 / BR-02(c)) degrades safely when the cache module is absent (BR-10 / D11)</td><td>Pass</td></tr>
+<tr><td>8</td><td>cart-suggestion cache invalidation — 5.3.7 / T-SUGG-09 (SUGG-005) caches then invalidates a single cart (cart.updated path)</td><td>Pass</td></tr>
+<tr><td>9</td><td>cart-suggestion cache invalidation — 5.3.7 / T-SUGG-09 (SUGG-005) invalidates ONLY the target cart, leaving others cached</td><td>Pass</td></tr>
+<tr><td>10</td><td>cart-suggestion cache invalidation — 5.3.7 / T-SUGG-09 (SUGG-005) bumping the cart-rule version makes every existing cart key unreachable (bulk invalidation)</td><td>Pass</td></tr>
+<tr><td>11</td><td>cart-suggestion cache invalidation — 5.3.7 / T-SUGG-09 (SUGG-005) invalidates a product's raw buffer (rule targeting it changed)</td><td>Pass</td></tr>
+<tr><td>12</td><td>cart-suggestion cache invalidation — 5.3.7 / T-SUGG-09 (SUGG-005) invalidation degrades to a no-op when the cache is absent (BR-10 / D11)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>8. <code>src/workflows/voucher-engine/admin/lib/__tests__/build-backing-promotion.unit.spec.ts</code> (10 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) converts a basis-points percentage to a Medusa percent value (2000 -&gt; 20)</td><td>Pass</td></tr>
+<tr><td>2</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) uses a fixed_amount value verbatim as raw VND</td><td>Pass</td></tr>
+<tr><td>3</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) maps V3 usage_limit to Promotion.limit; omits it when null</td><td>Pass</td></tr>
+<tr><td>4</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) maps V5 min_order_value to an item_total gte rule; omits rules when null</td><td>Pass</td></tr>
+<tr><td>5</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) V6 product-only scope -&gt; items.product.id target_rule</td><td>Pass</td></tr>
+<tr><td>6</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) V6 category-only scope -&gt; items.product.categories.id target_rule</td><td>Pass</td></tr>
+<tr><td>7</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) V6 MIXED product+category scope -&gt; NO native target_rules (cross-attribute OR not expressible)</td><td>Pass</td></tr>
+<tr><td>8</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) provisions the Campaign window + V4 per-customer use_by_attribute budget</td><td>Pass</td></tr>
+<tr><td>9</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) reflects is_active=false as an inactive Promotion status</td><td>Pass</td></tr>
+<tr><td>10</td><td>buildBackingPromotion (Decision H / Phase 2 backing promotion) stamps voucher_engine metadata for guardrail + identification</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>9. <code>src/workflows/voucher-engine/__tests__/revalidate-voucher.unit.spec.ts</code> (8 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) passes even when the GLOBAL usage_count is already at/over usage_limit (V3 skipped)</td><td>Pass</td></tr>
+<tr><td>2</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) passes regardless of user_usage_count vs per_user_limit (V4 skipped)</td><td>Pass</td></tr>
+<tr><td>3</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) still fails V1 when the voucher has been deactivated since apply</td><td>Pass</td></tr>
+<tr><td>4</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) still fails V2 when the voucher has expired since apply</td><td>Pass</td></tr>
+<tr><td>5</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) still fails V5 when the cart drops below min_order_value (auto-remove trigger, task 3.5.7)</td><td>Pass</td></tr>
+<tr><td>6</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) still fails V6 when no cart item matches a scoped voucher (auto-remove trigger, task 3.5.8)</td><td>Pass</td></tr>
+<tr><td>7</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) still fails V8 on a stacking conflict</td><td>Pass</td></tr>
+<tr><td>8</td><td>revalidateVoucherOnCartChange (task 3.5.1/3.5.7/3.5.8, SPEC §9.2) fails V1 NOT_FOUND when the voucher is null (defensive — should not normally reach this subset)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>10. <code>src/workflows/suggestive-selling/__tests__/evaluate.unit.spec.ts</code> (8 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-01 — product with 3 manual suggestions returns all 3, ordered by display_order, preserving custom_label</td><td>Pass</td></tr>
+<tr><td>2</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-01 — product with 3 manual suggestions rankAndLimit keeps all 3 in order (no truncation under the cap)</td><td>Pass</td></tr>
+<tr><td>3</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-01 — product with 3 manual suggestions excludes the source product if it appears in its own rule</td><td>Pass</td></tr>
+<tr><td>4</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-02 — product with 1 manual suggestion → category backfill keeps the manual first and backfills category complements up to the limit</td><td>Pass</td></tr>
+<tr><td>5</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-02 — product with 1 manual suggestion → category backfill backfills 2–4 complements when only a couple are available (SRS: 2–4)</td><td>Pass</td></tr>
+<tr><td>6</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) T-SUGG-02 — product with 1 manual suggestion → category backfill does NOT backfill when Tier-1 already has ≥ 3</td><td>Pass</td></tr>
+<tr><td>7</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) rankAndLimit — ordering, dedupe, cap orders manual before category, de-dupes by product, caps at limit</td><td>Pass</td></tr>
+<tr><td>8</td><td>SuggestiveSelling · product-level evaluation (SUGG-001) rankAndLimit — ordering, dedupe, cap caps to the limit</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>11. <code>src/api/admin/vouchers/__tests__/validators.unit.spec.ts</code> (7 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>CreateVoucherSchema (3.4.13) accepts a valid percentage voucher (10%)</td><td>Pass</td></tr>
+<tr><td>2</td><td>CreateVoucherSchema (3.4.13) rejects discount_value = 0 (meaningless voucher)</td><td>Pass</td></tr>
+<tr><td>3</td><td>CreateVoucherSchema (3.4.13) rejects negative discount_value</td><td>Pass</td></tr>
+<tr><td>4</td><td>CreateVoucherSchema (3.4.13) rejects percentage &gt; 100% (10000 bps) — e.g. 9999999</td><td>Pass</td></tr>
+<tr><td>5</td><td>CreateVoucherSchema (3.4.13) accepts percentage at the 100% boundary (10000 bps)</td><td>Pass</td></tr>
+<tr><td>6</td><td>CreateVoucherSchema (3.4.13) allows a large fixed_amount (&gt; 10000 VND) — bound is percentage-only</td><td>Pass</td></tr>
+<tr><td>7</td><td>CreateVoucherSchema (3.4.13) still rejects an inverted validity window</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>12. <code>src/lib/__tests__/compute-sales-ranking.unit.spec.ts</code> (7 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) sums quantities per product across orders and fans out to categories</td><td>Pass</td></tr>
+<tr><td>2</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) emits one row per category for multi-category products</td><td>Pass</td></tr>
+<tr><td>3</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) drops products with no categories or zero sales, and ignores null product_id</td><td>Pass</td></tr>
+<tr><td>4</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) handles empty input</td><td>Pass</td></tr>
+<tr><td>5</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) reads quantity from items.detail.quantity (Medusa graph shape)</td><td>Pass</td></tr>
+<tr><td>6</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) prefers a direct quantity but falls back to detail across mixed shapes</td><td>Pass</td></tr>
+<tr><td>7</td><td>computeSalesRanking (Tier-2 top-seller aggregation, SPEC A.6) treats a missing/undefined quantity as 0 (item dropped, not NaN)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>13. <code>src/workflows/voucher-engine/__tests__/auto-remove-notice.unit.spec.ts</code> (5 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b) 3.5.9 — min-order failure yields the min-order reason + a filled VI message</td><td>Pass</td></tr>
+<tr><td>2</td><td>buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b) 3.5.10 — no-eligible-items failure yields the no-eligible reason</td><td>Pass</td></tr>
+<tr><td>3</td><td>buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b) maps the other revalidation-subset failures (V1/V2/V8) to their own phrases</td><td>Pass</td></tr>
+<tr><td>4</td><td>buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b) falls back to a generic reason when the failure code is missing/unknown (defensive)</td><td>Pass</td></tr>
+<tr><td>5</td><td>buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b) exposes the storefront metadata key for the async notice</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>14. <code>src/workflows/voucher-engine/__tests__/assert-cart-unchanged.unit.spec.ts</code> (5 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>isCartUnchanged (unit, EC-04) returns true when the marker still matches</td><td>Pass</td></tr>
+<tr><td>2</td><td>isCartUnchanged (unit, EC-04) returns false when the cart was mutated concurrently</td><td>Pass</td></tr>
+<tr><td>3</td><td>isCartUnchanged (unit, EC-04) returns false when the cart could not be re-read</td><td>Pass</td></tr>
+<tr><td>4</td><td>isCartUnchanged (unit, EC-04) returns true for the same instant even when one side is a Date instance and the other a string (query.graph vs. workflow-marshalled value)</td><td>Pass</td></tr>
+<tr><td>5</td><td>isCartUnchanged (unit, EC-04) returns false for different instants regardless of Date/string mix</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>15. <code>src/workflows/voucher-engine/__tests__/analytics.unit.spec.ts</code> (5 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>computeAnalytics (3.4.12) returns all-zero (not NaN) for an empty log</td><td>Pass</td></tr>
+<tr><td>2</td><td>computeAnalytics (3.4.12) sums discount, counts uses and capped rows</td><td>Pass</td></tr>
+<tr><td>3</td><td>computeAnalytics (3.4.12) keeps discount totals integer (Math.floor, INT-01)</td><td>Pass</td></tr>
+<tr><td>4</td><td>computeAnalytics (3.4.12) avg_order_value: 0 when no row carries an order value (open issue)</td><td>Pass</td></tr>
+<tr><td>5</td><td>computeAnalytics (3.4.12) avg_order_value: integer mean of rows that do carry order_value</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>16. <code>src/workflows/voucher-engine/lib/__tests__/hydrate-voucher-from-promotion.unit.spec.ts</code> (4 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>overlays code, discount, status, window, limit from promotion (percent→bps)</td><td>Pass</td></tr>
+<tr><td>2</td><td>keeps voucher-only fields from config untouched</td><td>Pass</td></tr>
+<tr><td>3</td><td>fixed_amount: value passes through without ×100</td><td>Pass</td></tr>
+<tr><td>4</td><td>no promotion → returns config unchanged (defensive)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>17. <code>src/workflows/voucher-engine/__tests__/rate-limit-policy.unit.spec.ts</code> (4 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>decideRateLimit (3.7.4/3.7.5) allows below the threshold (0..4)</td><td>Pass</td></tr>
+<tr><td>2</td><td>decideRateLimit (3.7.4/3.7.5) blocks + arms cooldown at exactly the threshold (5)</td><td>Pass</td></tr>
+<tr><td>3</td><td>decideRateLimit (3.7.4/3.7.5) stays blocked beyond the threshold</td><td>Pass</td></tr>
+<tr><td>4</td><td>decideRateLimit (3.7.4/3.7.5) uses the team-unified windows (15m count / 30m penalty)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>18. <code>src/workflows/voucher-engine/lib/__tests__/has-stale-voucher-promotion.unit.spec.ts</code> (4 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>returns false for an empty promotions array</td><td>Pass</td></tr>
+<tr><td>2</td><td>returns false when every promotion is a plain (non-voucher) promotion</td><td>Pass</td></tr>
+<tr><td>3</td><td>returns true when a promotion carries metadata.voucher_engine === true</td><td>Pass</td></tr>
+<tr><td>4</td><td>returns true for a mixed array with one flagged promotion among plain ones</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>19. <code>src/workflows/voucher-engine/__tests__/normalize.unit.spec.ts</code> (4 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>VoucherEngine · normalizeCode (SRS §5.2 V1) trims surrounding whitespace and uppercases</td><td>Pass</td></tr>
+<tr><td>2</td><td>VoucherEngine · normalizeCode (SRS §5.2 V1) uppercases mixed-case input</td><td>Pass</td></tr>
+<tr><td>3</td><td>VoucherEngine · normalizeCode (SRS §5.2 V1) returns empty string for null / undefined / empty</td><td>Pass</td></tr>
+<tr><td>4</td><td>VoucherEngine · normalizeCode (SRS §5.2 V1) is idempotent</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>20. <code>src/workflows/voucher-engine/__tests__/gen-code.unit.spec.ts</code> (4 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>generateVoucherCode (3.4.11) matches the accepted format /^[A-Z0-9]{6,}$/</td><td>Pass</td></tr>
+<tr><td>2</td><td>generateVoucherCode (3.4.11) is at least MIN_CODE_LENGTH chars, even if a shorter length is asked</td><td>Pass</td></tr>
+<tr><td>3</td><td>generateVoucherCode (3.4.11) is deterministic for a given RNG stub</td><td>Pass</td></tr>
+<tr><td>4</td><td>generateVoucherCode (3.4.11) maps the RNG range across the alphabet (uppercase alphanumeric)</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<h4>21. <code>src/api/middlewares/__tests__/voucher-rate-limit.unit.spec.ts</code> (2 test)</h4>
+
+<table>
+<thead><tr><th>STT</th><th>Tên test (describe &gt; it)</th><th>Trạng thái</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>voucherRateLimitMiddleware — IP source (unit) never derives the rate-limit IP from the client-controlled X-Forwarded-For header</td><td>Pass</td></tr>
+<tr><td>2</td><td>voucherRateLimitMiddleware — IP source (unit) returns a 429 body matching the shared ErrorEnvelope contract</td><td>Pass</td></tr>
+</tbody>
+</table>
+
+<script>
+(function () {
+  // Highlight Pass/Failed cells across every table in the report.
+  document.querySelectorAll("table tbody tr").forEach(function (row) {
+    var cells = row.querySelectorAll("td");
+    var last = cells[cells.length - 1];
+    if (!last) return;
+    var text = last.textContent.trim();
+    if (/^(Pass|Khớp)/i.test(text)) {
+      last.classList.add("status-pass");
+    } else if (/Failed|Blocked|Not Implemented/i.test(text)) {
+      last.classList.add("status-fail");
+    }
+  });
+
+  // Live filter: hides table rows that don't match the search text.
+  var input = document.getElementById("search-input");
+  var countLabel = document.getElementById("search-count");
+  var rows = Array.prototype.slice.call(document.querySelectorAll("table tbody tr"));
+
+  function applyFilter() {
+    var q = input.value.trim().toLowerCase();
+    var visible = 0;
+    rows.forEach(function (row) {
+      var match = !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+      row.classList.toggle("row-hidden", !match);
+      if (match) visible++;
+    });
+    countLabel.textContent = q ? visible + " / " + rows.length + " dòng khớp" : "";
+  }
+
+  input.addEventListener("input", applyFilter);
+
+  // Back-to-top button appears after scrolling down.
+  var backToTop = document.getElementById("back-to-top");
+  window.addEventListener("scroll", function () {
+    backToTop.style.display = window.scrollY > 400 ? "block" : "none";
+  });
+})();
+</script>
+
+</body>
+</html>

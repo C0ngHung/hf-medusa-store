@@ -1,0 +1,9 @@
+# T-VOUCH-12 — 5 failed attempts → rate limited (SRS §10.2 / EC-10)
+
+**SRS gốc:** "5 failed attempts → rate limited." Validates **EC-10**. Type: Integration.
+
+**Kết luận:** Pass — đã verify live qua đúng test này khi làm [[EC-10]] (evidence dùng lại).
+
+| STT | Mã Test Case (TC ID) | Hạng mục / Chức năng                      | Mô tả kịch bản test (Description)                       | Dữ liệu đầu vào (Input Data)                              | Kết quả mong muốn (Expected Result)                         | Kết quả thực tế (Actual Result) | Trạng thái (Status) | Ghi chú (Notes / Error Log)                                                                                                                                                                                                                                     |
+| --- | -------------------- | ----------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | TC_VOUCH_T12_01      | VoucherEngine — Rate limit (SEC-02/EC-10) | 5 lần voucher code sai liên tiếp → vẫn 404. Lần 6 → 429 | 6 lần `POST /store/carts/:id/voucher {code:"NOTREAL123"}` | 5 lần đầu `404`; lần 6 `429`, `code:"VOUCHER_RATE_LIMITED"` | Khớp 100%                       | Pass                | Test: `hf-medusa-store/apps/backend/integration-tests/http/voucher-rate-limit.spec.ts:81`. Lệnh: `pnpm test:integration:http -- integration-tests/http/voucher-rate-limit.spec.ts` (từ `apps/backend`, cần Redis thật). Chạy lúc 2026-07-21: 1/1 pass, 2738 ms. |

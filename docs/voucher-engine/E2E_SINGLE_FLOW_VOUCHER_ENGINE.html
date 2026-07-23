@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kịch bản E2E một luồng — VoucherEngine</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --panel: #ffffff;
+        --ink: #1e293b;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --accent: #4f46e5;
+        --ok: #059669;
+        --warn: #b45309;
+        --warnbg: #fffbeb;
+        --danger: #dc2626;
+        --code: #f1f5f9;
+        --stripe: #f8fafc;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        color: var(--ink);
+        background: #eef2f7;
+        line-height: 1.55;
+      }
+      header {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff;
+        padding: 32px 24px;
+      }
+      header h1 { margin: 0 0 6px; font-size: 26px; }
+      header p { margin: 0; opacity: 0.9; max-width: 900px; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 24px; }
+      .layout { display: grid; grid-template-columns: 240px 1fr; gap: 28px; align-items: start; }
+      nav {
+        position: sticky;
+        top: 16px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 16px;
+        font-size: 13.5px;
+      }
+      nav strong { display: block; margin-bottom: 8px; color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+      nav a { display: block; color: var(--ink); text-decoration: none; padding: 4px 6px; border-radius: 6px; }
+      nav a:hover { background: var(--code); color: var(--accent); }
+      main { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 8px 28px 32px; }
+      h2 { margin-top: 34px; padding-bottom: 6px; border-bottom: 2px solid var(--line); font-size: 21px; }
+      h3 { margin-top: 26px; font-size: 17px; color: #0f172a; }
+      p, li { font-size: 14.5px; }
+      code { background: var(--code); padding: 1px 5px; border-radius: 4px; font-size: 13px; font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 14px 16px; border-radius: 10px; overflow-x: auto; font-size: 12.5px; }
+      pre code { background: none; color: inherit; padding: 0; }
+      table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 13.5px; }
+      th, td { border: 1px solid var(--line); padding: 7px 10px; text-align: left; vertical-align: top; }
+      thead th { position: sticky; top: 0; background: #eef2ff; color: #312e81; z-index: 1; }
+      tbody tr:nth-child(even) { background: var(--stripe); }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .callout { border-left: 4px solid var(--warn); background: var(--warnbg); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+      .callout.danger { border-color: var(--danger); background: #fef2f2; }
+      .callout.ok { border-color: var(--ok); background: #ecfdf5; }
+      .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; margin: 1px 3px 1px 0; white-space: nowrap; }
+      .b-vouch { background: #e0e7ff; color: #3730a3; }
+      .b-flow { background: #dcfce7; color: #166534; }
+      .b-reval { background: #cffafe; color: #155e75; }
+      .b-ec { background: #fef3c7; color: #92400e; }
+      .b-tv { background: #fae8ff; color: #86198f; }
+      .b-sec { background: #fee2e2; color: #991b1b; }
+      .step-labels { margin: 6px 0 0; }
+      .lead { color: var(--muted); font-style: italic; }
+      .legend { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+      @media print {
+        body { background: #fff; }
+        nav { display: none; }
+        .layout { grid-template-columns: 1fr; }
+        main { border: none; }
+        thead th { position: static; }
+        header { background: #4f46e5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+      @media (max-width: 820px) {
+        .layout { grid-template-columns: 1fr; }
+        nav { position: static; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Kịch bản test E2E một luồng liên tục — VoucherEngine</h1>
+      <p>
+        Một mạch duy nhất: Admin → Storefront → checkout → audit. Một vòng bao trọn SRS §4, §7.2,
+        §7.3, §8 (voucher), §10.2. Cart mới chỉ tạo khi bắt buộc; các case lỗi gom chung cart; thao
+        tác đổi cart chính là bài test §7.3.
+      </p>
+    </header>
+
+    <div class="wrap">
+      <div class="layout">
+        <nav>
+          <strong>Mục lục</strong>
+          <a href="#lech">⚠️ 3 điểm lệch SRS</a>
+          <a href="#prep">0. Chuẩn bị & toggle</a>
+          <a href="#a">A. Admin: ranh giới</a>
+          <a href="#b0">B0. My Vouchers modal</a>
+          <a href="#cart1">Cart 1 · V-chain + replace</a>
+          <a href="#cart2">Cart 2 · dưới cap (T-07)</a>
+          <a href="#cart3">Cart 3 · vượt cap (T-08)</a>
+          <a href="#cart4">Cart 4 · cap exhausted (T-09)</a>
+          <a href="#cart5">Cart 5 · auto-remove (T-11)</a>
+          <a href="#cart6">Cart 6 · checkout (T-04)</a>
+          <a href="#bextra">V3 & V7</a>
+          <a href="#blast">Rate-limit (T-12)</a>
+          <a href="#c">C. Admin analytics</a>
+          <a href="#d">D. Script phụ (EC-04/08)</a>
+          <a href="#matrix">Coverage matrix</a>
+          <a href="#msg">Bảng message VI</a>
+          <a href="#legend">Chú giải nhãn</a>
+        </nav>
+
+        <main>
+          <p class="legend" id="legend-top">
+            <b>Nhãn:</b>
+            <span class="badge b-vouch">VOUCH-00x / V1–V8</span>
+            <span class="badge b-flow">§7.2 sN</span>
+            <span class="badge b-reval">§7.3 sN</span>
+            <span class="badge b-ec">EC-xx</span>
+            <span class="badge b-tv">T-VOUCH-xx</span>
+            <span class="badge b-sec">SEC</span>
+          </p>
+
+          <h2 id="lech">⚠️ 3 điểm hệ thống thực tế LỆCH SRS v1.0</h2>
+          <p>Kịch bản bám <b>hệ thống thực tế</b> (đã verify trong code), không bám worked-example SRS.</p>
+          <table>
+            <thead>
+              <tr><th>#</th><th>Chủ đề</th><th>SRS v1.0</th><th>Hệ thống thực tế</th><th>Nguồn code</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td><td>Global cap mặc định</td><td>50% (5000 bps)</td>
+                <td><b>40% (4000 bps)</b> — CR Phase 5</td>
+                <td><code>constants.ts</code> <code>DEFAULT_CAP_PCT=4000</code>; seed <code>initial-data-seed.ts</code></td>
+              </tr>
+              <tr>
+                <td>2</td><td>EC-03: item promo một mình ăn hết cap</td><td>giảm voucher về 0, không reject</td>
+                <td><b>Reject <code>VOUCHER_CAP_EXHAUSTED</code> (422)</b> — CR 2026-07-22</td>
+                <td><code>steps/assert-cap-not-exhausted.ts</code></td>
+              </tr>
+              <tr>
+                <td>3</td><td>EC-04 concurrency</td><td>apply voucher tranh chấp xoá item native</td>
+                <td>Lock <b>chỉ phủ race giữa 2 workflow VoucherEngine</b> → <b>partial</b></td>
+                <td><code>revalidate-voucher-on-cart-change.ts</code></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="callout">
+            Khi QA hỏi "sao không khớp SRS worked-example", chỉ vào bảng này. Muốn khớp SRS nguyên
+            bản (50% / floor-to-0) là <b>task sửa code riêng</b>, ngoài phạm vi doc này.
+          </div>
+
+          <h2 id="prep">0. Chuẩn bị (làm 1 lần)</h2>
+          <pre><code>cd hf-medusa-store      # workspace root (thư mục trong)
+pnpm backend:dev        # backend   http://localhost:9000/app
+pnpm storefront:dev     # storefront http://localhost:8008
+pnpm backend:seed       # seed đầy đủ voucher + AUTO promo + sản phẩm (idempotent)</code></pre>
+
+          <h3>0.2 Voucher seed (native Promotion code-based + VoucherConfig enabled)</h3>
+          <table>
+            <thead><tr><th>Code</th><th>Discount</th><th>Config VoucherEngine</th><th>Dùng ở</th></tr></thead>
+            <tbody>
+              <tr><td><code>SAVE10</code></td><td>10%</td><td>per-user 10, không scope</td><td>Cart 1, 2</td></tr>
+              <tr><td><code>MEGA20</code></td><td>20%</td><td>per-user 10, không scope</td><td>Cart 1 (replace), 3</td></tr>
+              <tr><td><code>MEGA40</code></td><td>40%</td><td><code>max_discount_amount=500.000</code></td><td>Phụ lục</td></tr>
+              <tr><td><code>MEGA50</code></td><td>50%</td><td>per-user 10</td><td>Cart 4</td></tr>
+              <tr><td><code>FIX100K</code></td><td>fixed 100.000</td><td>per-user 10</td><td>Phụ lục</td></tr>
+              <tr><td><code>RACKET20</code></td><td>20%</td><td>scope Rackets</td><td>V7</td></tr>
+              <tr><td><code>SHUTTLE20</code></td><td>20%</td><td>scope Shuttlecocks, min 200.000</td><td>Cart 1, 5</td></tr>
+              <tr><td><code>ONCE10</code></td><td>10%</td><td><code>per_user_limit=1</code></td><td>Cart 6</td></tr>
+              <tr><td><code>OLDEXP10</code></td><td>10%</td><td>validity quá khứ (hết hạn)</td><td>Cart 1</td></tr>
+            </tbody>
+          </table>
+
+          <h3>0.3 Sản phẩm (giá gốc verify trong initial-data-seed.ts)</h3>
+          <table>
+            <thead><tr><th>Sản phẩm</th><th>Category</th><th class="num">Giá gốc</th><th>Vai trò</th></tr></thead>
+            <tbody>
+              <tr><td>Yonex Astrox 99 Pro</td><td>Rackets</td><td class="num">4.500.000</td><td>item có auto promo (stacking)</td></tr>
+              <tr><td>Yonex BG80 Power</td><td>Strings</td><td class="num">150.000</td><td>item thứ 2 (vượt cap / cap exhausted)</td></tr>
+              <tr><td>Victor GR262</td><td>Grips</td><td class="num">70.000</td><td>không auto promo — happy path/replace/min-order</td></tr>
+              <tr><td>Yonex Mavis 350</td><td>Shuttlecocks</td><td class="num">350.000</td><td>item scope SHUTTLE20</td></tr>
+            </tbody>
+          </table>
+
+          <h3>0.4 ⚠️ Bảng toggle Automatic Promotion theo từng cart</h3>
+          <p class="lead">Seed để cả 4 AUTO active cùng lúc → 2 cặp trùng category cộng dồn, sai số. Trước mỗi cart set đúng trạng thái:</p>
+          <table>
+            <thead><tr><th>Cart</th><th>AUTO20_RACKET</th><th>AUTO40_RACKET</th><th>AUTO30_STRING</th><th>AUTO50_SUGGESTED</th></tr></thead>
+            <tbody>
+              <tr><td>Cart 1</td><td>Inactive</td><td>Inactive</td><td>Inactive</td><td>Inactive</td></tr>
+              <tr><td><b>Cart 2</b></td><td><b>Active</b></td><td>Inactive</td><td>Inactive</td><td>Inactive</td></tr>
+              <tr><td><b>Cart 3</b></td><td>Inactive</td><td><b>Active</b></td><td><b>Active</b></td><td>Inactive</td></tr>
+              <tr><td><b>Cart 4</b></td><td>Inactive</td><td>Inactive</td><td>Inactive</td><td><b>Active</b></td></tr>
+              <tr><td>Cart 5, 6</td><td>Inactive</td><td>Inactive</td><td>Inactive</td><td>Inactive</td></tr>
+            </tbody>
+          </table>
+          <div class="callout ok">Dọn dẹp sau khi test: set cả 4 AUTO promo về <b>Active</b> (trạng thái seed ban đầu).</div>
+
+          <h2 id="a">PHẦN A — Admin: ranh giới Promotion ↔ VoucherEngine</h2>
+          <p><span class="badge b-vouch">US-05</span> <span class="badge b-vouch">§6.2 admin</span></p>
+          <ul>
+            <li><b>A1.</b> Promotions có đủ 9 voucher + 4 AUTO promo; route Voucher settings cap = <code>4000</code>.</li>
+            <li><b>A2.</b> Promotion <code>SAVE10</code> → widget VoucherEngine: badge <b>Enabled</b>; Disable → toast <code>VoucherEngine disabled for this Promotion.</code> → Enable lại → toast <code>VoucherEngine enabled for this Promotion.</code>, dùng lại VoucherConfig cũ, không tạo row trùng.</li>
+            <li><b>A3.</b> Promotion <code>AUTO20_RACKET</code> → widget badge <b>Not eligible</b>, không có form Save (automatic không enable được VoucherEngine).</li>
+            <li><b>A4.</b> Cap validation: rỗng / <code>10001</code> / thập phân → inline error, không gửi request. Nhập <code>5000</code> → save OK → <b>đặt lại <code>4000</code></b> trước PHẦN B.</li>
+          </ul>
+
+          <h2 id="b0">PHẦN B — Storefront (một session đăng nhập liên tục)</h2>
+          <h3>B0. Available vouchers modal (guest → login)</h3>
+          <p class="step-labels"><span class="badge b-vouch">VOUCH-001</span></p>
+          <p>Guest → modal empty state <code>No vouchers available right now.</code> (không lỗi đỏ). Login customer A → modal hiển thị voucher eligible; voucher không đủ điều kiện hiện reason/disabled.</p>
+
+          <h3 id="cart1">Cart 1 — V-chain + happy path + replace + §7.3 giữ voucher</h3>
+          <p class="lead">Toggle: tất cả AUTO Inactive. Item khởi đầu: Victor GR262 (70.000, Grips).</p>
+          <table>
+            <thead><tr><th>Bước</th><th>Thao tác</th><th>Kỳ vọng</th><th>Nhãn</th></tr></thead>
+            <tbody>
+              <tr><td>1.1</td><td>Nhập <code>KHONGTONTAI</code> → Apply</td><td>404 · <code>VOUCHER_NOT_FOUND</code> · "Mã giảm giá không đúng…" · cart không đổi</td><td><span class="badge b-flow">§7.2 s2</span><span class="badge b-tv">T-02</span></td></tr>
+              <tr><td>1.2</td><td>Nhập <code>OLDEXP10</code> → Apply</td><td>422 · <code>VOUCHER_EXPIRED</code> · "…đã hết hạn rồi…"</td><td><span class="badge b-flow">§7.2 s3</span><span class="badge b-tv">T-03</span></td></tr>
+              <tr><td>1.3</td><td><code>SHUTTLE20</code> (cart 70.000 &lt; 200.000)</td><td>422 · <code>VOUCHER_MIN_ORDER_NOT_MET</code> · "Mua thêm 130.000 nữa…"</td><td><span class="badge b-flow">§7.2 s5</span><span class="badge b-tv">T-05</span></td></tr>
+              <tr><td>1.4</td><td>Add Astrox → cart 4.570.000 (chưa apply)</td><td>chỉ tăng cart, không remove</td><td>—</td></tr>
+              <tr><td>1.5</td><td><code>SHUTTLE20</code> → Apply</td><td>422 · <code>VOUCHER_NO_ELIGIBLE_ITEMS</code> (V5 pass, V6 fail — đúng fail-fast)</td><td><span class="badge b-flow">§7.2 s5</span><span class="badge b-tv">T-06</span></td></tr>
+              <tr><td>1.6</td><td><code>save10</code> (chữ thường) → Apply</td><td>200 · savings 457.000 · total 4.113.000 · không cap</td><td><span class="badge b-flow">§7.2 s1–9</span><span class="badge b-vouch">VOUCH-001</span><span class="badge b-tv">T-01</span></td></tr>
+              <tr><td>1.7</td><td>Remove voucher</td><td>200 · total về 4.570.000 · <b>usage_count không tăng, chưa có UsageLog</b></td><td><span class="badge b-vouch">VOUCH-004</span><span class="badge b-tv">T-10</span></td></tr>
+              <tr><td>1.8</td><td>Nhập lại <code>SAVE10</code></td><td>200 (chưa đặt hàng → chưa tính per-user)</td><td><span class="badge b-ec">EC-06</span></td></tr>
+              <tr><td>1.9</td><td><code>MEGA20</code> khi SAVE10 active</td><td>409 · <code>VOUCHER_REPLACE_REQUIRED</code> · "Bạn đang dùng mã SAVE10…"</td><td><span class="badge b-vouch">VOUCH-001</span><span class="badge b-vouch">V8</span></td></tr>
+              <tr><td>1.10</td><td>Modal → Cancel</td><td>Modal đóng · SAVE10 vẫn active · total không đổi</td><td>—</td></tr>
+              <tr><td>1.11</td><td>Nhập lại <code>MEGA20</code> → Confirm</td><td><code>?replace=true</code> 200 · tag SAVE10→MEGA20 · không 2 voucher</td><td><span class="badge b-vouch">VOUCH-001</span></td></tr>
+              <tr><td>1.12</td><td>Tăng quantity Astrox</td><td><code>cart.updated</code> → MEGA20 <b>vẫn active, tính lại</b> · không auto-remove</td><td><span class="badge b-reval">§7.3 s2+s3a</span><span class="badge b-vouch">VOUCH-005</span></td></tr>
+              <tr><td>1.13</td><td>Remove MEGA20 (dọn cart)</td><td>voucher tag biến mất</td><td>—</td></tr>
+            </tbody>
+          </table>
+
+          <h3 id="cart2">Cart 2 — stacking DƯỚI cap · <span class="badge b-tv">T-VOUCH-07</span></h3>
+          <p class="lead">Toggle: AUTO20_RACKET Active. Cart mới: chỉ Astrox. Trước apply: auto discount 900.000, còn 3.600.000.</p>
+          <p>Nhập <code>SAVE10</code> → Apply.</p>
+          <table>
+            <thead><tr><th>Biến</th><th class="num">Giá trị</th></tr></thead>
+            <tbody>
+              <tr><td>original_subtotal</td><td class="num">4.500.000</td></tr>
+              <tr><td>item_promotion_discount</td><td class="num">900.000</td></tr>
+              <tr><td>post_promotion_subtotal</td><td class="num">3.600.000</td></tr>
+              <tr><td>raw_voucher_discount (10%)</td><td class="num">360.000</td></tr>
+              <tr><td>maximum_combined_discount (40%)</td><td class="num">1.800.000</td></tr>
+              <tr><td>combined trước cap</td><td class="num">1.260.000 (&lt; cap)</td></tr>
+              <tr><td>final_voucher_discount</td><td class="num">360.000</td></tr>
+              <tr><td><b>final_total</b></td><td class="num"><b>3.240.000</b></td></tr>
+            </tbody>
+          </table>
+          <p>UI: dòng auto discount + dòng voucher 360.000; <code>discount_capped=false</code>. <span class="badge b-flow">§7.2 s7+s8</span><span class="badge b-vouch">VOUCH-003 r1–4</span><span class="badge b-ec">EC-01</span></p>
+
+          <h3 id="cart3">Cart 3 — stacking VƯỢT cap 40% (điểm nhấn) · <span class="badge b-tv">T-VOUCH-08</span></h3>
+          <p class="lead">Toggle: AUTO40_RACKET + AUTO30_STRING Active. Cart: Astrox + BG80. Trước apply: auto Racket 1.800.000 + String 45.000 = 1.845.000.</p>
+          <p>Nhập <code>MEGA20</code> → Apply.</p>
+          <table>
+            <thead><tr><th>Biến</th><th class="num">Giá trị</th></tr></thead>
+            <tbody>
+              <tr><td>original_subtotal</td><td class="num">4.650.000</td></tr>
+              <tr><td>item_promotion_discount</td><td class="num">1.845.000</td></tr>
+              <tr><td>post_promotion_subtotal</td><td class="num">2.805.000</td></tr>
+              <tr><td>raw_voucher_discount (20%)</td><td class="num">561.000</td></tr>
+              <tr><td>maximum_combined_discount (40%)</td><td class="num">1.860.000</td></tr>
+              <tr><td>combined trước cap</td><td class="num">2.406.000 (&gt; cap)</td></tr>
+              <tr><td>cap còn lại cho voucher</td><td class="num">15.000</td></tr>
+              <tr><td>final_voucher_discount</td><td class="num"><b>15.000</b></td></tr>
+              <tr><td><b>final_total</b></td><td class="num"><b>2.790.000</b></td></tr>
+            </tbody>
+          </table>
+          <p>UI: automatic discount <b>giữ nguyên 1.845.000</b> (bị giảm ⇒ FAIL); voucher savings 15.000; có <code>cap_explanation</code>; response <code>original_discount=561.000</code>, <code>discount_capped=true</code>.</p>
+          <div class="callout danger"><b>Lệch SRS #1:</b> SRS dùng cap 50% → voucher còn 490.000, total 2.350.000. Hệ thống cap 40% → 15.000, total 2.790.000. Khác nhau là <b>đúng theo CR Phase 5</b>.</div>
+          <p><span class="badge b-flow">§7.2 s8</span><span class="badge b-vouch">VOUCH-003 r6</span><span class="badge b-ec">EC-01</span></p>
+
+          <h3 id="cart4">Cart 4 — cap exhausted · <span class="badge b-tv">T-VOUCH-09</span> · <span class="badge b-ec">EC-03</span></h3>
+          <p class="lead">Toggle: AUTO50_SUGGESTED Active. Cart: chỉ BG80 (150.000). Trước apply: auto 75.000, còn 75.000.</p>
+          <table>
+            <thead><tr><th>Biến</th><th class="num">Giá trị</th></tr></thead>
+            <tbody>
+              <tr><td>original_subtotal</td><td class="num">150.000</td></tr>
+              <tr><td>item_promotion_discount (50%)</td><td class="num">75.000</td></tr>
+              <tr><td>maximum_combined_discount (40%)</td><td class="num">60.000</td></tr>
+              <tr><td>item_promotion_discount ≥ cap?</td><td class="num">true → cap_exhausted</td></tr>
+            </tbody>
+          </table>
+          <p>Nhập <code>MEGA50</code> → <b>bị từ chối ngay</b>: 422 · <code>VOUCHER_CAP_EXHAUSTED</code> · "Giỏ hàng của bạn đã đạt mức giảm giá tối đa…". Auto discount vẫn 75.000, total vẫn 75.000 (<b>không âm/không về 0</b>).</p>
+          <div class="callout danger"><b>Lệch SRS #2:</b> SRS nói "giảm về 0, không reject"; CR 2026-07-22 đổi thành <b>reject thẳng</b> để tránh voucher "thành công" nhưng savings 0đ gây hiểu lầm.</div>
+          <p><span class="badge b-flow">§7.2 s8 → assert-cap-not-exhausted</span><span class="badge b-vouch">VOUCH-003 r6</span></p>
+
+          <h3 id="cart5">Cart 5 — SHUTTLE20 + auto-remove · <span class="badge b-tv">T-VOUCH-11</span> · <span class="badge b-ec">EC-02</span></h3>
+          <p class="lead">Toggle: tất cả AUTO Inactive. Cart mới: Yonex Mavis 350 (350.000, Shuttlecocks).</p>
+          <ol>
+            <li>Nhập <code>SHUTTLE20</code> → 200 · savings 70.000 · total 280.000 (V5 min pass, V6 scope pass).</li>
+            <li>Thêm tạm 1 Victor GR262, rồi <b>xoá Mavis 350</b>.</li>
+            <li><code>cart.updated</code> → revalidate → <b>voucher tự bị remove</b> · notice "Mã giảm giá SHUTTLE20 đã được tự động xóa vì…" (reason <code>VOUCHER_NO_ELIGIBLE_ITEMS</code>) · total hết voucher discount.</li>
+          </ol>
+          <p class="lead">Biến thể reason min-order: apply trên cart Shuttlecocks ≥ 200.000, giảm quantity &lt; 200.000 → reason <code>VOUCHER_MIN_ORDER_NOT_MET</code>.</p>
+          <p><span class="badge b-reval">§7.3 s1+s2+s3b+s4</span><span class="badge b-vouch">VOUCH-005</span></p>
+
+          <h3 id="cart6">Cart 6 — checkout → audit + per-user · <span class="badge b-tv">T-VOUCH-04</span></h3>
+          <p class="lead">Toggle: tất cả AUTO Inactive. Cart mới: Victor GR262 (70.000). Vẫn customer A.</p>
+          <ol>
+            <li><code>ONCE10</code> → savings 7.000, total 63.000, <code>was_capped=false</code>.</li>
+            <li>Hoàn tất checkout (payment test/manual) → order success.</li>
+            <li>DB sau order: <code>VoucherUsageLog</code> đúng 1 row; <code>usage_count</code>+1; <code>discount_applied=7.000</code>; re-emit <code>order.placed</code> → không tạo row trùng, không tăng lần 2 (idempotency). <span class="badge b-vouch">INT-02/04</span></li>
+            <li>Available vouchers → <code>ONCE10</code> phải <code>eligible=false</code> (đã hết lượt).</li>
+            <li>Cart mới, nhập <code>ONCE10</code> → 422 · <code>VOUCHER_PER_USER_LIMIT_REACHED</code> · "Bạn đã dùng hết lượt cho mã này rồi."</li>
+          </ol>
+          <p><span class="badge b-flow">§7.2 s4</span><span class="badge b-vouch">VOUCH-004</span></p>
+
+          <h3 id="bextra">B-extra. V3 & V7 (đủ §4 VOUCH-002)</h3>
+          <ul>
+            <li><b>V7 segment:</b> Admin set <code>user_segment_conditions</code> JSON (group khách không thuộc) → storefront apply → 422 · <code>VOUCHER_SEGMENT_NOT_ELIGIBLE</code> · "Mã này không áp dụng cho tài khoản của bạn." <b>Gỡ segment sau test.</b> <span class="badge b-flow">§7.2 s6</span></li>
+            <li><b>V3 global usage limit:</b> set <code>usage_count ≥ usage_limit</code> (admin/script) → 422 · <code>VOUCHER_USAGE_LIMIT_REACHED</code> · "Mã này đã hết lượt sử dụng…" <span class="badge b-flow">§7.2 s4</span></li>
+          </ul>
+
+          <h3 id="blast">B-last. Rate-limit / brute-force · <span class="badge b-tv">T-VOUCH-12</span> · <span class="badge b-ec">EC-10</span></h3>
+          <div class="callout">Đặt <b>CUỐI cùng hoặc trong tab ẩn danh riêng</b> — cooldown 30 phút sẽ khoá các bước apply phía sau.</div>
+          <ol>
+            <li>Cùng browser/customer/IP: nhập mã sai 5 lần liên tiếp.</li>
+            <li>Các lần đầu 404 <code>VOUCHER_NOT_FOUND</code>; từ lần thứ 5 → <b>429</b> · cooldown ~30 phút.</li>
+            <li>Nhập <code>SAVE10</code> (đúng) ngay sau → vẫn bị chặn trong cooldown (rate-limit theo customer/IP).</li>
+            <li><b>Chỉ <code>VOUCHER_NOT_FOUND</code> (404) bị đếm</b>; lỗi 422 khác không bị đếm. <span class="badge b-sec">SEC-02</span></li>
+          </ol>
+
+          <h2 id="c">PHẦN C — Admin: analytics sau order</h2>
+          <p>Promotion Detail <code>ONCE10</code> → analytics: <code>total_uses=1</code>, <code>total_discount_given=7.000</code>, <code>capped_count</code> không tăng. Checkout Cart 3 (bị cap) rồi xem <code>MEGA20</code> → <code>capped_count</code> tăng. <span class="badge b-vouch">§6.2 admin</span></p>
+
+          <h2 id="d">PHẦN D — Bước script phụ (ngoài luồng UI)</h2>
+          <h3>D1. EC-04 — concurrency (partial)</h3>
+          <pre><code>curl -s -X POST  "http://localhost:9000/store/carts/$CART_ID/voucher" \
+     -H 'x-publishable-api-key: '"$PK" -H 'content-type: application/json' \
+     -d '{"code":"SHUTTLE20"}' &amp;
+curl -s -X DELETE "http://localhost:9000/store/carts/$CART_ID/line-items/$LINE_ID" \
+     -H 'x-publishable-api-key: '"$PK" &amp;
+wait</code></pre>
+          <p>Kỳ vọng: không để cart nửa vời — voucher apply rồi bị revalidate gỡ, hoặc 409 <code>VOUCHER_CART_CHANGED</code>. Không có voucher discount treo trên cart không còn item eligible.</p>
+          <div class="callout danger"><b>Lệch SRS #3 (honest):</b> lock hiện tại chỉ phủ race giữa 2 workflow VoucherEngine, <b>chưa</b> phủ race với mutation cart native → ghi kết quả <b>partial</b>.</div>
+          <h3>D2. EC-08 — cascading tier (tuỳ chọn)</h3>
+          <p>Admin tạo 1 automatic promotion ngưỡng-chi-tiêu → storefront (voucher đang active) thêm item vượt ngưỡng → item promo mới áp → voucher tính lại → cap re-check → hưởng cascading tới trần cap. <span class="badge b-reval">§7.3 s3a</span></p>
+
+          <h2 id="matrix">Coverage matrix §10.2</h2>
+          <table>
+            <thead><tr><th>SRS ID</th><th>Scenario</th><th>Bước</th><th>Dữ liệu</th><th>Kết quả</th></tr></thead>
+            <tbody>
+              <tr><td>T-VOUCH-01</td><td>Valid applied, total updated</td><td>Cart 1.6</td><td>SAVE10</td><td></td></tr>
+              <tr><td>T-VOUCH-02</td><td>Invalid code error</td><td>Cart 1.1</td><td>mã sai</td><td></td></tr>
+              <tr><td>T-VOUCH-03</td><td>Expired voucher</td><td>Cart 1.2</td><td>OLDEXP10</td><td></td></tr>
+              <tr><td>T-VOUCH-04</td><td>Per-user limit exceeded</td><td>Cart 6</td><td>ONCE10</td><td></td></tr>
+              <tr><td>T-VOUCH-05</td><td>Below min_order, remaining</td><td>Cart 1.3</td><td>SHUTTLE20</td><td></td></tr>
+              <tr><td>T-VOUCH-06</td><td>No eligible items scope</td><td>Cart 1.5</td><td>SHUTTLE20</td><td></td></tr>
+              <tr><td>T-VOUCH-07</td><td>20%+10%, under cap</td><td>Cart 2</td><td>AUTO20+SAVE10</td><td></td></tr>
+              <tr><td>T-VOUCH-08</td><td>40%+20%, cap reduces voucher</td><td>Cart 3</td><td>AUTO40+AUTO30+MEGA20</td><td></td></tr>
+              <tr><td>T-VOUCH-09</td><td>50%+50%, prevents negative</td><td>Cart 4</td><td>AUTO50+MEGA50</td><td></td></tr>
+              <tr><td>T-VOUCH-10</td><td>Remove, no usage increment</td><td>Cart 1.7</td><td>SAVE10</td><td></td></tr>
+              <tr><td>T-VOUCH-11</td><td>Remove items → auto-remove</td><td>Cart 5</td><td>SHUTTLE20</td><td></td></tr>
+              <tr><td>T-VOUCH-12</td><td>5 fails → rate limited</td><td>B-last</td><td>5 mã sai</td><td></td></tr>
+            </tbody>
+          </table>
+          <h3>§4 / §7.2 / §7.3 / §8</h3>
+          <table>
+            <thead><tr><th>Requirement</th><th>Bước</th><th>Requirement</th><th>Bước</th></tr></thead>
+            <tbody>
+              <tr><td>VOUCH-001 apply/replace/My Vouchers</td><td>B0, 1.6, 1.9–1.11</td><td>§7.2 s1–s3</td><td>1.1, 1.2, 1.6</td></tr>
+              <tr><td>V1 / V2</td><td>1.1 / 1.2</td><td>§7.2 s4 (usage)</td><td>Cart 6, V3</td></tr>
+              <tr><td>V3 / V4</td><td>B-extra / Cart 6</td><td>§7.2 s5 (min/scope)</td><td>1.3, 1.5</td></tr>
+              <tr><td>V5 / V6</td><td>1.3 / 1.5</td><td>§7.2 s6 (segment)</td><td>V7</td></tr>
+              <tr><td>V7 / V8</td><td>B-extra / 1.9</td><td>§7.2 s7/s8/s9</td><td>Cart 2 / 2,3,4 / 1.6</td></tr>
+              <tr><td>VOUCH-003 r1–6</td><td>Cart 2,3,4</td><td>§7.3 s2+s3a (giữ)</td><td>1.12</td></tr>
+              <tr><td>VOUCH-004 remove/no-increment</td><td>1.7, Cart 6</td><td>§7.3 s3b (auto-remove)</td><td>Cart 5</td></tr>
+              <tr><td>VOUCH-005 revalidate</td><td>1.12, Cart 5</td><td>EC-01 / EC-02 / EC-03</td><td>Cart 2,3 / 5 / 4</td></tr>
+              <tr><td>SEC-02 rate-limit</td><td>B-last</td><td>EC-04 / EC-06</td><td>D1 / 1.8</td></tr>
+              <tr><td>§6.2 admin</td><td>A2, C</td><td>EC-08 / EC-10</td><td>D2 / B-last</td></tr>
+            </tbody>
+          </table>
+          <div class="callout">Ngoài phạm vi voucher flow: EC-05, EC-07, EC-09 thuộc Suggestive Selling (out-of-stock, dismiss, cache stale) — không cover ở đây.</div>
+
+          <h2 id="msg">Bảng đối chiếu message VI (nguồn: errors.ts)</h2>
+          <table>
+            <thead><tr><th>Code</th><th class="num">HTTP</th><th>UI phải hiển thị</th></tr></thead>
+            <tbody>
+              <tr><td><code>VOUCHER_NOT_FOUND</code></td><td class="num">404</td><td>Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!</td></tr>
+              <tr><td><code>VOUCHER_INACTIVE</code></td><td class="num">422</td><td>Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!</td></tr>
+              <tr><td><code>VOUCHER_NOT_YET_VALID</code></td><td class="num">422</td><td>Mã này chưa tới ngày sử dụng. Bạn quay lại sau nhé!</td></tr>
+              <tr><td><code>VOUCHER_EXPIRED</code></td><td class="num">422</td><td>Mã giảm giá đã hết hạn rồi. Bạn xem thêm mã trong "Ví voucher" nhé!</td></tr>
+              <tr><td><code>VOUCHER_USAGE_LIMIT_REACHED</code></td><td class="num">422</td><td>Mã này đã hết lượt sử dụng. Bạn thử mã khác nhé!</td></tr>
+              <tr><td><code>VOUCHER_PER_USER_LIMIT_REACHED</code></td><td class="num">422</td><td>Bạn đã dùng hết lượt cho mã này rồi.</td></tr>
+              <tr><td><code>VOUCHER_MIN_ORDER_NOT_MET</code></td><td class="num">422</td><td>Mua thêm {remaining} nữa để dùng được mã này nhé!</td></tr>
+              <tr><td><code>VOUCHER_NO_ELIGIBLE_ITEMS</code></td><td class="num">422</td><td>Mã này chỉ áp dụng cho một số sản phẩm/danh mục nhất định. Giỏ hàng chưa có sản phẩm phù hợp.</td></tr>
+              <tr><td><code>VOUCHER_SEGMENT_NOT_ELIGIBLE</code></td><td class="num">422</td><td>Mã này không áp dụng cho tài khoản của bạn.</td></tr>
+              <tr><td><code>VOUCHER_REPLACE_REQUIRED</code></td><td class="num">409</td><td>Bạn đang dùng mã {current_code}. Thay bằng mã mới chứ?</td></tr>
+              <tr><td><code>VOUCHER_CART_CHANGED</code></td><td class="num">409</td><td>Giỏ hàng đã thay đổi, cần tính lại. Bạn thử lại nhé!</td></tr>
+              <tr><td><code>VOUCHER_CALCULATION_FAILED</code></td><td class="num">400</td><td>Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.</td></tr>
+              <tr><td><code>VOUCHER_CAP_EXHAUSTED</code></td><td class="num">422</td><td>Giỏ hàng của bạn đã đạt mức giảm giá tối đa từ chương trình khuyến mãi hiện tại, không thể áp dụng thêm voucher.</td></tr>
+              <tr><td><code>VOUCHER_AUTO_REMOVED</code></td><td class="num">200</td><td>Mã giảm giá {code} đã được tự động xóa vì {reason}.</td></tr>
+            </tbody>
+          </table>
+
+          <h2 id="legend">Chú giải nhãn</h2>
+          <p>
+            <span class="badge b-vouch">VOUCH / V1–V8 / US-05 / §6.2</span> yêu cầu §4/§6.2 ·
+            <span class="badge b-flow">§7.2 sN</span> bước workflow applyVoucher ·
+            <span class="badge b-reval">§7.3 sN</span> bước workflow revalidate ·
+            <span class="badge b-ec">EC-xx</span> edge case §8 ·
+            <span class="badge b-tv">T-xx</span> acceptance test §10.2 ·
+            <span class="badge b-sec">SEC</span> bảo mật §9.2.
+          </p>
+          <p class="legend">Bản trình bày HTML này đồng bộ 1:1 với <code>E2E_SINGLE_FLOW_VOUCHER_ENGINE.vi.md</code> (nguồn nội dung gốc).</p>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
