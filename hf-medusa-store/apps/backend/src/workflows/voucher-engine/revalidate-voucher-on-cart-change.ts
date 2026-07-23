@@ -4,9 +4,21 @@
  * Invoked by the `cart.updated` subscriber (`../../subscribers/voucher-cart-updated.ts`)
  * for cart mutations VoucherEngine does not own (item add/remove, qty change,
  * suggestive-selling adds). Re-runs the cart-change validation SUBSET (V1, V2,
- * V5, V6 — §9.2, no V8 per rebuild-decisions.md decision 2): if still valid,
- * recomputes and rewrites the discount at the new amount; if invalid,
- * auto-removes the voucher with a reason (VOUCHER_AUTO_REMOVED).
+ * V5, V6 — §9.2, no V8 per rebuild-decisions.md decision 2): if still valid
+ * AND the global cap still has room, recomputes and rewrites the discount at
+ * the new amount; otherwise auto-removes the voucher with a reason
+ * (VOUCHER_AUTO_REMOVED).
+ *
+ * CR (2026-07-22): a cart mutation can make item/automatic promotions ALONE
+ * newly consume the entire global cap for an ALREADY-applied voucher (e.g. a
+ * suggested item add that triggers a bigger auto-promotion). V1/V2/V5/V6 all
+ * still pass in that case, so the OLD logic here recomputed the voucher to a
+ * silent 0đ and kept it attached — mirrors the `VOUCHER_CAP_EXHAUSTED` gap
+ * `apply-voucher.ts` closed for fresh applies, but this revalidation path
+ * can't just throw (see below), so it auto-removes instead, reusing the SAME
+ * `VOUCHER_AUTO_REMOVED` notice mechanism as every other revalidation
+ * failure — `discount.cap_exhausted_by_promotion` (computed unconditionally,
+ * see below) is now a THIRD input into `shouldRecompute`/`shouldRemove`.
  *
  * No-op (nothing mutates) when the cart has no active voucher — the common
  * case for the vast majority of cart mutations. Never throws — errors are
@@ -18,13 +30,19 @@
  * `when().then()` call nested inside another `when().then()` callback (it
  * throws at workflow-definition/load time, breaking the whole app boot, not
  * just this workflow — verified empirically this session). So
- * `loadCartContextStep`/`lookupVoucherStep`/`revalidateStep` run
- * UNCONDITIONALLY (each is safe with a "no active voucher" input — cart_id is
- * always valid, an empty `code` resolves to `voucher: null`, and a null
- * voucher's revalidation result is simply ignored below), and the two real
- * branches are combined into two independent TOP-LEVEL booleans
- * (`shouldRecompute`, `shouldRemove`) — both require `existing.has_voucher`,
- * so neither fires when there is nothing to revalidate.
+ * `loadCartContextStep`/`lookupVoucherStep`/`revalidateStep`/the
+ * eligibility+discount calculation ALL run UNCONDITIONALLY (each is safe with
+ * a "no active voucher" input — cart_id is always valid, an empty `code`
+ * resolves to `voucher: null`, a null voucher's revalidation result is simply
+ * ignored below, and the discount calc below uses harmless zero-value
+ * voucher terms when there's no real voucher — `cap_exhausted_by_promotion`
+ * is independent of a voucher's own discount_type/value, so this is still the
+ * correct answer even with dummy terms), and the two real branches are
+ * combined into two independent TOP-LEVEL booleans (`shouldRecompute`,
+ * `shouldRemove`) — both require `existing.has_voucher`, so neither fires
+ * when there is nothing to revalidate. The small always-on eligibility/cap
+ * computation this adds for carts with no voucher at all is an accepted
+ * tradeoff for not needing a second, nested conditional.
  */
 
 import {
@@ -44,10 +62,12 @@ import type { ICartModuleService } from "@medusajs/framework/types";
 import { checkVoucherExistsStep } from "./steps/check-voucher-exists";
 import { loadCartContextStep } from "./steps/load-cart-context";
 import { lookupVoucherStep } from "./steps/lookup-voucher";
+import { resolveEligibleItemsStep } from "./steps/resolve-eligible-items";
+import { calculateVoucherDiscountStep } from "./steps/calculate-voucher-discount";
 import { revalidateStep } from "./steps/revalidate-voucher";
 import { verifyCartTotalsStep } from "./steps/verify-cart-totals";
 import { writeVoucherCartMetadataStep } from "./steps/write-voucher-cart-metadata";
-import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
+import { toVoucherScope } from "./lib/mappers";
 import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
 import { VOUCHER_METADATA_KEY } from "./lib/ephemeral-promotion";
 import {
@@ -128,15 +148,45 @@ export const revalidateVoucherWorkflow = createWorkflow(
 
     const revalidation = revalidateStep({ voucher: lookup.voucher, cart });
 
+    // Cap-exhaustion check (CR 2026-07-22) — computed UNCONDITIONALLY (see
+    // header comment) so it's available before branching, without nesting a
+    // second `when()`. Zero-value voucher terms when there's no real active
+    // voucher are harmless: `cap_exhausted_by_promotion` only depends on
+    // `item_promotion_discount`/`maximum_combined_discount`, never on a
+    // voucher's own discount_type/value.
+    const voucherTerms = transform({ lookup }, ({ lookup }) => ({
+      discount_type: lookup.voucher?.discount_type ?? ("percentage" as const),
+      discount_value: lookup.voucher?.discount_value ?? 0,
+      max_discount_amount: lookup.voucher?.max_discount_amount ?? null,
+    }));
+    const scope = transform({ lookup }, ({ lookup }) =>
+      toVoucherScope(
+        lookup.voucher ?? {
+          applicable_product_ids: null,
+          applicable_category_ids: null,
+        },
+      ),
+    );
+    const resolved = resolveEligibleItemsStep({ lines: cart.lines, scope });
+    const discount = calculateVoucherDiscountStep({
+      lines: resolved.lines,
+      voucher: voucherTerms,
+      global_cap_bps: lookup.global_cap_bps,
+      shipping_total: cart.shipping_total,
+    });
+
     const shouldRecompute = transform(
-      { existing, revalidation },
-      ({ existing, revalidation }) =>
-        existing.has_voucher && revalidation.still_valid,
+      { existing, revalidation, discount },
+      ({ existing, revalidation, discount }) =>
+        existing.has_voucher &&
+        revalidation.still_valid &&
+        !discount.cap_exhausted_by_promotion,
     );
     const shouldRemove = transform(
-      { existing, revalidation },
-      ({ existing, revalidation }) =>
-        existing.has_voucher && !revalidation.still_valid,
+      { existing, revalidation, discount },
+      ({ existing, revalidation, discount }) =>
+        existing.has_voucher &&
+        (!revalidation.still_valid || discount.cap_exhausted_by_promotion),
     );
 
     // Still valid → recompute the amount and rewrite the voucher's
@@ -170,11 +220,10 @@ export const revalidateVoucherWorkflow = createWorkflow(
           name: "remove-line-item-adjustments-recompute",
         });
 
-        const { resolved, discount } = resolveAndCalculateVoucherDiscount({
-          lookup,
-          cart,
-        });
-
+        // Reuse the `resolved`/`discount` already computed unconditionally
+        // above (this branch only runs when `!discount.cap_exhausted_by_promotion`,
+        // so it's the correct, non-degenerate result here) — no need to
+        // recompute a second time.
         const newAdjustments = createVoucherLineItemAdjustments({
           lines: resolved.lines,
           discount,
@@ -235,15 +284,22 @@ export const revalidateVoucherWorkflow = createWorkflow(
       });
 
       // Build the async VOUCHER_AUTO_REMOVED notice from the SPECIFIC failure
-      // (min-order → 3.5.9, no-eligible-items → 3.5.10, …). `revalidation` always
-      // carries `failure_code` on this branch (still_valid === false); the pure
-      // builder defaults defensively if it were ever missing.
+      // (min-order → 3.5.9, no-eligible-items → 3.5.10, …) OR, CR 2026-07-22,
+      // the cap being newly exhausted by promotions alone — `revalidation`
+      // only carries `failure_code` when `still_valid === false`; when this
+      // branch fires instead because `still_valid` is true but
+      // `discount.cap_exhausted_by_promotion` is true, fall back to
+      // `VOUCHER_CAP_EXHAUSTED` explicitly.
       const notice = transform(
-        { existing, revalidation },
-        ({ existing, revalidation }) =>
+        { existing, revalidation, discount },
+        ({ existing, revalidation, discount }) =>
           buildAutoRemoveNotice({
             voucher_code: existing.active!.code,
-            failure_code: revalidation.failure_code,
+            failure_code:
+              revalidation.failure_code ??
+              (discount.cap_exhausted_by_promotion
+                ? "VOUCHER_CAP_EXHAUSTED"
+                : undefined),
           }),
       );
 

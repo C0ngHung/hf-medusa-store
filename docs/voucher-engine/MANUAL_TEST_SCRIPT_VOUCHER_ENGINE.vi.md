@@ -49,11 +49,11 @@ test trên Storefront/checkout và đối chiếu thông báo hiển thị với
 
 Tạo hoặc xác nhận có ít nhất 3 nhóm sản phẩm:
 
-| Nhóm | Mục đích | Ghi chú |
-| --- | --- | --- |
-| Product A | Test voucher không scope | Giá nên >= 1.000.000₫ để dễ tính |
-| Racket product | Test scope category `Rackets` | Phải thuộc category `Rackets` |
-| Shuttlecock product | Test scope/min-order | Phải thuộc category `Shuttlecocks` |
+| Nhóm                | Mục đích                      | Ghi chú                            |
+| ------------------- | ----------------------------- | ---------------------------------- |
+| Product A           | Test voucher không scope      | Giá nên >= 1.000.000₫ để dễ tính   |
+| Racket product      | Test scope category `Rackets` | Phải thuộc category `Rackets`      |
+| Shuttlecock product | Test scope/min-order          | Phải thuộc category `Shuttlecocks` |
 
 Ghi lại:
 
@@ -68,29 +68,29 @@ Tạo các native Promotions dưới đây, sau đó enable VoucherEngine cho t�
 Promotion đủ điều kiện. Bảng này là dữ liệu chuẩn để cover đủ `T-VOUCH-01` đến
 `T-VOUCH-12` trong SRS 10.2.
 
-| Code | Native Promotion | VoucherEngine config | Mục đích |
-| --- | --- | --- | --- |
-| `SAVE10` | Code Promotion, 10% | Không min, không scope, per user 10 | `T-VOUCH-01`, `T-VOUCH-07`, remove voucher |
-| `OLD10` | Code Promotion, 10% | Validity đã hết hạn | `T-VOUCH-03` |
-| `ONCE10` | Code Promotion, 10% | `per_user_limit = 1` | `T-VOUCH-04` |
-| `MEGA20` | Code Promotion, 20% | Không max voucher cap, per user 10 | `T-VOUCH-08` theo ví dụ SRS |
-| `MEGA40` | Code Promotion, 40% | `max_discount_amount = 500000`, per user 10 | Test max voucher cap riêng |
-| `MEGA50` | Code Promotion, 50% | Không max voucher cap, per user 10 | `T-VOUCH-09` |
-| `FIX100K` | Code Promotion, fixed amount `100000` | Không max voucher cap, per user 10 | Test fixed amount không cần `max_discount_amount` |
-| `RACKET20` | Code Promotion, 20% | Scope category `Rackets`, per user 10 | Test V6 scope |
-| `SHUTTLE20` | Code Promotion, 20% | Scope category `Shuttlecocks`, `min_order_value = 200000`, per user 10 | Test V5 + V6 |
+| Code        | Native Promotion                      | VoucherEngine config                                                   | Mục đích                                          |
+| ----------- | ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------- |
+| `SAVE10`    | Code Promotion, 10%                   | Không min, không scope, per user 10                                    | `T-VOUCH-01`, `T-VOUCH-07`, remove voucher        |
+| `OLDEXP10`  | Code Promotion, 10%                   | Validity đã hết hạn                                                    | `T-VOUCH-03`                                      |
+| `ONCE10`    | Code Promotion, 10%                   | `per_user_limit = 1`                                                   | `T-VOUCH-04`                                      |
+| `MEGA20`    | Code Promotion, 20%                   | Không max voucher cap, per user 10                                     | `T-VOUCH-08` theo ví dụ SRS                       |
+| `MEGA40`    | Code Promotion, 40%                   | `max_discount_amount = 500000`, per user 10                            | Test max voucher cap riêng                        |
+| `MEGA50`    | Code Promotion, 50%                   | Không max voucher cap, per user 10                                     | `T-VOUCH-09`                                      |
+| `FIX100K`   | Code Promotion, fixed amount `100000` | Không max voucher cap, per user 10                                     | Test fixed amount không cần `max_discount_amount` |
+| `RACKET20`  | Code Promotion, 20%                   | Scope category `Rackets`, per user 10                                  | Test V6 scope                                     |
+| `SHUTTLE20` | Code Promotion, 20%                   | Scope category `Shuttlecocks`, `min_order_value = 200000`, per user 10 | Test V5 + V6                                      |
 
 Tạo thêm các automatic Promotions:
 
-| Code/name | Type | Điều kiện | Mục đích |
-| --- | --- | --- | --- |
-| `AUTO20_RACKET` | Automatic Promotion, 20% item discount | target item/category `Rackets` | `T-VOUCH-07` happy path |
-| `AUTO40_RACKET` | Automatic Promotion, 40% item discount | target item/category `Rackets` | `T-VOUCH-08` cap exceeded |
-| `AUTO30_STRING` | Automatic Promotion, 30% item discount | target item/category `Strings` hoặc suggested string item | `T-VOUCH-08`, suggested item |
-| `AUTO50_SUGGESTED` | Automatic Promotion, 50% item discount | target suggested item/category | `T-VOUCH-09` negative-total prevention |
+| Code/name          | Type                                   | Điều kiện                                                 | Mục đích                               |
+| ------------------ | -------------------------------------- | --------------------------------------------------------- | -------------------------------------- |
+| `AUTO20_RACKET`    | Automatic Promotion, 20% item discount | target item/category `Rackets`                            | `T-VOUCH-07` happy path                |
+| `AUTO40_RACKET`    | Automatic Promotion, 40% item discount | target item/category `Rackets`                            | `T-VOUCH-08` cap exceeded              |
+| `AUTO30_STRING`    | Automatic Promotion, 30% item discount | target item/category `Strings` hoặc suggested string item | `T-VOUCH-08`, suggested item           |
+| `AUTO50_SUGGESTED` | Automatic Promotion, 50% item discount | target suggested item/category                            | `T-VOUCH-09` negative-total prevention |
 
 Nếu môi trường chỉ cho tạo một vài Promotion trước, ưu tiên theo thứ tự:
-`SAVE10`, `OLD10`, `ONCE10`, `RACKET20`, `SHUTTLE20`, `AUTO20_RACKET`,
+`SAVE10`, `OLDEXP10`, `ONCE10`, `RACKET20`, `SHUTTLE20`, `AUTO20_RACKET`,
 `AUTO40_RACKET`, `AUTO30_STRING`, `MEGA20`, `MEGA50`.
 
 ## 2. Admin: tạo native Promotion để bật VoucherEngine
@@ -128,36 +128,36 @@ Lặp lại mục này cho toàn bộ code-based Promotions trong bảng 1.3.
 
    Với `SAVE10`:
 
-   | Field | Value |
-   | --- | --- |
-   | Minimum order value | bỏ trống |
-   | Maximum voucher discount | bỏ trống |
-   | Applicable product ids | bỏ trống |
-   | Applicable category ids | bỏ trống |
-   | Per-user limit | `10` |
+   | Field                        | Value    |
+   | ---------------------------- | -------- |
+   | Minimum order value          | bỏ trống |
+   | Maximum voucher discount     | bỏ trống |
+   | Applicable product ids       | bỏ trống |
+   | Applicable category ids      | bỏ trống |
+   | Per-user limit               | `10`     |
    | User segment conditions JSON | bỏ trống |
 
    Với `MEGA40`:
 
-   | Field | Value |
-   | --- | --- |
+   | Field                    | Value    |
+   | ------------------------ | -------- |
    | Maximum voucher discount | `500000` |
-   | Per-user limit | `10` |
+   | Per-user limit           | `10`     |
 
    Với `RACKET20`:
 
-   | Field | Value |
-   | --- | --- |
+   | Field                   | Value                     |
+   | ----------------------- | ------------------------- |
    | Applicable category ids | category id của `Rackets` |
-   | Per-user limit | `10` |
+   | Per-user limit          | `10`                      |
 
    Với `SHUTTLE20`:
 
-   | Field | Value |
-   | --- | --- |
-   | Minimum order value | `200000` |
+   | Field                   | Value                          |
+   | ----------------------- | ------------------------------ |
+   | Minimum order value     | `200000`                       |
    | Applicable category ids | category id của `Shuttlecocks` |
-   | Per-user limit | `10` |
+   | Per-user limit          | `10`                           |
 
 7. Bấm Save.
 8. Kỳ vọng notification/toast:
@@ -178,12 +178,12 @@ Lặp lại mục này cho toàn bộ code-based Promotions trong bảng 1.3.
 Thực hiện trên một Promotion test riêng hoặc tắt/bật lại một Promotion chưa dùng
 ở storefront.
 
-| Case | Bước | Kỳ vọng |
-| --- | --- | --- |
-| Per-user limit invalid | Nhập `0` hoặc số âm | Inline error: `Must be a positive number`; không gọi API |
-| JSON invalid | Nhập `{abc` vào segment JSON | Inline error: `Must be valid JSON`; không gọi API |
-| Cancel | Mở form rồi bấm Cancel | Form đóng, không thay đổi trạng thái |
-| Save API lỗi | Ngắt network hoặc dùng data không hợp lệ | Toast lỗi: `Failed to enable VoucherEngine.` hoặc message từ API |
+| Case                   | Bước                                     | Kỳ vọng                                                          |
+| ---------------------- | ---------------------------------------- | ---------------------------------------------------------------- |
+| Per-user limit invalid | Nhập `0` hoặc số âm                      | Inline error: `Must be a positive number`; không gọi API         |
+| JSON invalid           | Nhập `{abc` vào segment JSON             | Inline error: `Must be valid JSON`; không gọi API                |
+| Cancel                 | Mở form rồi bấm Cancel                   | Form đóng, không thay đổi trạng thái                             |
+| Save API lỗi           | Ngắt network hoặc dùng data không hợp lệ | Toast lỗi: `Failed to enable VoucherEngine.` hoặc message từ API |
 
 ### 2.4 Test Disable/Enable notification
 
@@ -326,6 +326,7 @@ Thực hiện trên một Promotion test riêng hoặc tắt/bật lại một P
      Nếu implementation trả message khác từ backend, ghi lại text thực tế.
 
    - Cart total trở về trước khi apply voucher.
+
 4. Kiểm tra DB/API sau đó:
    - `usage_count` chưa tăng.
    - Chưa có `VoucherUsageLog`.
@@ -433,7 +434,7 @@ ghi lại:
 
 ### 7.4 `T-VOUCH-03`: Voucher hết hạn
 
-1. Dùng `OLD10`, hoặc vào Admin chỉnh native Promotion/Campaign validity của một
+1. Dùng `OLDEXP10`, hoặc vào Admin chỉnh native Promotion/Campaign validity của một
    Promotion test về quá khứ.
 2. Nhập code đó.
 3. Kỳ vọng:
@@ -506,7 +507,11 @@ ghi lại:
 2. Nhập segment JSON:
 
    ```json
-   { "customer_group_ids": ["<customer_group_id_ma_customer_hien_tai_khong_thuoc>"] }
+   {
+     "customer_group_ids": [
+       "<customer_group_id_ma_customer_hien_tai_khong_thuoc>"
+     ]
+   }
    ```
 
 3. Save.
@@ -544,17 +549,17 @@ khi apply voucher, không chỉ nhìn message thành công.
 
 Với mọi case trong mục 8, tính và ghi lại:
 
-| Biến | Cách tính |
-| --- | --- |
-| `original_subtotal` | Tổng giá gốc của các line item trước mọi discount |
-| `item_promotion_discount` | Tổng discount từ native automatic item-level Promotion |
-| `post_promotion_subtotal` | `original_subtotal - item_promotion_discount` |
-| `eligible_post_promotion_subtotal` | Tổng post-promotion subtotal của các item eligible với voucher |
-| `raw_voucher_discount` | Percentage/fixed voucher tính trên `eligible_post_promotion_subtotal` |
-| `voucher_discount_after_voucher_cap` | Voucher sau `max_discount_amount`, nếu có |
-| `maximum_combined_discount` | `original_subtotal * DiscountCapConfig.max_discount_percentage` |
-| `final_voucher_discount` | Phần voucher cuối cùng sau global cap |
-| `final_total` | `original_subtotal - item_promotion_discount - final_voucher_discount` |
+| Biến                                 | Cách tính                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------- |
+| `original_subtotal`                  | Tổng giá gốc của các line item trước mọi discount                      |
+| `item_promotion_discount`            | Tổng discount từ native automatic item-level Promotion                 |
+| `post_promotion_subtotal`            | `original_subtotal - item_promotion_discount`                          |
+| `eligible_post_promotion_subtotal`   | Tổng post-promotion subtotal của các item eligible với voucher         |
+| `raw_voucher_discount`               | Percentage/fixed voucher tính trên `eligible_post_promotion_subtotal`  |
+| `voucher_discount_after_voucher_cap` | Voucher sau `max_discount_amount`, nếu có                              |
+| `maximum_combined_discount`          | `original_subtotal * DiscountCapConfig.max_discount_percentage`        |
+| `final_voucher_discount`             | Phần voucher cuối cùng sau global cap                                  |
+| `final_total`                        | `original_subtotal - item_promotion_discount - final_voucher_discount` |
 
 Điều kiện pass chung:
 
@@ -585,16 +590,16 @@ Apply:
 
 Kỳ vọng tính toán theo SRS:
 
-| Biến | Giá trị kỳ vọng |
-| --- | ---: |
-| `original_subtotal` | `4.700.000` |
-| `item_promotion_discount` | `900.000` |
-| `post_promotion_subtotal` | `3.800.000` |
-| `raw_voucher_discount` | `380.000` |
-| `maximum_combined_discount` | `2.350.000` |
-| `final_voucher_discount` | `380.000` |
-| Combined discount | `1.280.000` |
-| `final_total` | `3.420.000` |
+| Biến                        | Giá trị kỳ vọng |
+| --------------------------- | --------------: |
+| `original_subtotal`         |     `4.700.000` |
+| `item_promotion_discount`   |       `900.000` |
+| `post_promotion_subtotal`   |     `3.800.000` |
+| `raw_voucher_discount`      |       `380.000` |
+| `maximum_combined_discount` |     `2.350.000` |
+| `final_voucher_discount`    |       `380.000` |
+| Combined discount           |     `1.280.000` |
+| `final_total`               |     `3.420.000` |
 
 Kỳ vọng UI:
 
@@ -625,17 +630,17 @@ Apply:
 
 Kỳ vọng tính toán theo SRS:
 
-| Biến | Giá trị kỳ vọng |
-| --- | ---: |
-| `original_subtotal` | `4.700.000` |
-| `item_promotion_discount` | `1.860.000` |
-| `post_promotion_subtotal` | `2.840.000` |
-| `raw_voucher_discount` | `568.000` |
-| `maximum_combined_discount` | `2.350.000` |
-| Cap còn lại cho voucher | `490.000` |
-| `final_voucher_discount` | `490.000` |
-| Combined discount | `2.350.000` |
-| `final_total` | `2.350.000` |
+| Biến                        | Giá trị kỳ vọng |
+| --------------------------- | --------------: |
+| `original_subtotal`         |     `4.700.000` |
+| `item_promotion_discount`   |     `1.860.000` |
+| `post_promotion_subtotal`   |     `2.840.000` |
+| `raw_voucher_discount`      |       `568.000` |
+| `maximum_combined_discount` |     `2.350.000` |
+| Cap còn lại cho voucher     |       `490.000` |
+| `final_voucher_discount`    |       `490.000` |
+| Combined discount           |     `2.350.000` |
+| `final_total`               |     `2.350.000` |
 
 Kỳ vọng UI:
 
@@ -669,17 +674,17 @@ Apply:
 
 Kỳ vọng:
 
-| Biến | Giá trị kỳ vọng |
-| --- | ---: |
-| `original_subtotal` | `1.000.000` |
-| `item_promotion_discount` | `500.000` |
-| `post_promotion_subtotal` | `500.000` |
-| `raw_voucher_discount` | `250.000` |
-| `maximum_combined_discount` | `500.000` |
-| Cap còn lại cho voucher | `0` |
-| `final_voucher_discount` | `0` |
-| Combined discount | `500.000` |
-| `final_total` | `500.000` |
+| Biến                        | Giá trị kỳ vọng |
+| --------------------------- | --------------: |
+| `original_subtotal`         |     `1.000.000` |
+| `item_promotion_discount`   |       `500.000` |
+| `post_promotion_subtotal`   |       `500.000` |
+| `raw_voucher_discount`      |       `250.000` |
+| `maximum_combined_discount` |       `500.000` |
+| Cap còn lại cho voucher     |             `0` |
+| `final_voucher_discount`    |             `0` |
+| Combined discount           |       `500.000` |
+| `final_total`               |       `500.000` |
 
 Kỳ vọng UI:
 
@@ -866,21 +871,21 @@ Sau khi order thành công, kiểm tra backend bằng DB/API/script:
 
 ## 14. Bảng đối chiếu notification/message theo SRS
 
-| Case | Code | UI phải hiển thị |
-| --- | --- | --- |
-| Mã không tồn tại | `VOUCHER_NOT_FOUND` | `Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!` |
-| Voucher inactive | `VOUCHER_INACTIVE` | `Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!` |
-| Chưa tới ngày | `VOUCHER_NOT_YET_VALID` | `Mã này chưa tới ngày sử dụng. Bạn quay lại sau nhé!` |
-| Hết hạn | `VOUCHER_EXPIRED` | `Mã giảm giá đã hết hạn rồi. Bạn xem thêm mã trong "Ví voucher" nhé!` |
-| Hết lượt global | `VOUCHER_USAGE_LIMIT_REACHED` | `Mã này đã hết lượt sử dụng. Bạn thử mã khác nhé!` |
-| Hết lượt user | `VOUCHER_PER_USER_LIMIT_REACHED` | `Bạn đã dùng hết lượt cho mã này rồi.` |
-| Chưa đủ min order | `VOUCHER_MIN_ORDER_NOT_MET` | `Mua thêm {remaining} nữa để dùng được mã này nhé!` |
-| Sai scope | `VOUCHER_NO_ELIGIBLE_ITEMS` | `Mã này chỉ áp dụng cho một số sản phẩm/danh mục nhất định. Giỏ hàng chưa có sản phẩm phù hợp.` |
-| Sai segment | `VOUCHER_SEGMENT_NOT_ELIGIBLE` | `Mã này không áp dụng cho tài khoản của bạn.` |
-| Cần replace | `VOUCHER_REPLACE_REQUIRED` | `Bạn đang dùng mã {current_code}. Thay bằng mã mới chứ?` |
-| Cart đổi trong lúc apply | `VOUCHER_CART_CHANGED` | `Giỏ hàng đã thay đổi, cần tính lại. Bạn thử lại nhé!` |
-| Không thể tính/apply | `VOUCHER_CALCULATION_FAILED` | `Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.` |
-| Auto-remove | `VOUCHER_AUTO_REMOVED` | `Mã giảm giá {code} đã được tự động xóa vì {reason}.` |
+| Case                     | Code                             | UI phải hiển thị                                                                                |
+| ------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Mã không tồn tại         | `VOUCHER_NOT_FOUND`              | `Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!`                                            |
+| Voucher inactive         | `VOUCHER_INACTIVE`               | `Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!`                                            |
+| Chưa tới ngày            | `VOUCHER_NOT_YET_VALID`          | `Mã này chưa tới ngày sử dụng. Bạn quay lại sau nhé!`                                           |
+| Hết hạn                  | `VOUCHER_EXPIRED`                | `Mã giảm giá đã hết hạn rồi. Bạn xem thêm mã trong "Ví voucher" nhé!`                           |
+| Hết lượt global          | `VOUCHER_USAGE_LIMIT_REACHED`    | `Mã này đã hết lượt sử dụng. Bạn thử mã khác nhé!`                                              |
+| Hết lượt user            | `VOUCHER_PER_USER_LIMIT_REACHED` | `Bạn đã dùng hết lượt cho mã này rồi.`                                                          |
+| Chưa đủ min order        | `VOUCHER_MIN_ORDER_NOT_MET`      | `Mua thêm {remaining} nữa để dùng được mã này nhé!`                                             |
+| Sai scope                | `VOUCHER_NO_ELIGIBLE_ITEMS`      | `Mã này chỉ áp dụng cho một số sản phẩm/danh mục nhất định. Giỏ hàng chưa có sản phẩm phù hợp.` |
+| Sai segment              | `VOUCHER_SEGMENT_NOT_ELIGIBLE`   | `Mã này không áp dụng cho tài khoản của bạn.`                                                   |
+| Cần replace              | `VOUCHER_REPLACE_REQUIRED`       | `Bạn đang dùng mã {current_code}. Thay bằng mã mới chứ?`                                        |
+| Cart đổi trong lúc apply | `VOUCHER_CART_CHANGED`           | `Giỏ hàng đã thay đổi, cần tính lại. Bạn thử lại nhé!`                                          |
+| Không thể tính/apply     | `VOUCHER_CALCULATION_FAILED`     | `Không thể áp dụng mã lúc này, giỏ hàng được giữ nguyên.`                                       |
+| Auto-remove              | `VOUCHER_AUTO_REMOVED`           | `Mã giảm giá {code} đã được tự động xóa vì {reason}.`                                           |
 
 ## 15. Coverage matrix SRS 10.2 Voucher Tests
 
@@ -888,20 +893,20 @@ Mỗi dòng dưới đây phải có kết quả `PASS / FAIL / BLOCKED` sau m�
 Nếu một case dùng automated test thay vì manual UI, vẫn ghi link/log vào cột
 evidence.
 
-| SRS ID | Scenario trong SRS 10.2 | Kịch bản manual trong file này | Dữ liệu chính | Evidence bắt buộc |
-| --- | --- | --- | --- | --- |
-| `T-VOUCH-01` | Valid voucher applied, discount shown, total updated | Mục 5.1, 8.2 | `SAVE10` | Screenshot voucher row, total trước/sau, network response success |
-| `T-VOUCH-02` | Invalid code, specific error message | Mục 7.1 | Mã không tồn tại | Message `Mã giảm giá không đúng...`, HTTP/error envelope |
-| `T-VOUCH-03` | Expired voucher, expiry error with date | Mục 7.4 | `OLD10` | Message hết hạn, không có voucher row, cart total không đổi |
-| `T-VOUCH-04` | Per-user limit exceeded, usage count error | Mục 7.6, 11.2 | `ONCE10` | Order đầu tạo usage log, lần sau báo hết lượt user |
-| `T-VOUCH-05` | Cart below min_order, amount needed shown | Mục 7.7 | `SHUTTLE20` | Message có `{remaining}`, không apply voucher |
-| `T-VOUCH-06` | No eligible items, category error | Mục 7.8 | `RACKET20` trên cart không có Rackets | Message sai scope, không apply voucher |
-| `T-VOUCH-07` | Item promo 20% + voucher 10%, under cap | Mục 8.2 | `AUTO20_RACKET` + `SAVE10` | Số khớp `3.420.000`, không cap explanation |
-| `T-VOUCH-08` | Item promo 40% + voucher 20%, voucher reduced by cap | Mục 8.3 | `AUTO40_RACKET`, `AUTO30_STRING`, `MEGA20` | Automatic discount giữ `1.860.000`, voucher còn `490.000`, có cap explanation |
-| `T-VOUCH-09` | Suggested item 50% promo + voucher 50%, cap prevents negative total | Mục 8.4 | `AUTO50_SUGGESTED` + `MEGA50` | Total không âm, automatic discount không bị giảm |
-| `T-VOUCH-10` | Remove voucher, totals reverted, no usage increment | Mục 5.2, 11.2 | `SAVE10` | Voucher row biến mất, total revert, không có `VoucherUsageLog` khi chưa checkout |
-| `T-VOUCH-11` | Remove eligible items after voucher applied, voucher auto-removed | Mục 9.1, 9.2 | `RACKET20` hoặc `SHUTTLE20` | Notice auto-remove, reason đúng, cart total không còn voucher |
-| `T-VOUCH-12` | 5 failed attempts, rate limited | Mục 7.10 | 5 mã sai liên tiếp | HTTP `429` hoặc UI rate-limit message, mã đúng sau đó vẫn bị cooldown |
+| SRS ID       | Scenario trong SRS 10.2                                             | Kịch bản manual trong file này | Dữ liệu chính                              | Evidence bắt buộc                                                                |
+| ------------ | ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------ | -------------------------------------------------------------------------------- |
+| `T-VOUCH-01` | Valid voucher applied, discount shown, total updated                | Mục 5.1, 8.2                   | `SAVE10`                                   | Screenshot voucher row, total trước/sau, network response success                |
+| `T-VOUCH-02` | Invalid code, specific error message                                | Mục 7.1                        | Mã không tồn tại                           | Message `Mã giảm giá không đúng...`, HTTP/error envelope                         |
+| `T-VOUCH-03` | Expired voucher, expiry error with date                             | Mục 7.4                        | `OLDEXP10`                                 | Message hết hạn, không có voucher row, cart total không đổi                      |
+| `T-VOUCH-04` | Per-user limit exceeded, usage count error                          | Mục 7.6, 11.2                  | `ONCE10`                                   | Order đầu tạo usage log, lần sau báo hết lượt user                               |
+| `T-VOUCH-05` | Cart below min_order, amount needed shown                           | Mục 7.7                        | `SHUTTLE20`                                | Message có `{remaining}`, không apply voucher                                    |
+| `T-VOUCH-06` | No eligible items, category error                                   | Mục 7.8                        | `RACKET20` trên cart không có Rackets      | Message sai scope, không apply voucher                                           |
+| `T-VOUCH-07` | Item promo 20% + voucher 10%, under cap                             | Mục 8.2                        | `AUTO20_RACKET` + `SAVE10`                 | Số khớp `3.420.000`, không cap explanation                                       |
+| `T-VOUCH-08` | Item promo 40% + voucher 20%, voucher reduced by cap                | Mục 8.3                        | `AUTO40_RACKET`, `AUTO30_STRING`, `MEGA20` | Automatic discount giữ `1.860.000`, voucher còn `490.000`, có cap explanation    |
+| `T-VOUCH-09` | Suggested item 50% promo + voucher 50%, cap prevents negative total | Mục 8.4                        | `AUTO50_SUGGESTED` + `MEGA50`              | Total không âm, automatic discount không bị giảm                                 |
+| `T-VOUCH-10` | Remove voucher, totals reverted, no usage increment                 | Mục 5.2, 11.2                  | `SAVE10`                                   | Voucher row biến mất, total revert, không có `VoucherUsageLog` khi chưa checkout |
+| `T-VOUCH-11` | Remove eligible items after voucher applied, voucher auto-removed   | Mục 9.1, 9.2                   | `RACKET20` hoặc `SHUTTLE20`                | Notice auto-remove, reason đúng, cart total không còn voucher                    |
+| `T-VOUCH-12` | 5 failed attempts, rate limited                                     | Mục 7.10                       | 5 mã sai liên tiếp                         | HTTP `429` hoặc UI rate-limit message, mã đúng sau đó vẫn bị cooldown            |
 
 Điều kiện hoàn tất SRS 10.2:
 

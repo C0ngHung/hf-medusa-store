@@ -52,10 +52,10 @@ moduleIntegrationTestRunner<VoucherEngineService>({
         expect(voucher!.code).toBe("SAVE10NOW");
       });
 
-      it("getActiveCap falls back to DEFAULT_CAP_PCT (5000 bps) when no active DiscountCapConfig row exists", async () => {
+      it("getActiveCap falls back to DEFAULT_CAP_PCT (4000 bps) when no active DiscountCapConfig row exists", async () => {
         const cap = await service.getActiveCap();
         expect(cap).toBe(DEFAULT_CAP_PCT);
-        expect(cap).toBe(5000);
+        expect(cap).toBe(4000);
       });
 
       it("getActiveCap returns the active custom DiscountCapConfig row's percentage", async () => {

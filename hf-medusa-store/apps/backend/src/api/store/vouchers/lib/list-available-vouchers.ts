@@ -20,11 +20,17 @@ import { MedusaStoreRequest } from "@medusajs/framework/http";
 import { ContainerRegistrationKeys, Modules } from "@medusajs/framework/utils";
 import { VOUCHER_ENGINE_MODULE } from "../../../../modules/voucher-engine";
 import type VoucherEngineService from "../../../../modules/voucher-engine/service";
-import { sumInts, toInt } from "../../../../modules/voucher-engine/lib/money";
+import {
+  bps,
+  sumInts,
+  toInt,
+} from "../../../../modules/voucher-engine/lib/money";
 import {
   LineValue,
+  calculateItemPromotionDiscount,
   calculateOriginalSubtotal,
   calculateVoucherDiscount,
+  isCapExhaustedByPromotion,
   resolveEligibleItems,
 } from "../../../../modules/voucher-engine/lib/calculate-discount";
 import {
@@ -43,6 +49,23 @@ import type {
   CartSnapshot,
   VoucherSnapshot,
 } from "../../../../workflows/voucher-engine/lib/types";
+
+/**
+ * Cart-level (not per-voucher) global-cap status — lets the storefront
+ * proactively disable the "enter voucher code" input BEFORE the customer
+ * types anything, when item/automatic promotions ALONE already consume the
+ * entire global cap (2026-07-22 CR, follow-up to `VOUCHER_CAP_EXHAUSTED` in
+ * `apply-voucher.ts`). `cap_exhausted_by_promotion` reuses the SAME
+ * `item_promotion_discount >= maximum_combined_discount` formula as
+ * `calculate-discount.ts` (via `calculateItemPromotionDiscount`/`bps`) against
+ * this cart's real adjustments — never a second, independently-derived
+ * calculation (SEC-01: one source of truth for this business rule). `null`
+ * when no `cartId` was supplied (no cart to evaluate against).
+ */
+export interface VoucherCapStatus {
+  global_cap_bps: number;
+  cap_exhausted_by_promotion: boolean;
+}
 
 export interface StoreVoucherDTO {
   code: string;
@@ -211,7 +234,10 @@ export interface ListAvailableVouchersInput {
 
 export async function listAvailableVouchers(
   input: ListAvailableVouchersInput,
-): Promise<{ vouchers: StoreVoucherDTO[] }> {
+): Promise<{
+  vouchers: StoreVoucherDTO[];
+  cap_status: VoucherCapStatus | null;
+}> {
   const { scope, customerId, cartId } = input;
 
   const ve = scope.resolve(VOUCHER_ENGINE_MODULE) as VoucherEngineService;
@@ -266,6 +292,23 @@ export async function listAvailableVouchers(
 
   const previewLines = cartId ? await loadPreviewLines(scope, cartId) : null;
   const globalCapBps = previewLines ? await ve.getActiveCap() : null;
+
+  // Cart-level cap status — independent of any specific voucher (see
+  // `VoucherCapStatus` doc comment). Uses `isCapExhaustedByPromotion` — the
+  // SAME shared helper `calculateVoucherDiscount` uses — rather than
+  // re-deriving the comparison here (a bare `>=` re-derivation drifted once
+  // already: it missed the empty-cart guard added to the shared helper).
+  const capStatus: VoucherCapStatus | null =
+    previewLines && globalCapBps != null
+      ? {
+          global_cap_bps: globalCapBps,
+          cap_exhausted_by_promotion: isCapExhaustedByPromotion(
+            calculateOriginalSubtotal(previewLines),
+            calculateItemPromotionDiscount(previewLines),
+            bps(calculateOriginalSubtotal(previewLines), globalCapBps),
+          ),
+        }
+      : null;
 
   let vouchers: StoreVoucherDTO[] = currentlyValid.map((v) => {
     const base: StoreVoucherDTO = {
@@ -323,7 +366,7 @@ export async function listAvailableVouchers(
     });
   }
 
-  return { vouchers };
+  return { vouchers, cap_status: capStatus };
 }
 
 export default listAvailableVouchers;

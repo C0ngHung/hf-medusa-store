@@ -64,9 +64,9 @@ const AvailableVouchersModal: React.FC<AvailableVouchersModalProps> = ({
     let cancelled = false
     setVouchers(null)
     setErrorMessage(null)
-    fetchAvailableVouchers(cartId).then((result) => {
+    fetchAvailableVouchers(cartId).then(({ vouchers }) => {
       if (!cancelled) {
-        setVouchers(result)
+        setVouchers(vouchers)
       }
     })
     return () => {

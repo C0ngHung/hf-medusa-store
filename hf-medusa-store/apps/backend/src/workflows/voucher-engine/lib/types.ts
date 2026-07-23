@@ -25,7 +25,14 @@ export type VoucherErrorCode =
   | "VOUCHER_CALCULATION_FAILED"
   | "VOUCHER_STACKING_UNSUPPORTED"
   | "VOUCHER_CART_CHANGED"
-  | "VOUCHER_AUTO_REMOVED";
+  | "VOUCHER_AUTO_REMOVED"
+  // CR (2026-07-22, product override of SRS EC-03/§10.2's "always reduce to
+  // 0, never reject"): the automatic/item-level promotions ALONE already
+  // consume the entire global cap before any voucher discount is even
+  // considered — applying a voucher would be a no-op (final discount always
+  // 0). Rejecting up front is clearer than a "success" response that saves
+  // the customer nothing; see `calculate-voucher-discount.ts`.
+  | "VOUCHER_CAP_EXHAUSTED";
 
 /**
  * Outcome of a single validator or the whole chain. Results are RETURN VALUES,

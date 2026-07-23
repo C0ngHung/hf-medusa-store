@@ -61,6 +61,20 @@ describe("buildAutoRemoveNotice (tasks 3.5.9/3.5.10, SPEC §11.3 step 3b)", () =
     ).toBe("mã không dùng chung với ưu đãi hiện có");
   });
 
+  it("CR 2026-07-22 — VOUCHER_CAP_EXHAUSTED (cap newly exhausted by promotion alone on revalidate) yields its own reason", () => {
+    const notice = buildAutoRemoveNotice({
+      voucher_code: "SAVE10",
+      failure_code: "VOUCHER_CAP_EXHAUSTED",
+    });
+    expect(notice.reason_code).toBe("VOUCHER_CAP_EXHAUSTED");
+    expect(notice.reason_vi).toBe(
+      "khuyến mãi hiện tại đã dùng hết mức giảm giá tối đa",
+    );
+    expect(notice.customer_message).toBe(
+      "Mã giảm giá SAVE10 đã được tự động xóa vì khuyến mãi hiện tại đã dùng hết mức giảm giá tối đa.",
+    );
+  });
+
   it("falls back to a generic reason when the failure code is missing/unknown (defensive)", () => {
     const notice = buildAutoRemoveNotice({ voucher_code: "MYSTERY" });
     expect(notice.reason_code).toBe("VOUCHER_AUTO_REMOVED");

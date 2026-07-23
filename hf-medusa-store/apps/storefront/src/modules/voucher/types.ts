@@ -98,6 +98,17 @@ export type RemoveVoucherResult = {
 }
 
 /**
+ * Cart-level (not per-voucher) global-cap status — mirrors the backend's
+ * `VoucherCapStatus` (`apps/backend/src/api/store/vouchers/lib/list-available-vouchers.ts`)
+ * byte-for-byte (see that file's doc comment for the full rationale/formula).
+ * `null` when `fetchAvailableVouchers` was called without a cart id.
+ */
+export type VoucherCapStatus = {
+  global_cap_bps: number
+  cap_exhausted_by_promotion: boolean
+}
+
+/**
  * `GET /store/customers/me/vouchers` list item. **Corrected finding (verified
  * against the running backend, supersedes an earlier "public list for
  * everyone" claim, which was wrong):** core Medusa applies a blanket

@@ -58,6 +58,11 @@ const AUTO_REMOVE_REASON_VI: Partial<Record<VoucherErrorCode, string>> = {
   VOUCHER_INACTIVE: "mã không còn hiệu lực",
   VOUCHER_NOT_FOUND: "mã không còn hiệu lực",
   VOUCHER_STACKING_CONFLICT: "mã không dùng chung với ưu đãi hiện có",
+  // CR (2026-07-22): item/automatic promotions alone now consume the entire
+  // global cap after a cart change — the voucher would contribute 0đ, so it
+  // is auto-removed instead of silently staying attached at 0đ (mirrors the
+  // apply-time `VOUCHER_CAP_EXHAUSTED` reject in `apply-voucher.ts`).
+  VOUCHER_CAP_EXHAUSTED: "khuyến mãi hiện tại đã dùng hết mức giảm giá tối đa",
 };
 
 const GENERIC_REASON_VI = "giỏ hàng không còn đáp ứng điều kiện của mã";

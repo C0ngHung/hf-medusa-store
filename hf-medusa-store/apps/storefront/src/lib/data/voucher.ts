@@ -8,6 +8,7 @@ import type {
   AvailableVoucher,
   RemoveVoucherResult,
   VoucherActionResult,
+  VoucherCapStatus,
   VoucherErrorEnvelope,
 } from "@modules/voucher/types"
 import { getAuthHeaders, getCacheTag, getCartId } from "./cookies"
@@ -157,27 +158,37 @@ export async function removeVoucher(): Promise<
  * Medusa's own core middleware 401s for guests before any project route
  * handler runs, so guests always got the degrade-to-empty-list fallback
  * below and never saw any voucher; see that route's own header comment for
- * the full trace). Still degrades to an empty list on any transport
- * failure — an unavailable list must never break the cart page.
+ * the full trace). Still degrades to an empty list/`null` cap status on any
+ * transport failure — an unavailable list must never break the cart page.
  *
  * `cartId`, when passed, asks the backend to also compute `eligible`/
  * `ineligible_reason` per voucher against that cart's current contents (V5
  * min-order, V6 scope) — reusing the same server-side validators the real
  * apply flow uses, never re-derived here (SRS: UI must not duplicate
- * business validation).
+ * business validation). Same rationale for `cap_status` (2026-07-22 CR) —
+ * whether item/automatic promotions ALONE already exhaust the global cap is
+ * computed server-side (`list-available-vouchers.ts`), never approximated
+ * client-side from cart subtotal fields.
  */
-export async function fetchAvailableVouchers(
-  cartId?: string,
-): Promise<AvailableVoucher[]> {
+export async function fetchAvailableVouchers(cartId?: string): Promise<{
+  vouchers: AvailableVoucher[]
+  cap_status: VoucherCapStatus | null
+}> {
   try {
     const path = cartId
       ? `/store/vouchers?cart_id=${encodeURIComponent(cartId)}`
       : "/store/vouchers"
-    const result = await voucherFetch<{ vouchers: AvailableVoucher[] }>(path, {
-      method: "GET",
-    })
-    return result.ok ? (result.data.vouchers ?? []) : []
+    const result = await voucherFetch<{
+      vouchers: AvailableVoucher[]
+      cap_status: VoucherCapStatus | null
+    }>(path, { method: "GET" })
+    return result.ok
+      ? {
+          vouchers: result.data.vouchers ?? [],
+          cap_status: result.data.cap_status ?? null,
+        }
+      : { vouchers: [], cap_status: null }
   } catch {
-    return []
+    return { vouchers: [], cap_status: null }
   }
 }

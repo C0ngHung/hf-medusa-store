@@ -140,6 +140,16 @@ export const VOUCHER_ERRORS: Record<VoucherErrorCode, VoucherErrorDef> = {
     message: "revalidation failed — voucher auto-removed (async notification)",
     customer_message: "Mã giảm giá {code} đã được tự động xóa vì {reason}.",
   },
+  // CR (2026-07-22) — see `VoucherErrorCode`'s docstring in types.ts for why
+  // this deliberately overrides SRS EC-03/§10.2's "reduce to 0, never reject".
+  VOUCHER_CAP_EXHAUSTED: {
+    code: "VOUCHER_CAP_EXHAUSTED",
+    http_status: 422,
+    message:
+      "global discount cap already fully consumed by item/automatic promotions alone",
+    customer_message:
+      "Giỏ hàng của bạn đã đạt mức giảm giá tối đa từ chương trình khuyến mãi hiện tại, không thể áp dụng thêm voucher.",
+  },
 };
 
 /**
