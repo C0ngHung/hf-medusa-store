@@ -34,6 +34,7 @@ import {
   resolveEligibleItems,
 } from "../../../../modules/voucher-engine/lib/calculate-discount";
 import {
+  v4UserLimit,
   v5MinOrder,
   v6Scope,
   v7Segment,
@@ -88,6 +89,7 @@ export interface StoreVoucherDTO {
  * with no `select` returns every column; this only narrows the compile-time
  * view to what's actually used below. */
 interface RawVoucherConfig {
+  id: string;
   promotion_id?: string | null;
   code: string;
   discount_type: "percentage" | "fixed_amount";
@@ -195,10 +197,18 @@ async function loadPreviewLines(
   });
 }
 
-/** V5 + V6 only, fail-fast in that order (matches the real V1→V8 ordering). */
-function checkCartEligibility(
+/**
+ * V4 (per-user limit, when `userUsageCount` is known — i.e. an authenticated
+ * customer) then V5 + V6, fail-fast in that order (matches the real V1→V8
+ * ordering). V4 runs independently of `cart` so a voucher this customer has
+ * already exhausted is marked ineligible even when no `cart_id` was supplied
+ * (bug fix 2026-07-23: previously this only ran V5/V6, so an exhausted
+ * per-user-limit voucher still showed as `eligible: true` in "My Vouchers").
+ */
+function checkVoucherEligibility(
   voucher: RawVoucherConfig,
-  cart: CartSnapshot,
+  userUsageCount: number | null,
+  cart: CartSnapshot | null,
 ): { eligible: boolean; ineligible_reason?: string } {
   const snapshot: VoucherSnapshot = {
     code: voucher.code,
@@ -214,11 +224,21 @@ function checkCartEligibility(
     user_segment_conditions: voucher.user_segment_conditions,
   };
 
-  for (const check of [v5MinOrder, v6Scope]) {
-    const result = check(snapshot, cart);
+  if (userUsageCount != null) {
+    const result = v4UserLimit(snapshot, userUsageCount);
     if (!result.ok) {
       const { body } = toErrorEnvelope(new VoucherValidationError(result));
       return { eligible: false, ineligible_reason: body.customer_message };
+    }
+  }
+
+  if (cart) {
+    for (const check of [v5MinOrder, v6Scope]) {
+      const result = check(snapshot, cart);
+      if (!result.ok) {
+        const { body } = toErrorEnvelope(new VoucherValidationError(result));
+        return { eligible: false, ineligible_reason: body.customer_message };
+      }
     }
   }
   return { eligible: true };
@@ -293,6 +313,19 @@ export async function listAvailableVouchers(
   const previewLines = cartId ? await loadPreviewLines(scope, cartId) : null;
   const globalCapBps = previewLines ? await ve.getActiveCap() : null;
 
+  // V4 — this customer's prior redemption count per voucher, needed to mark
+  // an already-exhausted-per-user-limit voucher ineligible in the list (see
+  // `checkVoucherEligibility`). null customerId (guest) skips this entirely.
+  const usageCountByVoucherId = new Map<string, number>();
+  if (customerId) {
+    const counts = await Promise.all(
+      currentlyValid.map((v) => ve.countUserUsage(v.id, customerId)),
+    );
+    currentlyValid.forEach((v, i) =>
+      usageCountByVoucherId.set(v.id, counts[i]),
+    );
+  }
+
   // Cart-level cap status — independent of any specific voucher (see
   // `VoucherCapStatus` doc comment). Uses `isCapExhaustedByPromotion` — the
   // SAME shared helper `calculateVoucherDiscount` uses — rather than
@@ -322,7 +355,17 @@ export async function listAvailableVouchers(
         .map((id) => categoryNameById.get(id))
         .filter((name): name is string => !!name),
     };
-    if (!previewLines || globalCapBps == null) return base;
+    const userUsageCount = customerId
+      ? (usageCountByVoucherId.get(v.id) ?? 0)
+      : null;
+
+    if (!previewLines || globalCapBps == null) {
+      if (userUsageCount == null) return base;
+      return {
+        ...base,
+        ...checkVoucherEligibility(v, userUsageCount, null),
+      };
+    }
 
     const cartSnapshot: CartSnapshot = {
       original_subtotal: calculateOriginalSubtotal(previewLines),
@@ -352,7 +395,7 @@ export async function listAvailableVouchers(
 
     return {
       ...base,
-      ...checkCartEligibility(v, cartSnapshot),
+      ...checkVoucherEligibility(v, userUsageCount, cartSnapshot),
       estimated_savings: final_voucher_discount,
     };
   });
