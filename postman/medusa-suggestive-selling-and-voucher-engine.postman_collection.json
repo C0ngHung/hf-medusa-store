@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "HF Medusa — Suggestive Selling + VoucherEngine (Complete API)",
-    "description": "Complete REST API collection for Suggestive Selling (Day 3–4 · Sơn) and VoucherEngine (Day 1–4 · Thức, Hùng).\n\n**Store APIs (Customer-Facing):**\n- GET /store/products/:id/suggestions — product-level recommendations\n- GET /store/carts/:id/suggestions — cart-level CR-01..CR-04 recommendations\n- POST /store/carts/:id/suggested-items — add suggested item to cart\n- POST /store/carts/:id/voucher — apply voucher\n- DELETE /store/carts/:id/voucher — remove voucher\n- GET /store/customers/me/vouchers — fetch customer's applied/redeemed vouchers\n- POST /store/suggestion-events — log analytics events (view/add/filter)\n\n**Admin APIs (Management):**\n- Suggestion Rules (CRUD) — manage cart rules (CR-01..04 config)\n- Category Complement Mappings (CRUD) — CR-01 category pairs\n- Product Bulk Mappings (CRUD) — CR-04 single↔bulk product pairs\n- Category Top Sellers (read) — Tier-2 ranking snapshot for sales-desc order\n- Suggestion Events (read) — aggregated analytics\n- Vouchers (create, analytics) — create/manage voucher configs\n\n**Auth & Headers:**\n- Store: x-publishable-api-key (from seed, default provided); optional bearer token for customer context\n- Admin: bearer token (JWT from login); x-publishable-api-key for store-facing admin dashboards\n- Session: x-session-id (optional, scopes dismissal + analytics per session)\n\n**Setup:**\n1. Run Setup › Login to get admin token\n2. Run Setup › Get Publishable Key\n3. Run Setup › Create Cart + Add Items\n4. Then run Store › Suggestions / Vouchers workflows\n\n**Note:** All endpoints follow the degrade contract (BR-10) — failures return HTTP 200 with empty results, not 5xx. Tests assert shape, not non-emptiness.",
+    "description": "Complete REST API collection for Suggestive Selling (Day 3–4 · Sơn) and VoucherEngine (Day 1–4 · Thức, Hùng) — every route under `apps/backend/src/api/`.\n\n**Store APIs (Customer-Facing):**\n- GET /store/products/:id/suggestions — product-level recommendations\n- GET /store/carts/:id/suggestions — cart-level CR-01..CR-04 recommendations\n- POST /store/carts/:id/suggested-items — add suggested item to cart\n- POST /store/carts/:id/voucher — apply voucher (optional `?replace=true`)\n- DELETE /store/carts/:id/voucher — remove voucher\n- GET /store/customers/me/vouchers — fetch customer's applied/redeemed vouchers (optional `?cart_id=`)\n- GET /store/vouchers — public/guest-reachable available-vouchers list (optional `?cart_id=`)\n- POST /store/suggestion-events — log analytics events (view/add/filter)\n\n**Admin APIs (Management):**\n- Suggestion Rules (CRUD) — manage cart rules (CR-01..04 config)\n- Category Complement Mappings (CRUD) — CR-01 category pairs\n- Product Bulk Mappings (CRUD) — CR-04 single↔bulk product pairs\n- Category Top Sellers (read) — Tier-2 ranking snapshot for sales-desc order\n- Suggestion Events (read) — aggregated analytics\n- Vouchers (create only — list route was retired 2026-07-21 in favor of the unified Promotion model)\n- Discount Cap Config (read/upsert) — the single active global-cap row\n- Promotions × VoucherEngine (Unified Model) — attach/read/disable a VoucherConfig on a native Promotion\n\n**Dev-only:**\n- GET /docs, /docs/openapi, /docs/openapi/core — Swagger UI + auto-generated OpenAPI specs (no auth)\n\n**Auth & Headers:**\n- Store: x-publishable-api-key (from seed, default provided); optional bearer token for customer context\n- Admin: bearer token (JWT from login); x-publishable-api-key for store-facing admin dashboards\n- Session: x-session-id (optional, scopes dismissal + analytics per session)\n\n**Setup:**\n1. Run Setup › Login to get admin token\n2. Run Setup › Get Publishable Key\n3. Run Setup › Create Cart + Add Items\n4. Then run Store › Suggestions / Vouchers workflows\n\n**Note:** All endpoints follow the degrade contract (BR-10) — failures return HTTP 200 with empty results, not 5xx. Tests assert shape, not non-emptiness.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -22,11 +22,11 @@
     },
     {
       "key": "adminEmail",
-      "value": "postman@test.com"
+      "value": "admin@admin.com"
     },
     {
       "key": "adminPassword",
-      "value": "Supersecret123"
+      "value": "supersecret"
     },
     {
       "key": "token",
@@ -67,6 +67,11 @@
       "key": "voucherId",
       "value": "",
       "description": "voucher UUID (from list or create)"
+    },
+    {
+      "key": "promotionId",
+      "value": "",
+      "description": "native Promotion id — used by Admin › Promotions x VoucherEngine (Unified Model) to attach/read/disable a linked VoucherConfig"
     }
   ],
   "item": [
@@ -103,14 +108,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/auth/user/emailpass",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "auth",
-                "user",
-                "emailpass"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "user", "emailpass"]
             }
           }
         },
@@ -126,13 +125,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/publishable-api-keys",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "publishable-api-keys"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "publishable-api-keys"]
             }
           }
         },
@@ -170,13 +164,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/store/carts",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts"]
             }
           }
         },
@@ -200,15 +189,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/store/carts/{{cartId}}/line-items",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts",
-                "{{cartId}}",
-                "line-items"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "line-items"]
             }
           }
         }
@@ -229,15 +211,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/store/products/{{productId}}/suggestions",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "products",
-                "{{productId}}",
-                "suggestions"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "products", "{{productId}}", "suggestions"],
               "query": [
                 {
                   "key": "limit",
@@ -265,15 +240,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/store/carts/{{cartId}}/suggestions",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts",
-                "{{cartId}}",
-                "suggestions"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "suggestions"],
               "query": [
                 {
                   "key": "limit",
@@ -310,15 +278,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/store/carts/{{cartId}}/suggested-items",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts",
-                "{{cartId}}",
-                "suggested-items"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "suggested-items"]
             },
             "description": "POST /store/carts/:id/suggested-items — add suggested item with attribution (rule_id, tier)"
           }
@@ -347,13 +308,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/store/suggestion-events",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "suggestion-events"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "suggestion-events"]
             },
             "description": "POST /store/suggestion-events — analytics (view/filter/add events, 2.6.8–2.6.12)"
           }
@@ -382,18 +338,19 @@
               "raw": "{\n  \"code\": \"{{voucherCode}}\"\n}"
             },
             "url": {
-              "raw": "{{baseUrl}}/store/carts/{{cartId}}/voucher",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts",
-                "{{cartId}}",
-                "voucher"
+              "raw": "{{baseUrl}}/store/carts/{{cartId}}/voucher?replace=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "voucher"],
+              "query": [
+                {
+                  "key": "replace",
+                  "value": "true",
+                  "disabled": true,
+                  "description": "confirm replacing an already-active voucher (otherwise 409 VOUCHER_REPLACE_REQUIRED)"
+                }
               ]
             },
-            "description": "POST /store/carts/:id/voucher — apply voucher code (validation V1–V8, cap enforcement)"
+            "description": "POST /store/carts/:id/voucher — apply voucher code (validation V1–V8, cap enforcement). Optional ?replace=true confirms swapping an active voucher."
           }
         },
         {
@@ -408,15 +365,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/store/carts/{{cartId}}/voucher",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "carts",
-                "{{cartId}}",
-                "voucher"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "carts", "{{cartId}}", "voucher"]
             },
             "description": "DELETE /store/carts/:id/voucher — detach voucher, revalidate cart"
           }
@@ -436,18 +386,45 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/store/customers/me/vouchers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "store",
-                "customers",
-                "me",
-                "vouchers"
+              "raw": "{{baseUrl}}/store/customers/me/vouchers?cart_id={{cartId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "customers", "me", "vouchers"],
+              "query": [
+                {
+                  "key": "cart_id",
+                  "value": "{{cartId}}",
+                  "disabled": true,
+                  "description": "adds eligible/ineligible_reason/estimated_savings per voucher against this cart"
+                }
               ]
             },
-            "description": "GET /store/customers/me/vouchers — list customer's applied + redeemed vouchers (Day 4, 3.5.8)"
+            "description": "GET /store/customers/me/vouchers — list customer's applied + redeemed vouchers (Day 4, 3.5.8). Guest requests 401 here (Medusa's core /store/customers/me/* middleware authenticates unconditionally) — use GET /store/vouchers for a guest-reachable equivalent."
+          }
+        },
+        {
+          "name": "List Available Vouchers (Public/Guest)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/vouchers?cart_id={{cartId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "vouchers"],
+              "query": [
+                {
+                  "key": "cart_id",
+                  "value": "{{cartId}}",
+                  "disabled": true,
+                  "description": "adds eligible/ineligible_reason/estimated_savings per voucher against this cart"
+                }
+              ]
+            },
+            "description": "GET /store/vouchers — public, auth-OPTIONAL available-vouchers list. Guests see every valid, unrestricted voucher; an authenticated customer (attach a Bearer token) additionally sees vouchers gated to a Customer Group they belong to. Lives outside /store/customers/me/* specifically so guests can reach it (that prefix's core middleware would otherwise 401 them). Read-only, no workflow."
           }
         }
       ]
@@ -467,13 +444,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-rules?offset=0&limit=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-rules"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules"],
               "query": [
                 {
                   "key": "offset",
@@ -520,13 +492,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-rules",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-rules"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules"]
             }
           }
         },
@@ -542,14 +509,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-rules",
-                "rule_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "rule_id_here"]
             }
           }
         },
@@ -573,14 +534,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-rules",
-                "rule_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "rule_id_here"]
             }
           }
         },
@@ -596,14 +551,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-rules/rule_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-rules",
-                "rule_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-rules", "rule_id_here"]
             }
           }
         }
@@ -624,13 +573,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/category-complement-mappings?offset=0&limit=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "category-complement-mappings"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "category-complement-mappings"],
               "query": [
                 {
                   "key": "offset",
@@ -665,13 +609,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/category-complement-mappings",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "category-complement-mappings"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "category-complement-mappings"]
             }
           }
         },
@@ -687,9 +626,7 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
+              "host": ["{{baseUrl}}"],
               "path": [
                 "admin",
                 "category-complement-mappings",
@@ -718,9 +655,7 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
+              "host": ["{{baseUrl}}"],
               "path": [
                 "admin",
                 "category-complement-mappings",
@@ -741,9 +676,7 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/category-complement-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
+              "host": ["{{baseUrl}}"],
               "path": [
                 "admin",
                 "category-complement-mappings",
@@ -769,13 +702,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/product-bulk-mappings?offset=0&limit=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "product-bulk-mappings"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "product-bulk-mappings"],
               "query": [
                 {
                   "key": "offset",
@@ -810,13 +738,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/product-bulk-mappings",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "product-bulk-mappings"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "product-bulk-mappings"]
             }
           }
         },
@@ -832,14 +755,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "product-bulk-mappings",
-                "mapping_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "product-bulk-mappings", "mapping_id_here"]
             }
           }
         },
@@ -863,14 +780,8 @@
             },
             "url": {
               "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "product-bulk-mappings",
-                "mapping_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "product-bulk-mappings", "mapping_id_here"]
             }
           }
         },
@@ -886,14 +797,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/product-bulk-mappings/mapping_id_here",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "product-bulk-mappings",
-                "mapping_id_here"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "product-bulk-mappings", "mapping_id_here"]
             }
           }
         }
@@ -931,19 +836,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"code\": \"SUMMER50\",\n  \"description\": \"Summer 50% discount\",\n  \"discount_value\": 5000,\n  \"discount_type\": \"percentage\",\n  \"usage_limit\": 100,\n  \"is_active\": true,\n  \"valid_from\": \"2026-07-01T00:00:00Z\",\n  \"valid_until\": \"2026-08-31T23:59:59Z\"\n}"
+              "raw": "{\n  \"code\": \"SUMMER50\",\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 5000,\n  \"min_order_value\": 100000,\n  \"max_discount_amount\": 200000,\n  \"per_user_limit\": 1,\n  \"usage_limit\": 100,\n  \"is_active\": true,\n  \"valid_from\": \"2026-07-01T00:00:00Z\",\n  \"valid_to\": \"2026-08-31T23:59:59Z\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/admin/vouchers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "vouchers"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers"]
             },
-            "description": "POST /admin/vouchers — create voucher config (Day 4, 3.6.1)"
+            "description": "POST /admin/vouchers — create voucher config (Day 4, 3.6.1; CreateVoucherSchema). `discount_value` is basis-points for percentage (5000 = 50%), raw VND for fixed_amount. `code` is optional (auto-generated when omitted). This is the atomic-create fallback — the primary Admin flow is native Promotions + `POST /admin/promotions/:promotion_id/voucher-config` below. NOTE: `GET /admin/vouchers` (list) was retired 2026-07-21 in favor of the unified Promotion model; only POST remains on this route."
           }
         },
         {
@@ -958,17 +858,154 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/vouchers/{{voucherId}}/analytics",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "vouchers",
-                "{{voucherId}}",
-                "analytics"
-              ]
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "vouchers", "{{voucherId}}", "analytics"]
             },
             "description": "GET /admin/vouchers/:id/analytics — voucher usage stats (redemptions, revenue, top products)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Discount Cap Config",
+      "item": [
+        {
+          "name": "Get Discount Cap Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/discount-cap-config",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "discount-cap-config"]
+            },
+            "description": "GET /admin/discount-cap-config — the single active global cap row (SRS §5.2). Returns a synthetic default (`id: null`, DEFAULT_CAP_PCT) when no row exists yet — never 404, since a cap is always effectively in force."
+          }
+        },
+        {
+          "name": "Upsert Discount Cap Config",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"max_discount_percentage\": 5000\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/discount-cap-config",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "discount-cap-config"]
+            },
+            "description": "POST /admin/discount-cap-config — upsert the single active cap row. `max_discount_percentage` is integer basis points in [0, 10000] (5000 = 50.00%). Updates the existing active row if one exists; otherwise creates it — never creates a second active row."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin — Promotions × VoucherEngine (Unified Model)",
+      "item": [
+        {
+          "name": "Enable VoucherEngine on Promotion",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.voucher && json.voucher.id) {",
+                  "  pm.collectionVariables.set('voucherId', json.voucher.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"min_order_value\": 100000,\n  \"max_discount_amount\": 200000,\n  \"per_user_limit\": 1,\n  \"valid_from\": \"2026-07-01T00:00:00Z\",\n  \"valid_to\": \"2026-08-31T23:59:59Z\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/{{promotionId}}/voucher-config",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "admin",
+                "promotions",
+                "{{promotionId}}",
+                "voucher-config"
+              ]
+            },
+            "description": "POST /admin/promotions/:promotion_id/voucher-config — \"Enable VoucherEngine\" on an existing native Promotion. Idempotent: creates a linked VoucherConfig, or reactivates/updates the existing one. Deliberately excludes code/discount_type/discount_value/status/usage_limit — those stay owned by the native Promotion/Campaign UI (or, for usage_limit, are seeded once from it)."
+          }
+        },
+        {
+          "name": "Get VoucherConfig for Promotion",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/{{promotionId}}/voucher-config",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "admin",
+                "promotions",
+                "{{promotionId}}",
+                "voucher-config"
+              ]
+            },
+            "description": "GET /admin/promotions/:promotion_id/voucher-config — read-only lookup of the VoucherConfig linked to this Promotion. Returns `{ voucher: null }` (not 404) when nothing is linked. Native fields are overlaid via resolveVoucherNativeFields so this always agrees with what the cart-apply path enforces."
+          }
+        },
+        {
+          "name": "Disable VoucherEngine on Promotion",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/promotions/{{promotionId}}/voucher-config",
+              "host": ["{{baseUrl}}"],
+              "path": [
+                "admin",
+                "promotions",
+                "{{promotionId}}",
+                "voucher-config"
+              ]
+            },
+            "description": "DELETE /admin/promotions/:promotion_id/voucher-config — \"Disable VoucherEngine\", reversible: sets is_active: false on the linked VoucherConfig without deleting the Promotion, usage history, or analytics. No-op success when nothing is linked."
           }
         }
       ]
@@ -988,13 +1025,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/category-top-sellers?category_ids=cat_id1,cat_id2",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "category-top-sellers"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "category-top-sellers"],
               "query": [
                 {
                   "key": "category_ids",
@@ -1017,13 +1049,8 @@
             ],
             "url": {
               "raw": "{{baseUrl}}/admin/suggestion-events?offset=0&limit=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "admin",
-                "suggestion-events"
-              ],
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "suggestion-events"],
               "query": [
                 {
                   "key": "offset",
@@ -1036,6 +1063,91 @@
               ]
             },
             "description": "GET /admin/suggestion-events — aggregated suggestion analytics (view/filter/add counts)"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dev Tools — API Docs (no auth)",
+      "item": [
+        {
+          "name": "Swagger UI",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/docs",
+              "host": ["{{baseUrl}}"],
+              "path": ["docs"]
+            },
+            "description": "GET /docs — Swagger UI over both specs below. Public, dev-only convenience (do not expose on a public production host)."
+          }
+        },
+        {
+          "name": "Custom API Spec (auto-generated)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/docs/openapi",
+              "host": ["{{baseUrl}}"],
+              "path": ["docs", "openapi"]
+            },
+            "description": "GET /docs/openapi — OpenAPI 3.1 spec for this repo's custom routes (everything else in this collection), auto-discovered from src/api/ at request time."
+          }
+        },
+        {
+          "name": "Medusa Core API Spec",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/docs/openapi/core",
+              "host": ["{{baseUrl}}"],
+              "path": ["docs", "openapi", "core"]
+            },
+            "description": "GET /docs/openapi/core — generated Medusa core API OAS (admin + store, ~320 paths). Returns 503 with a hint if `pnpm --filter @dtc/backend oas` hasn't been run yet to produce apps/backend/oas/combined.oas.json."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Misc — Starter Stubs",
+      "item": [
+        {
+          "name": "Admin Custom Stub",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/custom",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "custom"]
+            },
+            "description": "GET /admin/custom — leftover Medusa starter stub, returns bare 200. Not part of Suggestive Selling / VoucherEngine; kept only for collection completeness."
+          }
+        },
+        {
+          "name": "Store Custom Stub",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-publishable-api-key",
+                "value": "{{publishableKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/store/custom",
+              "host": ["{{baseUrl}}"],
+              "path": ["store", "custom"]
+            },
+            "description": "GET /store/custom — leftover Medusa starter stub, returns bare 200. Not part of Suggestive Selling / VoucherEngine; kept only for collection completeness."
           }
         }
       ]
