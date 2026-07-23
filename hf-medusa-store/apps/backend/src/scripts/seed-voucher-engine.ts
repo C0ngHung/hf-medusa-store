@@ -12,10 +12,10 @@ import { DEFAULT_CAP_PCT } from "../modules/voucher-engine/constants";
  * (missing category → SHUTTLE20 is seeded unscoped with a warning).
  *
  * Money = integer VND (INT-01). `discount_value` for percentage vouchers is in
- * BASIS-POINTS (1000 = 10%, 2000 = 20%); the global cap is 5000 = 50%.
+ * BASIS-POINTS (1000 = 10%, 2000 = 20%); the global cap is 4000 = 40%.
  *
  * Also seeds ONE generic (non-VoucherEngine) Medusa Promotion, `RACKET2M`, for
- * manual UI testing of generic-promotion + voucher coexistence and the 50%
+ * manual UI testing of generic-promotion + voucher coexistence and the 40%
  * cap — VoucherEngine's own calculation is unchanged; this only adds a normal
  * Promotion via the core Promotion module. Deliberately `fixed`/`items`/
  * `across`, NOT `percentage`: a coexisting PERCENTAGE item/order Promotion
@@ -38,7 +38,7 @@ const VOUCHERS = [
     category_scope: null as string | null,
   },
   {
-    // 20% off, unscoped — used to exercise the 50% global cap (Day 4).
+    // 20% off, unscoped — used to exercise the 40% global cap (Day 4).
     code: "MEGA20",
     discount_type: "percentage" as const,
     discount_value: 2000,
@@ -113,7 +113,7 @@ export default async function seedVoucherEngine({ container }: ExecArgs) {
     `[seed:voucher] created ${rows.length} vouchers: ${rows.map((r) => r.code).join(", ")}.`,
   );
 
-  // Idempotent wipe + insert (global discount cap singleton, 50%).
+  // Idempotent wipe + insert (global discount cap singleton, 40%).
   const existingCap = await ve.listDiscountCapConfigs({}, { select: ["id"] });
   if (existingCap.length) {
     await ve.deleteDiscountCapConfigs(existingCap.map((r: any) => r.id));
@@ -124,11 +124,11 @@ export default async function seedVoucherEngine({ container }: ExecArgs) {
     updated_by: "seed",
   });
   logger.info(
-    `[seed:voucher] created global discount cap = ${DEFAULT_CAP_PCT} bp (50%).`,
+    `[seed:voucher] created global discount cap = ${DEFAULT_CAP_PCT} bp (40%).`,
   );
 
   // Idempotent wipe + insert (one generic Medusa Promotion for manual UI
-  // testing — coexistence with a voucher, and the 50% cap on a smaller cart;
+  // testing — coexistence with a voucher, and the 40% cap on a smaller cart;
   // see the module header for why this is `fixed`, not `percentage`).
   const promotionModule: any = container.resolve(Modules.PROMOTION);
   const existingPromo = await promotionModule.listPromotions(

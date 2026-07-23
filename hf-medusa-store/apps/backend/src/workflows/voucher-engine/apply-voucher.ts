@@ -28,6 +28,7 @@ import {
 } from "@medusajs/core-flows";
 import { createVoucherLineItemAdjustments } from "./lib/create-voucher-adjustments";
 import { resolveAndCalculateVoucherDiscount } from "./lib/resolve-and-calculate-discount";
+import { assertCapNotExhaustedStep } from "./steps/assert-cap-not-exhausted";
 import { assertCartUnchangedStep } from "./steps/assert-cart-unchanged";
 import { assertVoucherFoundStep } from "./steps/assert-voucher-found";
 import { checkActiveVoucherStep } from "./steps/check-active-voucher";
@@ -138,6 +139,12 @@ export const applyVoucherWorkflow = createWorkflow(
     const { resolved, discount } = resolveAndCalculateVoucherDiscount({
       lookup,
       cart,
+    });
+
+    // CR (2026-07-22): reject up front when item/automatic promotions ALONE
+    // already consume the entire global cap — see assert-cap-not-exhausted.ts.
+    assertCapNotExhaustedStep({
+      cap_exhausted_by_promotion: discount.cap_exhausted_by_promotion,
     });
 
     // EC-04: verify no concurrent mutation (e.g. an item removal) changed the

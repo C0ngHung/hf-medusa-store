@@ -11,6 +11,7 @@
  * container/DB) after this function passes.
  */
 import { EPHEMERAL_CODE_PREFIX } from "../../lib/ephemeral-promotion";
+import { MIN_CODE_LENGTH } from "../../../../modules/voucher-engine/constants";
 
 export interface PromotionForEligibilityCheck {
   id: string;
@@ -36,7 +37,7 @@ export function checkPromotionVoucherEligibility(
   if (promotion.is_automatic) {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}' is automatic (is_automatic=true) and cannot enable VoucherEngine — Automatic Promotions apply before any Voucher and are a separate classification.`,
+      reason: `Promotion '${promotion.id}' là khuyến mãi tự động (is_automatic=true) nên không thể bật VoucherEngine — khuyến mãi tự động luôn áp dụng trước mọi voucher và thuộc một nhóm riêng.`,
     };
   }
 
@@ -44,14 +45,30 @@ export function checkPromotionVoucherEligibility(
   if (!code) {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}' has no code — VoucherEngine requires a code-based Promotion.`,
+      reason: `Promotion '${promotion.id}' chưa có mã code — VoucherEngine chỉ áp dụng cho Promotion có mã.`,
     };
   }
 
   if (code.toUpperCase().startsWith(`${EPHEMERAL_CODE_PREFIX}-`)) {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}' (code '${code}') is an internal ephemeral cart-transport Promotion, not a real merchandising Promotion, and cannot enable VoucherEngine.`,
+      reason: `Promotion '${promotion.id}' (mã '${code}') là Promotion nội bộ, tạm dùng để mang giỏ hàng (ephemeral cart-transport), không phải Promotion bán hàng thật, nên không thể bật VoucherEngine.`,
+    };
+  }
+
+  // Bug-bash fix (2026-07-22): a code shorter than MIN_CODE_LENGTH fails the
+  // store apply endpoint's own zod schema before ever reaching VoucherEngine's
+  // lookup — the storefront's single-input routing rule (UX-FLOW.md §1a,
+  // D11) then treats that as "not a voucher" and falls back to trying it as a
+  // plain generic Promotion, which has no expiry/limit/segment checks of its
+  // own. A Promotion this short could still be applied that way and silently
+  // bypass every VoucherEngine business rule (V1-V8) attached to it. Rejecting
+  // it here, at Enable time, is the actual fix — no VoucherConfig is ever
+  // linked to a code that can never reach VoucherEngine's own validation.
+  if (code.length < MIN_CODE_LENGTH) {
+    return {
+      eligible: false,
+      reason: `Promotion '${promotion.id}' có mã '${code}' chỉ dài ${code.length} ký tự — VoucherEngine yêu cầu tối thiểu ${MIN_CODE_LENGTH} ký tự. Mã ngắn hơn sẽ không bao giờ tới được bước kiểm tra của VoucherEngine lúc thanh toán (hệ thống sẽ tự chuyển sang áp dụng như một Promotion thường), khiến các quy tắc hết hạn/giới hạn lượt dùng/phân khúc khách hàng của voucher này âm thầm không bao giờ có hiệu lực.`,
     };
   }
 
@@ -59,14 +76,14 @@ export function checkPromotionVoucherEligibility(
   if (targetType && targetType !== "items" && targetType !== "order") {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}' has an unsupported application method target_type '${targetType}' — only 'items' or 'order' Promotions can enable VoucherEngine.`,
+      reason: `Promotion '${promotion.id}' có target_type '${targetType}' không được hỗ trợ — chỉ Promotion áp dụng cho 'items' hoặc 'order' mới có thể bật VoucherEngine.`,
     };
   }
 
   if (promotion.status === "inactive") {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}' is inactive — activate it before enabling VoucherEngine.`,
+      reason: `Promotion '${promotion.id}' đang ở trạng thái 'inactive' — hãy kích hoạt (activate) Promotion trước khi bật VoucherEngine.`,
     };
   }
 
@@ -74,7 +91,7 @@ export function checkPromotionVoucherEligibility(
   if (endsAt && new Date(endsAt).getTime() < now.getTime()) {
     return {
       eligible: false,
-      reason: `Promotion '${promotion.id}'s linked Campaign already ended at ${new Date(endsAt).toISOString()} — cannot enable VoucherEngine on an expired Promotion.`,
+      reason: `Campaign gắn với Promotion '${promotion.id}' đã kết thúc lúc ${new Date(endsAt).toISOString()} — không thể bật VoucherEngine cho một Promotion đã hết hạn.`,
     };
   }
 

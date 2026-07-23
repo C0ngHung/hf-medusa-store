@@ -94,6 +94,16 @@ export interface VoucherDiscountResult {
   maximum_combined_discount: number;
   final_voucher_discount: number;
   discount_capped: boolean;
+  /**
+   * True when item/automatic promotions ALONE already consume the entire
+   * global cap (`item_promotion_discount >= maximum_combined_discount`),
+   * i.e. `final_voucher_discount` is 0 regardless of the voucher's own
+   * value — the voucher never had any capacity to begin with (CR
+   * 2026-07-22, see `calculate-voucher-discount.ts` step wrapper). Distinct
+   * from `discount_capped`, which is also true here but doesn't distinguish
+   * "reduced to something" from "reduced to nothing".
+   */
+  cap_exhausted_by_promotion: boolean;
   /** REALIZED total discount actually applied — item_promotion_discount + final_voucher_discount (task 3.3.9). Distinct from `maximum_combined_discount` above; the two coincide only when discount_capped is true. */
   combined_discount: number;
   /** Vietnamese explanation of the global-cap reduction (task 3.3.13), null unless `discount_capped` is true. */
@@ -293,6 +303,26 @@ export function calculateItemPromotionDiscount(lines: LineValue[]): number {
   );
 }
 
+/**
+ * Whether item/automatic promotions ALONE already consume the entire global
+ * cap (CR 2026-07-22) — shared by `calculateVoucherDiscount` (per-voucher
+ * apply/preview) and `list-available-vouchers.ts`'s cart-level `cap_status`
+ * (no specific voucher involved), so the two can never independently drift on
+ * this rule. `original_subtotal <= 0` (empty cart) is always `false` — with
+ * nothing to discount, `maximum_combined_discount` is also 0 and a naive
+ * `item_promotion_discount >= maximum_combined_discount` (`0 >= 0`) would
+ * otherwise wrongly flag an empty cart as cap-exhausted.
+ */
+export function isCapExhaustedByPromotion(
+  originalSubtotal: number,
+  itemPromotionDiscount: number,
+  maximumCombinedDiscount: number,
+): boolean {
+  return (
+    originalSubtotal > 0 && itemPromotionDiscount >= maximumCombinedDiscount
+  );
+}
+
 /** §10 `eligible_post_promotion_subtotal` — post-promotion value of voucher-eligible lines only (Rule 6/7). */
 export function calculateEligiblePostPromotionSubtotal(
   lines: LineValue[],
@@ -388,6 +418,20 @@ export function calculateVoucherDiscount(
   const discount_capped =
     final_voucher_discount < voucher_discount_after_voucher_cap;
 
+  // Item/automatic promotions alone already used up the entire cap — the
+  // voucher had zero capacity before its own value was even considered (CR
+  // 2026-07-22). Exported as its own helper (`isCapExhaustedByPromotion`) so
+  // `list-available-vouchers.ts`'s cart-level `cap_status` (no specific
+  // voucher involved) computes this the SAME way instead of re-deriving it
+  // independently — that drifted once already (an empty-cart edge case was
+  // fixed here but not there until this refactor; see that helper's doc
+  // comment).
+  const cap_exhausted_by_promotion = isCapExhaustedByPromotion(
+    original_subtotal,
+    item_promotion_discount,
+    maximum_combined_discount,
+  );
+
   // combined discount actually realized: item promotions + final voucher
   // discount (task 3.3.9). Distinct from `maximum_combined_discount` (the
   // cap threshold) — they coincide exactly when discount_capped is true.
@@ -426,6 +470,7 @@ export function calculateVoucherDiscount(
     maximum_combined_discount,
     final_voucher_discount,
     discount_capped,
+    cap_exhausted_by_promotion,
     combined_discount,
     cap_explanation,
     expected_final_cart_total,

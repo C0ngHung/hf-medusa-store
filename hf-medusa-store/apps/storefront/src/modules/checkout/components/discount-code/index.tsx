@@ -7,7 +7,11 @@ import { Badge, Heading, Input, Text } from "@modules/common/components/ui"
 import React from "react"
 
 import { applyPromotions } from "@lib/data/cart"
-import { applyVoucher, removeVoucher } from "@lib/data/voucher"
+import {
+  applyVoucher,
+  fetchAvailableVouchers,
+  removeVoucher,
+} from "@lib/data/voucher"
 import { convertToLocale } from "@lib/util/money"
 import Trash from "@modules/common/icons/trash"
 import type {
@@ -23,19 +27,28 @@ import AvailableVouchersModal from "./available-vouchers-modal"
  * VI message exists). Used ONLY when there is no backend `customer_message`
  * to render verbatim (a thrown transport/network error, never a well-formed
  * `{ok:false, error}` result) — never as a replacement for a real backend
- * message. Both strings are reused VERBATIM from the backend's own catalog
- * (`workflows/voucher-engine/lib/errors.ts`) for the closest matching
- * scenario, so the frontend isn't inventing new customer-facing copy:
- * `GENERIC_ERROR_VI` = the catch-all `toErrorEnvelope` 500 case, for genuine
- * operation failures (network, remove); `INVALID_CODE_VI` =
- * `VOUCHER_NOT_FOUND`'s message, verbatim, for the final combined
- * voucher+generic-promotion failure — `applyPromotions` throws via
- * `medusaError` either way (invalid code or transport failure), but "the
- * code doesn't work as either type" is by far the more likely cause and the
- * more useful thing to tell the customer than a generic retry message.
+ * message. `GENERIC_ERROR_VI` and `INVALID_CODE_VI` are reused VERBATIM from
+ * the backend's own catalog (`workflows/voucher-engine/lib/errors.ts`) for
+ * the closest matching scenario, so the frontend isn't inventing new
+ * customer-facing copy: `GENERIC_ERROR_VI` = the catch-all `toErrorEnvelope`
+ * 500 case, for genuine operation failures (network, remove); `INVALID_CODE_VI`
+ * = `VOUCHER_NOT_FOUND`'s message, verbatim, reused as the final rejection for
+ * any manually-entered code that isn't a valid, currently-applicable voucher
+ * (CR 2026-07-22 — see `rejectManualCode` below). `AUTO_PROMO_VI` is
+ * frontend-originated (no backend equivalent — VoucherEngine has no concept
+ * of automatic promotions at all), shown instead of `INVALID_CODE_VI`
+ * specifically when the entered code matches a Promotion already visible on
+ * `cart.promotions` with `is_automatic: true`.
  */
 const GENERIC_ERROR_VI = "Có lỗi xảy ra, bạn thử lại sau ít phút nhé!"
 const INVALID_CODE_VI = "Mã giảm giá không đúng. Bạn kiểm tra lại giúp nhé!"
+const AUTO_PROMO_VI =
+  "Đây là mã khuyến mãi tự động — hệ thống đã tự áp dụng, bạn không cần nhập mã này."
+// CR (2026-07-22) — proactive UI gate, see `cap_status`/`capExhausted` below.
+// Frontend-originated (no backend round-trip needed for the toast itself —
+// the underlying boolean IS server-computed, via `fetchAvailableVouchers`).
+const CAP_EXHAUSTED_VI =
+  "Mức giảm giá đã đạt tối đa. Không thể áp dụng thêm voucher lúc này."
 // Apply's success envelope (`ApplyVoucherResult`) has no customer-facing
 // message field at all — this is the one place the frontend must originate
 // copy, so it's Vietnamese first per SRS i18n.
@@ -56,16 +69,27 @@ const alreadyActiveVi = (code: string) => `Bạn đang dùng mã ${code} rồi.`
  * DiscountCode — the single, unified customer-facing discount-code module
  * (`docs/voucher-engine-ui/REQUIREMENTS.md` §0, `UX-FLOW.md` D3/D4).
  *
- * Handles BOTH Medusa's generic promotion codes (unchanged behavior, via
- * `applyPromotions`'s full-array-replace) AND VoucherEngine vouchers (via the
- * dedicated `/store/carts/:id/voucher` endpoints) through one input and one
- * Apply button. The applied-codes area renders 3 visually distinct groups so
- * a customer can always tell what's what (2026-07-22 fix):
+ * CR (2026-07-22): the input ONLY accepts VoucherEngine vouchers now — the
+ * old "fall back to a plain Medusa Promotion code" rule (`UX-FLOW.md` §1a
+ * decision D11) has been deliberately removed. A code that isn't a valid,
+ * currently-applicable voucher is always rejected (`rejectManualCode` below):
+ * matched against an already-automatic Promotion → "this is an automatic
+ * code" message; anything else (a real-but-manual Promotion never linked to
+ * VoucherEngine, or a code that matches nothing at all) → the same generic
+ * "invalid code" message either way, so this never confirms/denies whether a
+ * given code exists (anti-enumeration, same spirit as VoucherEngine's own V1).
+ * This is a product override, not something UX-FLOW.md's original design
+ * called for — that doc is now stale on this point.
+ *
+ * The applied-codes area still renders 3 visually distinct groups for
+ * whatever is ALREADY on the cart (from before this change, or added another
+ * way) so a customer can always tell what's what (2026-07-22 fix):
  *  1. Auto-applied promotions (`is_automatic: true`, grey badge, no remove
  *     button — the customer never chose these, they're merchant-configured).
- *  2. Other applied codes (`is_automatic: false`, a generic code the customer
- *     entered that ISN'T the VoucherEngine voucher — a plain Medusa
- *     Promotion code, still supported unchanged).
+ *  2. Other applied codes (`is_automatic: false`, a generic code that ISN'T
+ *     the VoucherEngine voucher — a plain Medusa Promotion code already on
+ *     the cart; still shown/removable, just no longer enterable via this
+ *     input going forward).
  *  3. The VoucherEngine voucher itself (green badge, its own section) —
  *     sourced from `cart.metadata.voucher`, never from `cart.promotions`.
  *
@@ -118,15 +142,6 @@ function toDisplayedVoucher(meta: VoucherCartMetadata): DisplayedVoucher {
   }
 }
 
-function formatVnd(amount: number): string {
-  return `${new Intl.NumberFormat("vi-VN").format(amount)}₫`
-}
-
-function formatCapPercent(globalCapBps: number): string {
-  const pct = globalCapBps / 100
-  return Number.isInteger(pct) ? String(pct) : pct.toFixed(2)
-}
-
 /**
  * Actual VND discount a Promotion (automatic or manual generic code) gave
  * this cart — summed straight from `items[].adjustments`/
@@ -165,27 +180,6 @@ function sumPromotionAdjustments(
   return fromItems + fromShipping
 }
 
-/**
- * Reconstructs the EXACT Vietnamese cap-explanation sentence the backend
- * builds server-side (`modules/voucher-engine/lib/calculate-discount.ts`'s
- * `buildCapExplanation`), from the numeric fields `cart.metadata.voucher`
- * ALWAYS carries (`voucher_discount_after_voucher_cap`, `discount_amount`,
- * `cap_percentage_bps`) — unlike the apply-response's own pre-built
- * `cap_explanation` string, which only exists in that one response and is
- * NOT persisted to metadata (see `VoucherCartMetadata`'s doc comment). This
- * is what lets the resync effect below rebuild the explanation on EVERY cart
- * change (including one this component didn't cause, e.g. adding a
- * suggested item elsewhere) instead of blanking it — 2026-07-22 fix. Only
- * call when `meta.discount_capped` is true.
- */
-function buildCapExplanationVi(meta: VoucherCartMetadata): string {
-  return `Giảm giá đã được điều chỉnh từ ${formatVnd(
-    meta.voucher_discount_after_voucher_cap,
-  )} xuống ${formatVnd(meta.discount_amount)} theo chính sách giảm tối đa ${formatCapPercent(
-    meta.cap_percentage_bps,
-  )}%.`
-}
-
 /** Outcome of trying VoucherEngine's apply endpoint (UX-FLOW.md §1a). */
 type VoucherApplyAttempt =
   | { kind: "success" }
@@ -200,7 +194,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   // promotion whose linked entity failed to resolve, e.g. removed/expired
   // between the cart snapshot and this render) — filtered out here, once, so
   // every downstream consumer (`autoPromotions`, `manualPromotions`,
-  // `applyGenericCode`, `removeGenericCode`) can assume non-null elements.
+  // `rejectManualCode`, `removeGenericCode`) can assume non-null elements.
   const allPromotions = (cart.promotions ?? []).filter(
     (promotion): promotion is NonNullable<typeof promotion> =>
       promotion != null,
@@ -237,7 +231,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       !promotion.is_automatic && promotion.code !== activeVoucher?.code,
   )
 
-  const [capExplanation, setCapExplanation] = useState<string | null>(null)
   const [phase, setPhase] = useState<
     "idle" | "applying" | "removingVoucher" | "removingGeneric"
   >("idle")
@@ -247,6 +240,41 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     message: string
   } | null>(null)
   const [isVouchersModalOpen, setIsVouchersModalOpen] = useState(false)
+
+  // CR (2026-07-22): proactive gate — true when item/automatic promotions
+  // ALONE already consume the entire global cap (server-computed, see
+  // `cap_status` on `fetchAvailableVouchers`'s response). While true, the
+  // input/Apply button and the "Available vouchers" trigger are hidden
+  // entirely — entering ANY voucher would be rejected by the backend anyway
+  // (`VOUCHER_CAP_EXHAUSTED`, `apply-voucher.ts`) since this cart has zero
+  // remaining cap headroom before a voucher's own value is even considered.
+  const [capExhausted, setCapExhausted] = useState(false)
+  // Last known value, so the toast below fires only on the LIVE transition
+  // (not-exhausted -> exhausted), never on every re-render/refetch while it
+  // stays exhausted — same dedup spirit as `shownNoticeRef` just below.
+  const prevCapExhaustedRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchAvailableVouchers(cart.id).then(({ cap_status }) => {
+      if (cancelled) return
+      const exhausted = cap_status?.cap_exhausted_by_promotion ?? false
+      setCapExhausted(exhausted)
+      if (exhausted && !prevCapExhaustedRef.current) {
+        toast.error(CAP_EXHAUSTED_VI)
+      }
+      prevCapExhaustedRef.current = exhausted
+    })
+    return () => {
+      cancelled = true
+    }
+    // Re-check whenever the cart's item-side discount picture could have
+    // changed (item added/removed, a promotion newly qualifying/expiring) —
+    // `item_total`/`discount_total` are the cheapest reliable proxies for
+    // "something that could move item_promotion_discount changed", without
+    // re-fetching on every unrelated cart field (e.g. shipping address edits).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart.id, cart.item_total, cart.discount_total])
 
   // Dedup key for the last auto-remove notice actually shown (see
   // `readVoucherNotice`'s doc comment) — prevents re-showing the same notice
@@ -280,16 +308,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     const meta = readVoucherMetadata(cart)
     const hadActiveVoucher = activeVoucher !== null
     setActiveVoucher(meta ? toDisplayedVoucher(meta) : null)
-    // 2026-07-22 fix: this used to unconditionally null the cap banner on
-    // EVERY resync, including one triggered by an unrelated cart change (e.g.
-    // a suggested item added elsewhere) that still leaves the voucher
-    // capped — wiping a still-accurate explanation. `cart.metadata.voucher`
-    // always carries the raw numbers needed to rebuild the exact same
-    // sentence (see `buildCapExplanationVi`), so derive it fresh here instead
-    // of discarding it.
-    setCapExplanation(
-      meta && meta.discount_capped ? buildCapExplanationVi(meta) : null,
-    )
 
     // Auto-remove notice (SPEC §11.3 step 3b): only surface it on the LIVE
     // transition (a voucher we were showing disappeared on this same prop
@@ -347,7 +365,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
           discount_amount: result.data.discount_amount,
           discount_capped: result.data.discount_capped,
         })
-        setCapExplanation(result.data.cap_explanation)
         setReplaceConfirm(null)
         setVoucherNotice(null)
         toast.success(APPLY_SUCCESS_VI, {
@@ -394,45 +411,34 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     }
   }
 
-  const applyGenericCode = async (
-    code: string,
-  ): Promise<{ ok: boolean; message?: string }> => {
-    const codes = allPromotions
-      .filter((p) => p.code !== undefined)
-      .map((p) => p.code!)
-    codes.push(code)
-    try {
-      const updatedCart = await applyPromotions(codes)
-      // Medusa's `updateCartPromotionsWorkflow` only THROWS for a code that
-      // matches no Promotion record at all — a code that exists but is
-      // currently unappliable (inactive/disabled, expired, not yet started,
-      // not eligible for this cart) is silently dropped ("skipped") and the
-      // call still resolves successfully (verified:
-      // `get-promotion-codes-to-apply.js` only throws when
-      // `!validPromoCodes.has(code)`; an existing-but-skipped code never
-      // reaches that branch). Without this membership check, entering such a
-      // code showed a false "success" toast even though nothing was actually
-      // applied to the cart.
-      const applied = (updatedCart.promotions ?? []).some(
-        (promotion) => promotion?.code === code,
-      )
-      if (!applied) {
-        toast.error(INVALID_CODE_VI)
-        return { ok: false, message: INVALID_CODE_VI }
-      }
-      setVoucherNotice(null)
-      toast.success(APPLY_SUCCESS_VI)
-      return { ok: true }
-    } catch {
-      // `applyPromotions` throws via `medusaError` (`lib/util/medusa-error.ts`),
-      // which surfaces the core Medusa error's own (English) message — not a
-      // VoucherEngine `customer_message`. Since this is the "neither a voucher
-      // nor a valid generic code" final failure (UX-FLOW.md §1a step 4 /
-      // task requirement 3), show one clear VI message instead of raw
-      // English/technical text.
-      toast.error(INVALID_CODE_VI)
-      return { ok: false, message: INVALID_CODE_VI }
-    }
+  /**
+   * rejectManualCode — CR (2026-07-22) replacement for the old
+   * `applyGenericCode` fallback. Deliberately does NOT call `applyPromotions`
+   * for a code VoucherEngine didn't recognize — that call WAS the fallback
+   * behavior this CR removes (it used to attach any matching native
+   * Promotion, automatic or not, bypassing every VoucherEngine business rule
+   * for a short/malformed code — see `check-promotion-voucher-eligibility.ts`
+   * for the backend-side half of this fix).
+   *
+   * The only classification available without a network round-trip is
+   * `cart.promotions` (`allPromotions`) — Promotions already known to be
+   * currently active/auto-applied on THIS cart. A match there with
+   * `is_automatic: true` gets the more specific "this is automatic" message;
+   * everything else (a real manual Promotion never linked to VoucherEngine,
+   * or a code matching nothing at all) collapses into the SAME generic
+   * "invalid code" message — deliberately, so this never confirms or denies
+   * whether an arbitrary manual code exists (anti-enumeration, matching
+   * VoucherEngine's own V1 NOT_FOUND/INACTIVE convention).
+   */
+  const rejectManualCode = (code: string): { ok: boolean; message: string } => {
+    const normalized = code.trim().toUpperCase()
+    const matchedAutomatic = allPromotions.some(
+      (promotion) =>
+        promotion.is_automatic && promotion.code?.toUpperCase() === normalized,
+    )
+    const message = matchedAutomatic ? AUTO_PROMO_VI : INVALID_CODE_VI
+    toast.error(message)
+    return { ok: false, message }
   }
 
   const removeGenericCode = async (
@@ -452,12 +458,13 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
   }
 
   /**
-   * Single-input routing rule (UX-FLOW.md §1a) — the ONE entry point both the
-   * manual input form and the Available-vouchers modal call. Always tries
-   * VoucherEngine first; only a `VOUCHER_NOT_FOUND` falls back to the
-   * existing generic-promotion apply call. Kept isolated in this one function
-   * so it can be swapped for a future combined backend endpoint without
-   * touching the rest of the component.
+   * The ONE entry point both the manual input form and the Available-vouchers
+   * modal call. Only tries VoucherEngine (`attemptVoucherApply`) — a
+   * `notFound` outcome is a final rejection now (`rejectManualCode`), NOT a
+   * fallback to a generic Promotion apply (CR 2026-07-22, removes the old
+   * UX-FLOW.md §1a / D11 single-input routing rule). Kept isolated in this
+   * one function so it can be swapped for a future combined backend endpoint
+   * without touching the rest of the component.
    */
   const submitCode = async (
     code: string,
@@ -476,7 +483,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       case "rejected":
         return { ok: false, message: attempt.message }
       case "notFound":
-        return applyGenericCode(code)
+        return rejectManualCode(code)
     }
   }
 
@@ -489,7 +496,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     await submitCode(code.toString())
     setPhase("idle")
     // Every outcome already surfaced via toast inside submitCode/attemptVoucherApply/
-    // applyGenericCode — nothing further to show here (2026-07-22: the inline
+    // rejectManualCode — nothing further to show here (2026-07-22: the inline
     // notification under this input was removed in favor of toast).
     const input = document.getElementById(
       "discount-input",
@@ -518,7 +525,6 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
       if (result.ok) {
         skipNextResync.current = true
         setActiveVoucher(null)
-        setCapExplanation(null)
         setVoucherNotice(null)
         // Backend-provided (`remove-voucher.ts`'s `RemoveVoucherResult.message`)
         // — render verbatim, `REMOVE_SUCCESS_VI` is only a defensive fallback.
@@ -552,21 +558,22 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
     setPhase("idle")
     // "success" already toasted/cleared replaceConfirm inside
     // attemptVoucherApply. Every OTHER outcome is a failure to complete the
-    // confirmed replace and must close the modal — this is NOT `submitCode`'s
-    // normal routing (no silent fall-back to a generic promotion apply here:
-    // the customer already confirmed replacing with THIS specific voucher
-    // code, so "notFound" means that code is invalid, not "try it as a promo
-    // code"). Checking `!== "success"` (not just `=== "rejected"`) is
-    // deliberate: `attemptVoucherApply` can also return "notFound" (any
-    // response with no `customer_message`, e.g. a code that failed schema
-    // validation) or, defensively, "replaceRequired" again — leaving either
-    // of those unhandled is exactly the bug where the modal never closes.
+    // confirmed replace and must close the modal — same final-rejection rule
+    // as `submitCode` (CR 2026-07-22, no fall-back to a generic Promotion
+    // apply): the customer already confirmed replacing with THIS specific
+    // voucher code, so "notFound" means that code is invalid (or automatic),
+    // never "try it as a promo code". Checking `!== "success"` (not just
+    // `=== "rejected"`) is deliberate: `attemptVoucherApply` can also return
+    // "notFound" (any response with no `customer_message`, e.g. a code that
+    // failed schema validation) or, defensively, "replaceRequired" again —
+    // leaving either of those unhandled is exactly the bug where the modal
+    // never closes.
     if (attempt.kind !== "success") {
       setReplaceConfirm(null)
       // "rejected" already toasted inside attemptVoucherApply — avoid a
       // duplicate toast for that one outcome.
       if (attempt.kind !== "rejected") {
-        toast.error(INVALID_CODE_VI)
+        rejectManualCode(replaceConfirm.pendingCode)
       }
     }
   }
@@ -582,22 +589,34 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
         Mã giảm giá / voucher
       </Heading>
 
-      <form action={handleApplySubmit} className="w-full">
-        <div className="flex w-full gap-x-2">
-          <Input
-            className="size-full"
-            id="discount-input"
-            name="code"
-            type="text"
-            placeholder="Nhập mã giảm giá hoặc mã voucher"
-            disabled={isBusy}
-            data-testid="discount-input"
-          />
-          <SubmitButton variant="secondary" data-testid="discount-apply-button">
-            Áp dụng
-          </SubmitButton>
+      {capExhausted ? (
+        <div
+          className="w-full rounded-md border bg-neutral-100 p-3 text-ui-fg-subtle text-small-regular"
+          data-testid="voucher-cap-exhausted-notice"
+        >
+          {CAP_EXHAUSTED_VI}
         </div>
-      </form>
+      ) : (
+        <form action={handleApplySubmit} className="w-full">
+          <div className="flex w-full gap-x-2">
+            <Input
+              className="size-full"
+              id="discount-input"
+              name="code"
+              type="text"
+              placeholder="Nhập mã giảm giá hoặc mã voucher"
+              disabled={isBusy}
+              data-testid="discount-input"
+            />
+            <SubmitButton
+              variant="secondary"
+              data-testid="discount-apply-button"
+            >
+              Áp dụng
+            </SubmitButton>
+          </div>
+        </form>
+      )}
 
       {voucherNotice && (
         <div
@@ -736,29 +755,22 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({ cart }) => {
                   <span className="sr-only">Xoá</span>
                 </button>
               </div>
-
-              {activeVoucher.discount_capped && capExplanation && (
-                <div
-                  className="bg-neutral-100 border rounded-md p-3 text-ui-fg-subtle text-small-regular"
-                  data-testid="voucher-cap-explanation"
-                >
-                  {capExplanation}
-                </div>
-              )}
             </div>
           )}
         </div>
       )}
 
-      <button
-        type="button"
-        className="txt-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover text-left"
-        onClick={() => setIsVouchersModalOpen(true)}
-        disabled={isBusy}
-        data-testid="available-vouchers-trigger"
-      >
-        Xem voucher khả dụng
-      </button>
+      {!capExhausted && (
+        <button
+          type="button"
+          className="txt-small text-ui-fg-interactive hover:text-ui-fg-interactive-hover text-left"
+          onClick={() => setIsVouchersModalOpen(true)}
+          disabled={isBusy}
+          data-testid="available-vouchers-trigger"
+        >
+          Xem voucher khả dụng
+        </button>
+      )}
 
       <ReplaceConfirmModal
         isOpen={!!replaceConfirm}

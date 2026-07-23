@@ -544,7 +544,7 @@ const VOUCHER_SEEDS: VoucherSeed[] = [
     perUserLimit: 10,
   },
   {
-    code: "OLD10",
+    code: "OLDEXP10",
     discountType: "percentage",
     discountValue: 10,
     perUserLimit: 10,

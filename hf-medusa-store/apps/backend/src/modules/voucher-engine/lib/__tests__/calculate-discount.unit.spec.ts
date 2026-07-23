@@ -141,6 +141,7 @@ describe("voucher-engine lib/calculate-discount", () => {
       expect(result.maximum_combined_discount).toBe(2_350_000);
       expect(result.final_voucher_discount).toBe(380_000);
       expect(result.discount_capped).toBe(false);
+      expect(result.cap_exhausted_by_promotion).toBe(false);
       expect(result.expected_final_cart_total).toBe(3_420_000);
       // task 3.3.9: realized combined discount = item promo + final voucher discount.
       expect(result.combined_discount).toBe(1_280_000);
@@ -186,6 +187,9 @@ describe("voucher-engine lib/calculate-discount", () => {
       expect(result.maximum_combined_discount).toBe(2_350_000);
       expect(result.final_voucher_discount).toBe(490_000);
       expect(result.discount_capped).toBe(true);
+      // Partial cap — the voucher still nets 490,000, so the promotion did
+      // NOT exhaust the cap by itself (distinct from the EC-03 0đ cases below).
+      expect(result.cap_exhausted_by_promotion).toBe(false);
       expect(result.expected_final_cart_total).toBe(2_350_000);
       // task 3.3.9: when capped, the realized combined discount equals the cap threshold exactly.
       expect(result.combined_discount).toBe(2_350_000);
@@ -201,6 +205,90 @@ describe("voucher-engine lib/calculate-discount", () => {
           cap_percentage: 50,
         },
       });
+    });
+  });
+
+  // CR 2026-07-22 (Phase 5 requirement change): "Tổng discount không được
+  // vượt quá 40% giá trị đơn hàng" — the store's DEFAULT_GLOBAL_CAP_BPS
+  // moved 5000 -> 4000. calculateVoucherDiscount itself needed no logic
+  // change (global_cap_bps was already a plain parameter) — these fixtures
+  // exercise that same pipeline with an explicit 40% cap, both sides
+  // (trimmed and untrimmed), so the new default has direct worked-example
+  // coverage rather than relying on the pre-existing 50% fixtures above
+  // (which stay pinned at 50% on purpose, per their own local GLOBAL_CAP_BPS).
+  describe("calculateVoucherDiscount — CR 2026-07-22: global cap lowered to 40%", () => {
+    const CAP_40_BPS = 4000;
+
+    it("cuts the voucher discount to the remaining 40% headroom when combined would otherwise exceed it", () => {
+      // 1,000,000 item, 25% item promo (250,000); voucher 30% of the
+      // 750,000 post-promo value = 225,000 raw. 40% cap = 400,000; headroom
+      // after the item promo = 400,000 - 250,000 = 150,000 -> voucher cut
+      // to exactly that headroom, combined discount lands exactly on the cap.
+      const lines: LineValue[] = [
+        {
+          line_id: "item",
+          unit_price: 1_000_000,
+          quantity: 1,
+          item_promotion_discount: 250_000,
+          is_eligible: true,
+        },
+      ];
+
+      const result = calculateVoucherDiscount({
+        lines,
+        discount_type: "percentage",
+        discount_value: 3000, // 30%
+        max_discount_amount: null,
+        global_cap_bps: CAP_40_BPS,
+      });
+
+      expect(result.maximum_combined_discount).toBe(400_000);
+      expect(result.raw_voucher_discount).toBe(225_000);
+      expect(result.final_voucher_discount).toBe(150_000);
+      expect(result.discount_capped).toBe(true);
+      expect(result.combined_discount).toBe(400_000);
+      expect(result.combined_discount).toBe(result.maximum_combined_discount);
+      expect(result.expected_final_cart_total).toBe(600_000);
+      expect(result.cap_explanation).toEqual({
+        code: "VOUCHER_DISCOUNT_CAPPED",
+        message_vi:
+          "Giảm giá voucher được điều chỉnh từ 225.000₫ xuống 150.000₫, vì tổng mức giảm giá (đã gồm khuyến mãi tự động) không được vượt quá 40% giá trị đơn hàng.",
+        message_params: {
+          original_amount: 225_000,
+          final_amount: 150_000,
+          cap_percentage: 40,
+        },
+      });
+    });
+
+    it("does not cap when the combined discount stays within the new 40% threshold", () => {
+      // 1,000,000 item, 10% item promo (100,000); voucher 20% of the
+      // 900,000 post-promo value = 180,000. Combined = 280,000 = 28% of the
+      // subtotal, under the 40% cap -> no capping.
+      const lines: LineValue[] = [
+        {
+          line_id: "item",
+          unit_price: 1_000_000,
+          quantity: 1,
+          item_promotion_discount: 100_000,
+          is_eligible: true,
+        },
+      ];
+
+      const result = calculateVoucherDiscount({
+        lines,
+        discount_type: "percentage",
+        discount_value: 2000, // 20%
+        max_discount_amount: null,
+        global_cap_bps: CAP_40_BPS,
+      });
+
+      expect(result.maximum_combined_discount).toBe(400_000);
+      expect(result.raw_voucher_discount).toBe(180_000);
+      expect(result.final_voucher_discount).toBe(180_000);
+      expect(result.discount_capped).toBe(false);
+      expect(result.combined_discount).toBe(280_000);
+      expect(result.cap_explanation).toBeNull();
     });
   });
 
@@ -230,6 +318,12 @@ describe("voucher-engine lib/calculate-discount", () => {
       expect(result.maximum_combined_discount).toBe(2_350_000);
       expect(result.final_voucher_discount).toBe(0);
       expect(result.discount_capped).toBe(true);
+      // Item promo ALONE (2,350,000) already equals the cap threshold — the
+      // voucher had zero capacity before its own value was even considered.
+      // The calling workflow step (`assert-cap-not-exhausted.ts`) rejects the
+      // apply outright on this flag (CR 2026-07-22) rather than returning
+      // this 0đ result to the customer as a "success".
+      expect(result.cap_exhausted_by_promotion).toBe(true);
       // Not clamped to a minimum of 1 VND here (SPEC §10.2 policy `[NEEDS_VERIFICATION #13]`
       // is deliberately NOT applied in this pure layer — see calculate-discount.ts comment).
       expect(result.expected_final_cart_total).toBe(
@@ -260,6 +354,22 @@ describe("voucher-engine lib/calculate-discount", () => {
 
       expect(result.maximum_combined_discount).toBe(500_000);
       expect(result.final_voucher_discount).toBe(0);
+      expect(result.cap_exhausted_by_promotion).toBe(true);
+    });
+
+    it("an empty cart (0 lines, 0 subtotal) is never cap_exhausted_by_promotion (2026-07-22 edge case: 0 >= 0 would otherwise wrongly flag it)", () => {
+      const result = calculateVoucherDiscount({
+        lines: [],
+        discount_type: "percentage",
+        discount_value: 1000,
+        max_discount_amount: null,
+        global_cap_bps: GLOBAL_CAP_BPS,
+      });
+
+      expect(result.original_subtotal).toBe(0);
+      expect(result.maximum_combined_discount).toBe(0);
+      expect(result.item_promotion_discount).toBe(0);
+      expect(result.cap_exhausted_by_promotion).toBe(false);
     });
   });
 
@@ -594,8 +704,8 @@ describe("voucher-engine lib/calculate-discount", () => {
   });
 
   describe("DEFAULT_GLOBAL_CAP_BPS (task 3.3.10)", () => {
-    it("defaults to 50% (5000 bps), matching SRS §5.2 DiscountCapConfig default", () => {
-      expect(DEFAULT_GLOBAL_CAP_BPS).toBe(5000);
+    it("defaults to 40% (4000 bps), matching the CR 2026-07-22 global cap default (previously 50%/5000 bps per SRS §5.2)", () => {
+      expect(DEFAULT_GLOBAL_CAP_BPS).toBe(4000);
     });
   });
 });

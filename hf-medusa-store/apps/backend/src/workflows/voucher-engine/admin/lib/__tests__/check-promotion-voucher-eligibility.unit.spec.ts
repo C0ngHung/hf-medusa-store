@@ -1,4 +1,5 @@
 import { checkPromotionVoucherEligibility } from "../check-promotion-voucher-eligibility";
+import { MIN_CODE_LENGTH } from "../../../../../modules/voucher-engine/constants";
 
 const basePromotion = () => ({
   id: "promo_1",
@@ -39,7 +40,7 @@ describe("checkPromotionVoucherEligibility (Admin unified model)", () => {
       code: "",
     });
     expect(result.eligible).toBe(false);
-    expect((result as any).reason).toMatch(/no code/i);
+    expect((result as any).reason).toMatch(/chưa có mã/i);
   });
 
   it("rejects a Promotion with a whitespace-only code", () => {
@@ -48,6 +49,28 @@ describe("checkPromotionVoucherEligibility (Admin unified model)", () => {
       code: "   ",
     });
     expect(result.eligible).toBe(false);
+  });
+
+  it("rejects a code shorter than MIN_CODE_LENGTH (2026-07-22 bug-bash fix — see OLD10)", () => {
+    const shortCode = "OLD10";
+    expect(shortCode.length).toBeLessThan(MIN_CODE_LENGTH);
+    const result = checkPromotionVoucherEligibility({
+      ...basePromotion(),
+      code: shortCode,
+    });
+    expect(result.eligible).toBe(false);
+    expect((result as any).reason).toMatch(
+      new RegExp(`tối thiểu ${MIN_CODE_LENGTH}`),
+    );
+  });
+
+  it(`accepts a code exactly ${MIN_CODE_LENGTH} characters long (boundary)`, () => {
+    const boundaryCode = "A".repeat(MIN_CODE_LENGTH);
+    const result = checkPromotionVoucherEligibility({
+      ...basePromotion(),
+      code: boundaryCode,
+    });
+    expect(result.eligible).toBe(true);
   });
 
   it("rejects a VEPH-* ephemeral cart-transport Promotion code (case-insensitive)", () => {
@@ -65,7 +88,7 @@ describe("checkPromotionVoucherEligibility (Admin unified model)", () => {
       application_method: { target_type: "shipping_methods" as const },
     });
     expect(result.eligible).toBe(false);
-    expect((result as any).reason).toMatch(/unsupported application method/i);
+    expect((result as any).reason).toMatch(/không được hỗ trợ/i);
   });
 
   it("rejects an inactive Promotion", () => {
@@ -94,7 +117,7 @@ describe("checkPromotionVoucherEligibility (Admin unified model)", () => {
       new Date("2026-07-20T00:00:00.000Z"),
     );
     expect(result.eligible).toBe(false);
-    expect((result as any).reason).toMatch(/campaign already ended/i);
+    expect((result as any).reason).toMatch(/đã kết thúc/i);
   });
 
   it("allows a Promotion whose linked Campaign has not yet ended", () => {

@@ -254,6 +254,14 @@ const PromotionDetailVoucherConfigWidget = ({
 
   const reason = ineligibilityReason(data);
   const isEnabled = !!voucher?.is_active;
+  // 2026-07-22 fix: `reason` alone must NOT hide the management UI for a
+  // voucher that was already enabled BEFORE this eligibility rule started
+  // applying to it (e.g. a short code enabled before the MIN_CODE_LENGTH
+  // rule existed) — otherwise the Switch disappears and the merchant has no
+  // way to disable it. `blocksEnable` gates NEW enables only; an
+  // already-enabled voucher stays manageable (still disable-able) even when
+  // `reason` is set, with the reason surfaced as a warning instead.
+  const blocksEnable = !!reason && !isEnabled;
   const isPercentageVoucher = data.application_method?.type === "percentage";
   // valid_from/valid_to are only editable the very first time this Promotion
   // is ever enabled — once a VoucherConfig row exists (even disabled), the
@@ -361,19 +369,23 @@ const PromotionDetailVoucherConfigWidget = ({
             <Heading level="h2">VoucherEngine settings</Heading>
             {!isLoading && !isError && (
               <StatusBadge
-                color={reason ? "grey" : isEnabled ? "green" : "grey"}
+                color={isEnabled ? "green" : blocksEnable ? "grey" : "grey"}
               >
-                {reason ? "Not eligible" : isEnabled ? "Enabled" : "Disabled"}
+                {isEnabled
+                  ? "Enabled"
+                  : blocksEnable
+                    ? "Not eligible"
+                    : "Disabled"}
               </StatusBadge>
             )}
           </div>
           <Text size="small" className="text-ui-fg-subtle">
-            {reason
-              ? "This Promotion cannot become a Voucher."
-              : "Turn this Promotion into a code-redeemable Voucher."}
+            {blocksEnable
+              ? "Promotion này không thể trở thành Voucher."
+              : "Bật để biến Promotion này thành Voucher đổi bằng mã giảm giá."}
           </Text>
         </div>
-        {!isLoading && !isError && !reason && (
+        {!isLoading && !isError && !blocksEnable && (
           <Switch
             checked={switchChecked}
             disabled={mode !== "view" || enable.isPending || disable.isPending}
@@ -397,7 +409,7 @@ const PromotionDetailVoucherConfigWidget = ({
             Retry
           </Button>
         </div>
-      ) : reason ? (
+      ) : blocksEnable ? (
         <div className="border-ui-border-base border-t px-6 py-4">
           <Text size="small" className="text-ui-fg-subtle max-w-md">
             {reason}
@@ -588,6 +600,15 @@ const PromotionDetailVoucherConfigWidget = ({
         </div>
       ) : (
         <div>
+          {reason && (
+            <div className="border-ui-border-base border-t px-6 py-4">
+              <Text size="small" className="text-ui-fg-error max-w-md">
+                {reason} Voucher này vẫn đang được bật tạm thời (lịch sử/lượt
+                dùng vẫn được giữ), nhưng sẽ không thể bật lại sau khi tắt — bạn
+                nên tắt (Disable) nó đi.
+              </Text>
+            </div>
+          )}
           <Row label="Valid from">
             <Text size="small">
               {voucher.valid_from

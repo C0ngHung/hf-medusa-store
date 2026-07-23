@@ -9,7 +9,7 @@ import { Modules } from "@medusajs/framework/utils";
  *
  * WHY: no seed script anywhere creates a generic Promotion (see
  * .claude/lessons/voucher-engine/2026-07-15-no-item-promotion-seed-data-blocks-stacking-cap-live-verification.md).
- * Without one, `item_promotion_discount` is always 0 and the 50% global cap
+ * Without one, `item_promotion_discount` is always 0 and the 40% global cap
  * can't be exercised outside unit tests. This seed exists ONLY to unblock
  * that live demo — it is not a merchant-configured promotion and isn't meant
  * to be relied on beyond a manual/demo pass.
@@ -20,11 +20,17 @@ import { Modules } from "@medusajs/framework/utils";
  * adjustment (CONFLICT-8/PD-15, `VOUCHER_STACKING_UNSUPPORTED`) because it
  * was itself a Promotion competing in Medusa's `computeActions` recompute.
  * The current carrier (raw `LineItemAdjustment`s, `code: null`) is invisible
- * to that recompute, so this Promotion's own 40% discount is preserved
- * exactly and the Voucher applies afterward on the post-promotion subtotal,
- * matching the SRS's worked example almost exactly (40% item promotion vs.
- * the SRS's 39.57%-equivalent cap-exceeded example, §10 / this project's
- * decision-4 SRS worked examples).
+ * to that recompute, so this Promotion's own discount is preserved exactly
+ * and the Voucher applies afterward on the post-promotion subtotal.
+ *
+ * **2026-07-22 update (Phase 5 CR — global cap default 50%->40%):** the
+ * item-level promotion value was lowered from 40% to 20% here. At the new
+ * 40% default cap, a 40% automatic item promotion alone would already
+ * consume the ENTIRE cap (40% >= 40%), leaving zero headroom for any voucher
+ * — every voucher would show `final_voucher_discount: 0`, which no longer
+ * demonstrates the interesting case (cap trimming the voucher PARTIALLY,
+ * not zeroing it out). 20% leaves 20 points of headroom under the new cap so
+ * a voucher applied on top still gets visibly (partially) capped.
  *
  * Percentage + item-level + automatic ⇒ any cart containing the scoped
  * product gets this promotion for free (no code entry needed in the
@@ -73,7 +79,7 @@ export default async function seedVoucherCapDemo({ container }: ExecArgs) {
       type: "percentage",
       target_type: "items",
       allocation: "across",
-      value: 40, // 40% off — high enough to exercise the global 50% cap alongside a voucher
+      value: 20, // 20% off — leaves headroom under the new 40% global cap so a voucher still gets visibly (partially) capped
       currency_code: "vnd",
       target_rules: [
         {
@@ -86,6 +92,6 @@ export default async function seedVoucherCapDemo({ container }: ExecArgs) {
   });
 
   logger.info(
-    `[seed:voucher-cap-demo] created automatic 40% item promotion "${DEMO_PROMOTION_CODE}" scoped to product "${DEMO_PRODUCT_HANDLE}". Add this product to a cart, then apply any voucher (SAVE10/MEGA20/SHUTTLE20) — expect success: the 40% item discount is preserved, the voucher applies on the post-promotion subtotal, and the combined discount is capped at 50% of the original subtotal if it would otherwise exceed that.`,
+    `[seed:voucher-cap-demo] created automatic 20% item promotion "${DEMO_PROMOTION_CODE}" scoped to product "${DEMO_PRODUCT_HANDLE}". Add this product to a cart, then apply any voucher (SAVE10/MEGA20/SHUTTLE20) — expect success: the 20% item discount is preserved, the voucher applies on the post-promotion subtotal, and the combined discount is capped at 40% of the original subtotal if it would otherwise exceed that.`,
   );
 }

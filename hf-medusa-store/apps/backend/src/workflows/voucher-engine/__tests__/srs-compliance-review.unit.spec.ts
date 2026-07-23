@@ -29,7 +29,7 @@ import { revalidateVoucherOnCartChange } from "../lib/revalidate-voucher";
 import type { CartSnapshot, VoucherSnapshot } from "../lib/types";
 import { v4UserLimit } from "../lib/validators";
 
-const GLOBAL_CAP_BPS = DEFAULT_CAP_PCT; // 5000 = 50%, SRS §5.2 DiscountCapConfig default
+const GLOBAL_CAP_BPS = DEFAULT_CAP_PCT; // 4000 = 40% (CR 2026-07-22, Phase 5; was 5000 = 50% per SRS §5.2 at write time)
 
 // ── VOUCH-003 (SRS §4, "business rule phức tạp nhất hệ thống") ──────────────
 describe("SRS VOUCH-003 (§4) — worked numeric examples, re-derived from the SRS text", () => {
@@ -64,11 +64,11 @@ describe("SRS VOUCH-003 (§4) — worked numeric examples, re-derived from the S
     expect(result.raw_voucher_discount).toBe(380_000);
     expect(result.final_voucher_discount).toBe(380_000);
     expect(result.discount_capped).toBe(false);
-    expect(result.combined_discount).toBe(1_280_000); // 27.2% of 4,700,000 < 50%
+    expect(result.combined_discount).toBe(1_280_000); // 27.2% of 4,700,000 < 40%
     expect(result.expected_final_cart_total).toBe(3_420_000);
   });
 
-  it("cap-exceeded path: racket @40% promo + strings @30% promo + MEGA20 (20%) -> voucher cut to 490,000, pay 2,350,000", () => {
+  it("cap-exceeded path: racket @40% promo + strings @30% promo + MEGA20 (20%) -> voucher cut to 20,000, pay 2,820,000 (cap 40%, CR 2026-07-22)", () => {
     const lines: LineValue[] = [
       {
         line_id: "racket",
@@ -96,12 +96,18 @@ describe("SRS VOUCH-003 (§4) — worked numeric examples, re-derived from the S
 
     expect(result.item_promotion_discount).toBe(1_860_000);
     expect(result.raw_voucher_discount).toBe(568_000);
-    expect(result.maximum_combined_discount).toBe(2_350_000);
-    expect(result.final_voucher_discount).toBe(490_000);
+    // 40% global cap (CR 2026-07-22, was 50%): maximum_combined_discount =
+    // 40% x 4,700,000 = 1,880,000; remaining headroom after the 1,860,000
+    // item promo = 20,000 -> voucher cut to that headroom, not to 490,000.
+    expect(result.maximum_combined_discount).toBe(1_880_000);
+    expect(result.final_voucher_discount).toBe(20_000);
     expect(result.discount_capped).toBe(true);
+    // Partial cap — 20,000 of headroom was still left, so the promotion did
+    // NOT exhaust the cap on its own (contrast the EC-03 0đ cases below).
+    expect(result.cap_exhausted_by_promotion).toBe(false);
     expect(result.cap_explanation?.message_vi).toContain("568.000");
-    expect(result.cap_explanation?.message_vi).toContain("490.000");
-    expect(result.expected_final_cart_total).toBe(2_350_000);
+    expect(result.cap_explanation?.message_vi).toContain("20.000");
+    expect(result.expected_final_cart_total).toBe(2_820_000);
   });
 });
 
@@ -150,10 +156,15 @@ describe("SRS VOUCH-001 (§4) — AC worked example: SHUTTLE20 scoped 20% off Sh
 });
 
 // ── EC-01 (SRS §8) ────────────────────────────────────────────────────────────
-describe("SRS EC-01 (§8) — item promo + voucher approaching the 50% global cap", () => {
-  it("stays under the cap when the combined discount is <= 50% -> cap does not fire", () => {
+// CR 2026-07-22 (Phase 5): the global cap default moved 50% -> 40%. Both
+// fixtures below are unchanged from the pre-CR numbers; only the resulting
+// behavior changed, because 44%/50% (test 1) and 50%/50% (test 2) sat right
+// around the old 50% threshold and now sit above/at the new 40% one.
+describe("SRS EC-01 (§8) — item promo + voucher approaching the 40% global cap", () => {
+  it("combined 44% now crosses the 40% cap (previously stayed under the old 50% cap)", () => {
     // 1,000,000 item, 30% promo (300,000); voucher 20% on the 700,000 post-promo value = 140,000.
-    // combined = 440,000 / 1,000,000 = 44% < 50% -> no cap.
+    // combined would be 440,000 / 1,000,000 = 44% -> under the OLD 50% cap this
+    // did not fire; under the NEW 40% cap (400,000 threshold) it now does.
     const lines: LineValue[] = [
       {
         line_id: "item",
@@ -172,15 +183,16 @@ describe("SRS EC-01 (§8) — item promo + voucher approaching the 50% global ca
       global_cap_bps: GLOBAL_CAP_BPS,
     });
 
-    expect(result.discount_capped).toBe(false);
-    expect(result.final_voucher_discount).toBe(140_000);
-    expect(result.combined_discount).toBe(440_000);
+    expect(result.maximum_combined_discount).toBe(400_000);
+    expect(result.discount_capped).toBe(true);
+    expect(result.final_voucher_discount).toBe(100_000);
+    expect(result.combined_discount).toBe(400_000);
   });
 
-  it("cap fires once combined crosses 50% — only the voucher is cut, the item promotion is untouched (Rule 10/11)", () => {
-    // Same item, promo raised to 35% (350,000): remaining headroom to the 50%
-    // cap is only 150,000. Voucher raised to 30% of the 650,000 post-promo
-    // value = 195,000, which exceeds that headroom.
+  it("cap fires once combined crosses 40% — only the voucher is cut, the item promotion is untouched (Rule 10/11)", () => {
+    // Same item, promo raised to 35% (350,000): remaining headroom to the 40%
+    // cap (400,000) is only 50,000. Voucher raised to 30% of the 650,000
+    // post-promo value = 195,000, which exceeds that headroom.
     const lines: LineValue[] = [
       {
         line_id: "item",
@@ -201,21 +213,26 @@ describe("SRS EC-01 (§8) — item promo + voucher approaching the 50% global ca
 
     expect(result.item_promotion_discount).toBe(350_000); // never reduced
     expect(result.raw_voucher_discount).toBe(195_000);
-    expect(result.final_voucher_discount).toBe(150_000); // cut to exactly the remaining headroom
+    expect(result.final_voucher_discount).toBe(50_000); // cut to exactly the remaining headroom
     expect(result.discount_capped).toBe(true);
-    expect(result.combined_discount).toBe(500_000); // exactly the 50% cap threshold
+    expect(result.combined_discount).toBe(400_000); // exactly the 40% cap threshold
   });
 });
 
 // ── EC-03 (SRS §8) ────────────────────────────────────────────────────────────
 describe("SRS EC-03 (§8) — cart total must stay > 0 (minimum 1 VND) once the cap is enforced", () => {
-  it("holds in the SRS's own scenario: item promo alone exactly at the 50% cap boundary", () => {
+  it("holds in the SRS's own scenario: item promo alone (50% of subtotal) already exceeds the 40% cap boundary", () => {
+    // CR 2026-07-22: item promo = 2,350,000 = 50% of the subtotal — this used
+    // to sit "exactly at" the old 50% cap boundary; at the new 40% cap
+    // (1,880,000) it's now past it. Same outcome either way: the item promo
+    // is never reduced (Rule 10/11), so remaining cap headroom floors at 0
+    // and the voucher is fully absorbed regardless of by how much.
     const lines: LineValue[] = [
       {
         line_id: "item",
         unit_price: 4_700_000,
         quantity: 1,
-        item_promotion_discount: 2_350_000, // exactly 50%
+        item_promotion_discount: 2_350_000, // 50% of the subtotal
         is_eligible: true,
       },
     ];
@@ -231,6 +248,10 @@ describe("SRS EC-03 (§8) — cart total must stay > 0 (minimum 1 VND) once the 
     expect(result.final_voucher_discount).toBe(0); // voucher fully absorbed by the cap
     expect(result.expected_final_cart_total).toBe(2_350_000);
     expect(result.expected_final_cart_total).toBeGreaterThan(0);
+    // CR 2026-07-22: item promo alone already at/past the cap -> the apply
+    // workflow (`assert-cap-not-exhausted.ts`) rejects this outright instead
+    // of returning a "success" with a 0đ voucher discount.
+    expect(result.cap_exhausted_by_promotion).toBe(true);
   });
 
   it("KNOWN GAP: a single item-level automatic Promotion that alone reaches 100% of a line (e.g. a native 'buy-1-get-1-free' style adjustment) drives the total to EXACTLY 0, not the SRS's literal >=1 VND floor — Rule 10/11 forbids the cap from ever reducing the item promotion, so there is nothing left to enforce a minimum with. Tracked as `[NEEDS_VERIFICATION #13]` in calculate-discount.ts; not exercised by the existing SRS worked examples, which never push item promo alone past the cap threshold.", () => {
@@ -256,6 +277,7 @@ describe("SRS EC-03 (§8) — cart total must stay > 0 (minimum 1 VND) once the 
     // If a future decision adds a hard `>= 1 VND` floor, this line must change to
     // `toBeGreaterThanOrEqual(1)` and the "KNOWN GAP" framing above removed.
     expect(result.expected_final_cart_total).toBe(0);
+    expect(result.cap_exhausted_by_promotion).toBe(true);
   });
 });
 

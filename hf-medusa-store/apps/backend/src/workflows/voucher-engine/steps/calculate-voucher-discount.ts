@@ -8,6 +8,15 @@
  * Pure/no I/O: exists as its own step (rather than inline `transform()`) so the
  * SPEC's step-contract naming is preserved and the calculation stays
  * independently traceable in the workflow graph (Phase-3 item 9/10).
+ *
+ * Deliberately does NOT throw on `result.cap_exhausted_by_promotion` here —
+ * this step is shared by `applyVoucherWorkflow` (manual apply, where a CR
+ * 2026-07-22 now rejects this case — see `apply-voucher.ts`),
+ * `resolveVoucherDiscountWorkflow` (preview-only), and
+ * `revalidateVoucherWorkflow` (`cart.updated` subscriber, which must never
+ * throw — an already-applied voucher losing all cap capacity there should
+ * flow through that workflow's own auto-remove path, not abort here). Callers
+ * that want the CR's reject behavior check the flag themselves.
  */
 
 import { createStep, StepResponse } from "@medusajs/framework/workflows-sdk";
