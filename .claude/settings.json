@@ -38,7 +38,6 @@
     }
   },
   "enabledPlugins": {
-    "medusa-dev@medusa": true,
     "ecommerce-storefront@medusa": true
   }
 }

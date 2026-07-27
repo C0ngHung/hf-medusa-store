@@ -50,10 +50,22 @@ PR with evidence, using Claude Code. Task **1.2.3**.
 | `dev-backend` | start the Medusa backend dev server |
 | `dev-storefront` | start the Next.js storefront (port 8008) |
 | `seed` | seed the backend dev database |
+| `/bugfix` | fix a bug — root cause first, minimal diff, regression test |
+| `/debug` | unknown cause — hypotheses first, no edits until proven |
+| `/feature` | new feature — plan for approval, then implement |
+| `/refactor` | behaviour-preserving cleanup, green after every step |
+| `/new-endpoint` | scaffold a REST route under `src/api/` |
+| `/scaffold-module` | scaffold a module from the suggestive-selling template |
 | `/verify` | drive the change end-to-end |
-| `/code-review` | review the working diff |
+| `/review-diff` | review your **uncommitted** working diff by severity |
+| `/review-pr` | review a **GitHub PR** against repo conventions |
+| `/code-review` | built-in review of the working diff |
 | `/security-review` | security pass (use for voucher/rate-limit code) |
 | `medusa-dev` plugin | generic Medusa v2 framework guidance |
+
+Which review command: `/review-diff` while the work is still uncommitted, `/review-pr` once it
+is a pull request. For VoucherEngine task slices use the `execute-voucher-engine-tasks` skill
+rather than `/feature` — it owns its own plan → build → verify loop.
 
 ## Environment quick ref
 - Run all pnpm/turbo commands from the INNER `hf-medusa-store/` workspace root.
