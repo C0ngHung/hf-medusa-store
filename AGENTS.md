@@ -28,45 +28,15 @@ single most common mistake on this repo.
 
 ## Commands
 
-From the **inner** `hf-medusa-store/` workspace root:
+From the **inner** `hf-medusa-store/` workspace root, run the scripts defined in
+`package.json` (root) and `apps/backend/package.json` (backend test scripts).
 
-```bash
-pnpm backend:dev        # Medusa backend dev server
-pnpm storefront:dev     # Next.js storefront, port 8008
-pnpm backend:seed       # seed backend dev data
-pnpm build              # build all
-pnpm lint               # lint all
-pnpm test               # test all
-```
-
-From `apps/backend/` — never invoke jest directly, these scripts set `TEST_TYPE`:
-
-```bash
-pnpm test:unit                  # pure services (StackingEngine, validators)
-pnpm test:integration:modules   # module service + migrations against real DB/Redis
-pnpm test:integration:http      # API endpoints end-to-end
-```
+From `apps/backend/` — never invoke jest directly, these scripts set `TEST_TYPE`.
 
 Infra: `docker compose up -d` from the git root → Postgres `:5433`, Redis `:6380`.
 
 **Before reporting a task done**, run the relevant test script plus `pnpm lint` and
 `pnpm build`. There is no `typecheck` script in this repo — `pnpm build` is the type gate.
-
-## Directory structure
-
-```
-apps/backend/src/
-├── api/admin, api/store   # REST endpoints
-├── modules/               # custom modules (suggestive-selling, voucher-engine)
-├── workflows/ subscribers/ jobs/ links/   # Medusa building blocks
-├── scripts/ migration-scripts/            # seeds & data migration
-└── admin/                 # admin dashboard customizations (i18n)
-
-apps/storefront/src/
-├── app/[countryCode]/     # Next.js App Router, multi-region
-├── modules/               # UI grouped by domain (cart, checkout, products, …)
-└── lib/                   # shared context, data fetching, hooks, utils
-```
 
 ## Conventions
 
@@ -111,7 +81,7 @@ apps/storefront/src/
   recompute it from authoritative cart data on every mutation and reject any client-supplied
   monetary field. `voucher_usage_log` is append-only. Full rules in `.claude/rules/security.md`.
 - Cite the SRS/spec section a piece of code implements in a comment, e.g. `// VOUCH-003:
-  global cap`.
+global cap`.
 - `src/modules/suggestive-selling/` is the canonical template for new backend modules.
   Cross-module references are plain `model.text()` id fields wired via the Link Module — never
   a database foreign key.
