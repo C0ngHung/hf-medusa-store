@@ -33,8 +33,8 @@ coding decisions unique to THIS repo. See also [medusa.md](./medusa.md), [testin
 - The `StackingEngine` is a **pure function** (no I/O): inputs = items, promos, voucher, cap config;
   output = discount breakdown. Keep it side-effect free so it is unit-testable against SRS fixtures.
 
-Storefront-specific conventions live in `apps/storefront/CLAUDE.md` (loads only when working
-under that directory).
+Storefront-specific conventions live in `apps/storefront/AGENTS.md` (loads only when working under
+that directory, via the `CLAUDE.md` next to it).
 
 ## Dependency pins
 

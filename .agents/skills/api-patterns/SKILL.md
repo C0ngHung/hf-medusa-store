@@ -1,7 +1,7 @@
 ---
 name: api-patterns
 description: API design principles and decision-making. REST vs GraphQL vs tRPC selection, response formats, versioning, pagination.
-when_to_use: "When designing REST/GraphQL/tRPC APIs, defining response formats, versioning, pagination, or API authentication. NOT for UI/frontend work."
+when_to_use: "Background reading on REST shape, pagination, and auth. This repo's endpoints are Medusa REST routes with an already-agreed contract in docs/API_CONTRACT_Suggestive_Voucher_Cart.md — read that first; it wins. Ignore GraphQL/tRPC sections. NOT for UI/frontend work."
 allowed-tools: Read, Write, Edit, Glob, Grep
 version: 1.0.0
 ---

@@ -5,16 +5,21 @@ description: >-
   presenting a plan — files, edge cases, open questions — and getting explicit approval before
   any code is written. Not for VoucherEngine task slices, which have their own dedicated
   workflow.
+when_to_use: "When the user asks to build new functionality that is not a VoucherEngine task slice."
+allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 # Feature
 
 ## First — is this VoucherEngine work?
 
-If the request is a task from `docs/tasks_grouped.md`, or touches the voucher engine, stop and
-say so: that work runs through its own plan → audit → build → verify → lessons loop against
-`.claude/specs/voucher-engine/SPEC.md`. Running this skill alongside it produces two competing
-workflows.
+If the request is a task from `docs/tasks_grouped.md`, or touches the voucher engine, **stop and use
+the dedicated workflow instead**: `execute-voucher-engine-tasks` for a task slice, or
+`rebuild-voucher-engine` for the Promotion-first rebuild. Those own their own
+plan → audit → build → verify → lessons loop against `.claude/specs/voucher-engine/SPEC.md`.
+Running this one alongside them produces two competing workflows.
+
+(Those two are Claude Code skills. On other tools, stop and hand the task back to the user.)
 
 Otherwise, continue.
 
@@ -50,7 +55,6 @@ Before writing any code, present:
 - [ ] Happy path works
 - [ ] Every edge case listed in Phase 1 is handled
 - [ ] Error states surface a clear message rather than failing silently
-- [ ] Unit tests cover the core logic: `*.unit.spec.ts` inside a `__tests__/` folder
-- [ ] From `hf-medusa-store/apps/backend/`: `pnpm test:unit` passes
+- [ ] Unit tests cover the core logic, named and run per `apps/backend/AGENTS.md` § Tests
 - [ ] From the inner `hf-medusa-store/`: `pnpm lint` and `pnpm build` are clean
 - [ ] No new console warnings

@@ -1,0 +1,17 @@
+# Paths that must never be EDITED by an agent (AGENTS.md § Prohibited).
+#
+# Scope note: this list is about *writing into* generated or secret files. It is NOT a
+# "never delete" list — `rm -rf node_modules` and friends are legitimate cleanup and stay
+# allowed. Deletion of source is not covered here.
+#
+# Enforcement is asymmetric and deliberately so:
+#   - Claude Code  -> enforced, via `permissions.deny` in .claude/settings.json (keep in sync)
+#   - Antigravity  -> NOT enforced; the hook matcher covers shell commands only, not the
+#                     file-write tools. Here the list is documentation, and AGENTS.md § Prohibited
+#                     is the actual contract. See docs/team/SETUP-AI-TOOLS.md.
+
+node_modules/
+.medusa/
+dist/
+.next/
+.env

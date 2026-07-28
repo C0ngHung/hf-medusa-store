@@ -4,11 +4,13 @@ description: >-
   Use this skill when the user asks for a review of uncommitted work in this repository — "review
   my changes", "check this diff before I commit". It reviews the working diff against the repo's
   money, pricing-authority, audit, and module-shape rules and reports findings by severity.
+when_to_use: "When the user asks to review uncommitted changes in the working tree before committing."
+allowed-tools: Read, Grep, Glob, Bash
 ---
 
 # Review the working diff
 
-For uncommitted work in progress. A GitHub pull request is a different job.
+For uncommitted work in progress. Reviewing a GitHub pull request is a different job.
 
 ## Scope
 
@@ -16,8 +18,9 @@ Run `git diff HEAD` from the repository root. If the user named a path, narrow t
 
 ## How to review
 
-Report real problems only. Skip anything Prettier or ESLint already handles — style nits are
-noise here. Do not invent findings to look thorough.
+Report real problems only. Skip anything Prettier or ESLint already handles — a `PostToolUse` hook
+formats every edited file automatically, so style nits are pure noise here. Do not invent findings
+to look thorough.
 
 Check against `AGENTS.md`, paying particular attention to:
 
@@ -33,9 +36,9 @@ Check against `AGENTS.md`, paying particular attention to:
 
 ## Severity
 
-- **Blocker** — bug, security hole, data loss, race condition, money computed wrong
-- **Should fix** — performance, unhandled edge case, missing error handling
-- **Nit** — nice to have
+- 🔴 **Blocker** — bug, security hole, data loss, race condition, money computed wrong
+- 🟡 **Should fix** — performance, unhandled edge case, missing error handling
+- 🔵 **Nit** — nice to have
 
 ## Format
 

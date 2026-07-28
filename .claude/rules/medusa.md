@@ -11,22 +11,20 @@ paths:
 Generic Medusa v2 framework guidance comes from the **medusa-dev** plugin. This file captures the
 repo-specific module conventions. See the hub [project-conventions.md](./project-conventions.md).
 
-## Canonical module template
+## Module shape and scripts — single source elsewhere
 
-`src/modules/suggestive-selling/` is the **canonical shape** — copy it for `voucher-engine` and any
-new module:
+The canonical module template (`src/modules/suggestive-selling/`), the `model.text()` + Link Module
+rule, module registration, and the `src/scripts/` conventions live in **`apps/backend/AGENTS.md`**,
+because Antigravity can read that file and cannot read this one. Do not restate them here.
 
-- `index.ts` exports a `<THING>_MODULE` constant + default `Module(...)`.
-- `service.ts` default-exports a class extending `MedusaService({ ...models })`.
-- One `model.define('snake_case', …)` **per file** under a `models/` folder.
-- **Register** the module in `apps/backend/medusa-config.ts`: `{ resolve: './src/modules/<name>' }`.
+This file adds only the depth that Claude Code alone needs.
 
-## Cross-module references — Link Module, never DB FKs
+## Cross-module references — the part worth expanding
 
-- Store references to other modules as plain `model.text()` id fields.
-- Wire relationships via the **Link Module** using `defineLink(… { readOnly: true })` under
-  `src/links/`. Do NOT create database foreign keys across module boundaries — modules stay
-  decoupled and communicate via Links + event subscribers only.
+`apps/backend/AGENTS.md` states the rule (ids as `model.text()`, never a DB foreign key). The
+mechanics: declare links with `defineLink(… { readOnly: true })` under `src/links/`. Modules stay
+decoupled and communicate through Links plus event subscribers only — never a direct service import
+across a module boundary.
 
 ## Migrations
 
@@ -46,11 +44,6 @@ new module:
   attribution to order lines.
 - Compensatable multi-step operations (`applyVoucher`, `evaluateSuggestions`,
   `revalidateVoucherOnCartChange`) are Medusa **workflows** with compensation steps.
-
-## Scripts
-
-- Seed/exec scripts live in `src/scripts/`, default-export `async ({ container }: ExecArgs)`, MUST
-  be **idempotent**, and run via `npx medusa exec ./src/scripts/<file>.ts`.
 
 ## Caching & Redis
 

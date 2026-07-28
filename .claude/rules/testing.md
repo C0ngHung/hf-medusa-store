@@ -16,18 +16,15 @@ Backend testing only (storefront E2E via Playwright is a stretch goal). See the 
 [project-conventions.md](./project-conventions.md) and the workflow doc
 `docs/team/CLAUDE_WORKFLOW.md`.
 
-## Test types & scripts (run from `apps/backend/`)
+## Test commands and file naming — single source elsewhere
 
-- Set `TEST_TYPE` via the provided scripts — never invoke jest directly:
-  - `pnpm test:unit` — pure services (StackingEngine, validators).
-  - `pnpm test:integration:modules` — module service + migrations against a real DB/Redis.
-  - `pnpm test:integration:http` — API endpoints end-to-end.
+Which script to run and where a test file goes live in **`apps/backend/AGENTS.md` § Tests**, so that
+Antigravity gets them too. Do not restate them here. Two additions that file omits:
 
-## Naming & location
-
-- Unit: `*.unit.spec.ts` inside a `__tests__/` folder next to the code.
-- Module integration: `src/modules/<name>/__tests__/`.
-- HTTP integration: `integration-tests/http/*.spec.ts`.
+- What each suite is _for_: `test:unit` = pure services (StackingEngine, validators);
+  `test:integration:modules` = module service + migrations against a real DB/Redis;
+  `test:integration:http` = API endpoints end-to-end.
+- Module integration tests go in `src/modules/<name>/__tests__/`.
 
 ## StackingEngine — exact-fixture compliance (VOUCH-003)
 
