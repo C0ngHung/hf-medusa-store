@@ -7,7 +7,14 @@ export const parseOptionValueIds = (
 ): OptionValueIds => {
   if (typeof (searchParams as URLSearchParams).getAll === "function") {
     const values = (searchParams as URLSearchParams).getAll(OPTION_VALUE_QUERY_KEY)
-    return Array.from(new Set(values.filter(Boolean)))
+    return Array.from(
+      new Set(
+        values
+          .flatMap((v) => v.split(","))
+          .map((v) => v.trim())
+          .filter(Boolean)
+      )
+    )
   }
 
   const paramValue = (
@@ -15,11 +22,25 @@ export const parseOptionValueIds = (
   )[OPTION_VALUE_QUERY_KEY]
 
   if (Array.isArray(paramValue)) {
-    return Array.from(new Set(paramValue.filter(Boolean)))
+    return Array.from(
+      new Set(
+        paramValue
+          .flatMap((v) => v.split(","))
+          .map((v) => v.trim())
+          .filter(Boolean)
+      )
+    )
   }
 
   if (typeof paramValue === "string" && paramValue.length > 0) {
-    return paramValue.split(",").filter(Boolean)
+    return Array.from(
+      new Set(
+        paramValue
+          .split(",")
+          .map((v) => v.trim())
+          .filter(Boolean)
+      )
+    )
   }
 
   return []

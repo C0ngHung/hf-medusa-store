@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hf-medusa-store.local/schemas/antigravity-contract.schema.json",
+  "title": "Antigravity workspace contract",
+  "type": "object",
+  "required": ["schemaVersion", "runtime", "phases"],
+  "properties": {
+    "$schema": {"type": "string"},
+    "schemaVersion": {"const": "2.0.0"},
+    "runtime": {"const": "antigravity"},
+    "phases": {
+      "type": "object",
+      "required": ["discovery", "mcp", "hooks", "validation"],
+      "properties": {
+        "discovery": {
+          "type": "object",
+          "required": ["rules", "skills"],
+          "properties": {
+            "rules": {"type": "string"},
+            "skills": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "mcp": {"type": "object"},
+        "hooks": {
+          "type": "object",
+          "required": ["config", "policy"],
+          "properties": {
+            "config": {"type": "string"},
+            "policy": {"type": "string"}
+          },
+          "additionalProperties": false
+        },
+        "validation": {"type": "object"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
