@@ -5,6 +5,8 @@ description: >-
   unexpectedly, works in one environment but not another, or fails intermittently. It investigates
   and proves a root cause with evidence and explicitly forbids editing code. Use the bugfix skill
   once the cause is confirmed.
+when_to_use: "When the user reports a symptom but the cause is not yet identified, or asks to investigate before fixing."
+allowed-tools: Read, Grep, Glob, Bash
 ---
 
 # Debug
@@ -12,11 +14,11 @@ description: >-
 ## Rule 1
 
 **Do not change a single line of code** until the root cause is established with evidence.
-This skill investigates. It does not fix.
+This workflow investigates. It does not fix.
 
 ## 1. Gather
 
-Ask for anything missing: the exact symptom, when it happens, when it does *not* happen, the
+Ask for anything missing: the exact symptom, when it happens, when it does _not_ happen, the
 environment (which app, dev vs. built, Redis present or absent), logs or stack trace, and what
 changed recently.
 

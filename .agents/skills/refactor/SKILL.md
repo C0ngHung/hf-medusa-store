@@ -4,6 +4,8 @@ description: >-
   Use this skill when the user asks to restructure, clean up, extract, or simplify existing code
   in this repository without changing what it does. It requires characterisation tests first,
   green tests after every step, and forbids bundling in bug fixes or new features.
+when_to_use: "When the user asks to restructure or clean up existing code without changing its behaviour."
+allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 # Refactor
@@ -33,9 +35,8 @@ review. Fix it separately with the `bugfix` skill.
 
 ## 3. Success criteria
 
-- [ ] Full suite passes, and **no test was edited** to make it pass — from
-      `hf-medusa-store/apps/backend/`: `pnpm test:unit`, plus
-      `pnpm test:integration:modules` / `pnpm test:integration:http` where relevant
+- [ ] Full suite passes, and **no test was edited** to make it pass — test commands are in
+      `apps/backend/AGENTS.md` § Tests; run the integration suites too where relevant
 - [ ] `pnpm lint` and `pnpm build` clean from the inner `hf-medusa-store/` workspace root
 - [ ] No externally observable behaviour changed
 - [ ] State concretely what improved — "shorter" is not an answer; "removed the duplicated cap

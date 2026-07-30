@@ -29,7 +29,8 @@ Team-facing decision docs live under `docs/team/`: `CLAUDE_WORKFLOW.md`, `CONTRI
 
 ## Backend and storefront
 
-Backend-specific conventions (module shape, seed scripts) live in `apps/backend/CLAUDE.md`;
-storefront-specific conventions (path aliases, SDK usage, routing) live in
-`apps/storefront/CLAUDE.md`. Both load only when working under their respective directory.
+Backend-specific conventions (module shape, seed scripts, test naming) live in
+`apps/backend/AGENTS.md`; storefront-specific conventions (path aliases, SDK usage, routing) live in
+`apps/storefront/AGENTS.md`. Each is imported by the `CLAUDE.md` next to it, so both load only when
+working under that directory — and living in `AGENTS.md` means Antigravity reads them too.
 Testing conventions live in `.claude/rules/testing.md` (loads automatically for test files).

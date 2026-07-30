@@ -93,7 +93,9 @@ global cap`.
 Detailed rules live in `.claude/rules/`: `project-conventions.md` (hub), `coding.md`,
 `testing.md`, `security.md`, `medusa.md`, `typescript.md`. Team process docs live in
 `docs/team/`: `CONTRIBUTING.md` (branch/PR/evidence), `OWNERSHIP.md` (file ownership),
-`REDIS_USAGE.md`, `CLAUDE_WORKFLOW.md`, `RUNNING_TESTS.md`.
+`REDIS_USAGE.md`, `CLAUDE_WORKFLOW.md`, `RUNNING_TESTS.md`, `SETUP-AI-TOOLS.md` (setting an agent
+up on a new machine, and the enforcement layers), `PROMPT-TEMPLATE.md` (how to write a task
+prompt for this repo).
 
 ## Per-tool configuration
 
@@ -102,9 +104,18 @@ This file is the shared source of truth; each tool adds only what it needs on to
 - **Claude Code** — `CLAUDE.md` (imports this file) plus `.claude/commands/` and
   `.claude/rules/`.
 - **Antigravity CLI and IDE** — reads this file natively, walking up from the working directory
-  to the repository root. `.agents/` adds a `PreToolUse` safety hook, workspace skills, and an
-  MCP example; see `.agents/README.md`.
+  to the repository root, so `apps/backend/AGENTS.md` and `apps/storefront/AGENTS.md` apply when
+  working under those folders. `.agents/` adds a `PreToolUse` safety hook, workspace skills, and
+  an MCP example; see `.agents/README.md`.
 
-The five task workflows are kept in sync between `.claude/commands/*.md` and
-`.agents/skills/{bugfix,debug,feature,refactor,review-diff}/SKILL.md`. Change one, change the
-other.
+`.claude/rules/` is **Claude-Code-only** — no other tool can read it. Where a rule file is cited
+below for more detail, the summary in this file is what every other tool gets, and it is
+authoritative for them.
+
+The five task workflows have **one source each**: `.agents/skills/<name>/SKILL.md` for `bugfix`,
+`debug`, `feature`, `refactor`, `review-diff`. The matching `.claude/commands/*.md` are thin
+wrappers that `@`-import that file and add only what cannot be shared — `$ARGUMENTS`, the
+`!`-shell-injection line, and Claude-Code-only trigger words. **Edit the skill, not the wrapper.**
+
+Because the shared body is read by every tool, it must cite only files every tool can read:
+this file, `apps/*/AGENTS.md`, and `docs/team/*` — never `.claude/rules/*`.

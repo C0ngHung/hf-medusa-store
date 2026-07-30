@@ -31,9 +31,19 @@ Antigravity discovers customizations from `.agents/` at the repository root — 
 
 ## Skills
 
-Five task workflows (`bugfix`, `debug`, `feature`, `refactor`, `review-diff`) mirror the Claude
-Code slash commands in `.claude/commands/` so both tools follow the same procedure. The rest are
-domain and craft skills. `rules/quick-reference.md` is the index.
+Five task workflows (`bugfix`, `debug`, `feature`, `refactor`, `review-diff`) are the **single
+source** for those procedures. The matching `.claude/commands/*.md` are thin wrappers that
+`@`-import the `SKILL.md` here, so Claude Code and Antigravity follow the same text rather than two
+copies that drift. Edit the skill; never edit the wrapper's body.
+
+A wrapper carries only what cannot be shared: `$ARGUMENTS` (not substituted in `SKILL.md`), the
+`!`-shell-injection line (does not run through an import), and Claude-Code-only trigger words such
+as `think harder`.
+
+The shared body may cite only files every tool can read — the root and `apps/*` `AGENTS.md`, and
+`docs/team/*`. It must not cite `.claude/rules/*`, which Antigravity cannot open.
+
+The rest are domain and craft skills. `rules/quick-reference.md` is the index.
 
 Skills use progressive disclosure: only the name and description enter the context window until
 one is activated.

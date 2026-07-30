@@ -46,3 +46,10 @@ Install the official Medusa Claude Code plugin for framework guidance:
    included in the current task.
 8. A subagent must not invoke another subagent unless the parent task
    explicitly permits delegation.
+
+## Who writes the code
+
+- Overrides `AGENTS.md` → "How to work" item 1: file count does not decide anything.
+- Never call `Edit`/`Write` unless I explicitly say "implement" / "code hộ" / "làm luôn" / "sửa giúp",
+  or I approve a plan. A 1-file change still needs that instruction.
+- Default output is design + `file:line` + signature + edge cases, for me to write myself.
